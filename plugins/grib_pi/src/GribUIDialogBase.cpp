@@ -112,12 +112,7 @@ GRIBUICtrlBarBase::GRIBUICtrlBarBase(wxWindow* parent, wxWindowID id,
     //         m_bpOpenFile->SetToolTip( _("Open a new file") );
     //         fgSizer51->Add( m_bpOpenFile, 0, wxALL, 1 );
 
-    m_bpSettings =
-        new wxBitmapButton(this, ID_BTNSETTING, wxNullBitmap, wxDefaultPosition,
-                           wxDefaultSize, wxBU_AUTODRAW);
-    m_bpSettings->SetToolTip(_("Settings"));
-
-    fgSizer51->Add(m_bpSettings, 0, wxALL, 1);
+    m_bpSettings = nullptr;
 
     m_bpRequest = nullptr;
 
@@ -231,24 +226,9 @@ GRIBUICtrlBarBase::GRIBUICtrlBarBase(wxWindow* parent, wxWindowID id,
 
     fgSizer50->Add(0, 0, 1, wxEXPAND | wxLEFT | wxRIGHT, 1);
 
-    m_bpOpenFile =
-        new wxBitmapButton(this, ID_BTNOPENFILE, wxNullBitmap,
-                           wxDefaultPosition, wxDefaultSize, wxBU_AUTODRAW);
-    m_bpOpenFile->SetToolTip(_("Open a new file"));
-
-    fgSizer50->Add(m_bpOpenFile, 0, wxALL, 1);
-
-    m_bpSettings =
-        new wxBitmapButton(this, ID_BTNSETTING, wxNullBitmap, wxDefaultPosition,
-                           wxDefaultSize, wxBU_AUTODRAW);
-    m_bpSettings->SetToolTip(_("Settings"));
-
-    fgSizer50->Add(m_bpSettings, 0, wxALL, 1);
-
-    m_bpRequest =
-        new wxBitmapButton(this, ID_BTNREQUEST, wxNullBitmap, wxDefaultPosition,
-                           wxDefaultSize, wxBU_AUTODRAW);
-    fgSizer50->Add(m_bpRequest, 0, wxALL, 1);
+    m_bpOpenFile = nullptr;
+    m_bpSettings = nullptr;
+    m_bpRequest = nullptr;
 
     m_ProjectBoatPanel = new ProjectBoatPanel(this);
     fgSizer49->Add(m_ProjectBoatPanel, 0, wxEXPAND | wxALL, 1);
@@ -397,19 +377,21 @@ GRIBUICtrlBarBase::GRIBUICtrlBarBase(wxWindow* parent, wxWindowID id,
                           nullptr, this);
   }
 
+  if (m_bpSettings) {
 #ifdef __OCPN__ANDROID__
-  m_bpSettings->Connect(
-      wxEVT_COMMAND_BUTTON_CLICKED,
-      wxCommandEventHandler(GRIBUICtrlBarBase::OnCompositeDialog), nullptr,
-      this);
+    m_bpSettings->Connect(
+        wxEVT_COMMAND_BUTTON_CLICKED,
+        wxCommandEventHandler(GRIBUICtrlBarBase::OnCompositeDialog), nullptr,
+        this);
 #else
-  m_bpSettings->Connect(wxEVT_COMMAND_BUTTON_CLICKED,
-                        wxCommandEventHandler(GRIBUICtrlBarBase::OnSettings),
-                        nullptr, this);
-  m_bpSettings->Connect(wxEVT_RIGHT_DOWN,
-                        wxMouseEventHandler(GRIBUICtrlBarBase::OnMouseEvent),
-                        nullptr, this);
+    m_bpSettings->Connect(wxEVT_COMMAND_BUTTON_CLICKED,
+                          wxCommandEventHandler(GRIBUICtrlBarBase::OnSettings),
+                          nullptr, this);
+    m_bpSettings->Connect(wxEVT_RIGHT_DOWN,
+                          wxMouseEventHandler(GRIBUICtrlBarBase::OnMouseEvent),
+                          nullptr, this);
 #endif
+  }
 
   if (m_bpRequest) {
     m_bpRequest->Connect(
@@ -546,12 +528,21 @@ GRIBUICtrlBarBase::~GRIBUICtrlBarBase() {
         nullptr, this);
   }
 
-  m_bpSettings->Disconnect(wxEVT_COMMAND_BUTTON_CLICKED,
-                           wxCommandEventHandler(GRIBUICtrlBarBase::OnSettings),
-                           nullptr, this);
-  m_bpSettings->Disconnect(wxEVT_RIGHT_DOWN,
-                           wxMouseEventHandler(GRIBUICtrlBarBase::OnMouseEvent),
-                           nullptr, this);
+  if (m_bpSettings) {
+#ifdef __OCPN__ANDROID__
+    m_bpSettings->Disconnect(
+        wxEVT_COMMAND_BUTTON_CLICKED,
+        wxCommandEventHandler(GRIBUICtrlBarBase::OnCompositeDialog), nullptr,
+        this);
+#else
+    m_bpSettings->Disconnect(
+        wxEVT_COMMAND_BUTTON_CLICKED,
+        wxCommandEventHandler(GRIBUICtrlBarBase::OnSettings), nullptr, this);
+    m_bpSettings->Disconnect(
+        wxEVT_RIGHT_DOWN, wxMouseEventHandler(GRIBUICtrlBarBase::OnMouseEvent),
+        nullptr, this);
+#endif
+  }
 
   if (m_bpRequest) {
     m_bpRequest->Disconnect(

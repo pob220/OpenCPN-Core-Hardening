@@ -195,9 +195,7 @@ GRIBUICtrlBar::GRIBUICtrlBar(wxWindow *parent, wxWindowID id,
   m_gGrabber = new GribGrabberWin(this);  // add the grabber to the dialog
   m_fgCtrlGrabberSize->Add(m_gGrabber, 0, wxALL, 0);
 
-  RemoveLegacyActionButton(m_bpOpenFile);
-  RemoveLegacyActionButton(m_bpSettings);
-  RemoveLegacyActionButton(m_bpRequest);
+  RemoveLegacyActionButtons();
 
   m_actionOpenButton =
       CreateActionButton(_("Open GRIB"), _("Open an existing GRIB file."));
@@ -427,6 +425,22 @@ void GRIBUICtrlBar::RemoveLegacyActionButton(wxWindow *button) {
   button->Hide();
 }
 
+void GRIBUICtrlBar::RemoveLegacyActionButtons() {
+  RemoveLegacyActionButton(m_bpOpenFile);
+  RemoveLegacyActionButton(m_bpSettings);
+  RemoveLegacyActionButton(m_bpRequest);
+
+  for (wxWindowList::compatibility_iterator node = GetChildren().GetFirst();
+       node; node = node->GetNext()) {
+    wxWindow *child = node->GetData();
+    if (!child) continue;
+    int id = child->GetId();
+    if (id == ID_BTNOPENFILE || id == ID_BTNSETTING || id == ID_BTNREQUEST) {
+      RemoveLegacyActionButton(child);
+    }
+  }
+}
+
 wxButton *GRIBUICtrlBar::CreateActionButton(const wxString &label,
                                             const wxString &tooltip) {
   wxButton *button =
@@ -479,8 +493,9 @@ void GRIBUICtrlBar::SetScaledBitmap(double factor) {
   if (m_bpOpenFile)
     m_bpOpenFile->SetBitmapLabel(
         GetScaledBitmap(wxBitmap(openfile), "openfile", m_ScaledFactor));
-  m_bpSettings->SetBitmapLabel(
-      GetScaledBitmap(wxBitmap(setting), "setting", m_ScaledFactor));
+  if (m_bpSettings)
+    m_bpSettings->SetBitmapLabel(
+        GetScaledBitmap(wxBitmap(setting), "setting", m_ScaledFactor));
 
   SetRequestButtonBitmap(m_ZoneSelMode);
   SetActionButtonBitmaps();
@@ -497,10 +512,11 @@ void GRIBUICtrlBar::SetScaledBitmap(double factor) {
 }
 
 void GRIBUICtrlBar::SetRequestButtonBitmap(int type) {
-  if (nullptr == m_bpRequest) return;
-  m_bpRequest->SetBitmapLabel(
-      GetScaledBitmap(wxBitmap(request), "request", m_ScaledFactor));
-  m_bpRequest->SetToolTip(_("Download a forecast GRIB."));
+  if (m_bpRequest) {
+    m_bpRequest->SetBitmapLabel(
+        GetScaledBitmap(wxBitmap(request), "request", m_ScaledFactor));
+    m_bpRequest->SetToolTip(_("Download a forecast GRIB."));
+  }
   SetActionButtonBitmap(m_actionDownloadButton, request, "request");
 }
 
@@ -605,12 +621,14 @@ void GRIBUICtrlBar::OpenFile(bool newestFile) {
 
   // enable buttons according with file contents to ovoid crashes
 #ifdef __OCPN__ANDROID__
-  m_bpSettings->Enable(true);
+  if (m_bpSettings) m_bpSettings->Enable(true);
+  bool settingsEnabled = true;
 #else
-  m_bpSettings->Enable(m_pTimelineSet != nullptr);
+  bool settingsEnabled = m_pTimelineSet != nullptr;
+  if (m_bpSettings) m_bpSettings->Enable(settingsEnabled);
 #endif
   if (m_actionSettingsButton)
-    m_actionSettingsButton->Enable(m_bpSettings->IsEnabled());
+    m_actionSettingsButton->Enable(settingsEnabled);
   m_bpZoomToCenter->Enable(m_pTimelineSet != nullptr);
 
   m_sTimeline->Enable(m_pTimelineSet != nullptr && m_TimeLineHours);

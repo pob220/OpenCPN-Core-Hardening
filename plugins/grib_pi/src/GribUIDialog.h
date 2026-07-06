@@ -361,6 +361,7 @@ private:
   void createRequestDialog();
   void OnCompositeDialog(wxCommandEvent &event);
   void RemoveLegacyActionButton(wxWindow *button);
+  void RemoveLegacyActionButtons();
   wxButton *CreateActionButton(const wxString &label, const wxString &tooltip);
   void SetActionButtonBitmap(wxButton *button, const char *const *xpm,
                              const wxString &svgName);

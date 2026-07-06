@@ -273,6 +273,8 @@ EnvironmentalGribDialog::EnvironmentalGribDialog(wxWindow* parent)
                                "Marine.ie Irish Sea latest run",
                                "Copernicus NWS forecast/model currents",
                                "Copernicus Global forecast/model currents",
+                               "NOAA RTOFS Global ocean currents",
+                               "NOAA OFS / S-111 coastal currents (experimental)",
                                "Auto forecast/model current provider"};
   m_currentSource = new wxChoice(scrolled, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                                  WXSIZEOF(currentSources), currentSources);
@@ -754,6 +756,8 @@ void EnvironmentalGribDialog::UpdateProviderUi() {
   bool currentTpxoCache = currentsEnabled && m_currentSource->GetStringSelection().Contains("TPXO cache");
   bool currentTpxoDirect = currentsEnabled && m_currentSource->GetStringSelection().Contains("TPXO direct");
   bool currentMarine = currentsEnabled && m_currentSource->GetStringSelection().Contains("Marine.ie");
+  bool currentRtofs = currentsEnabled && m_currentSource->GetStringSelection().Contains("RTOFS");
+  bool currentOfs = currentsEnabled && m_currentSource->GetStringSelection().Contains("OFS");
   bool weatherGfs = weatherEnabled && m_weatherProvider->GetStringSelection().Contains("GFS");
   bool weatherUkv = weatherEnabled && m_weatherProvider->GetStringSelection().Contains("Met Office UKV");
   bool weatherGenerated = weatherEnabled && !weatherExisting;
@@ -808,6 +812,17 @@ void EnvironmentalGribDialog::UpdateProviderUi() {
   m_prepareTpxoCacheButton->Enable(currentTpxoCache && !m_processRunning);
   m_localNetcdf->Enable(false);
 
+  wxString currentNote;
+  if (currentRtofs) {
+    currentNote =
+        "Current source: NOAA RTOFS Global ocean-current forecast. Global/no account. "
+        "Useful for offshore ocean-current routing, including Gulf Stream-type circulation where model guidance is available.";
+  } else if (currentOfs) {
+    currentNote =
+        "Current source: NOAA OFS/S-111 coastal current forecast. U.S. coastal waters and Great Lakes. "
+        "Experimental stub; not yet a complete GRIB generator.";
+  }
+
   if (weatherUkv) {
     wxString note =
         "Source: Met Office UKV 2 km forecast. Met Office UKV 2 km is a high-resolution UK/Ireland short-range forecast. "
@@ -820,12 +835,14 @@ void EnvironmentalGribDialog::UpdateProviderUi() {
     if (waveCopernicus) {
       note += "\nWave source: Copernicus Marine Global Waves forecast. Account required; global 3-hourly wave fields.";
     }
+    if (!currentNote.empty()) note += "\n" + currentNote;
     m_providerNote->SetLabel(note);
   } else if (weatherEnabled && m_weatherProvider->GetStringSelection().Contains("ECMWF")) {
     wxString note = "Source: ECMWF IFS Open Data forecast. Warning: this provider is not spatially cropped yet, so files may be large.";
     if (waveCopernicus) {
       note += "\nWave source: Copernicus Marine Global Waves forecast. Account required; global 3-hourly wave fields.";
     }
+    if (!currentNote.empty()) note += "\n" + currentNote;
     m_providerNote->SetLabel(note);
   } else if (weatherGfs) {
     wxString note = "Source: NOAA GFS forecast via NOMADS. Bbox-subset weather is compact; optional wave fields add significant wave height, primary wave period, and primary wave direction.";
@@ -836,6 +853,7 @@ void EnvironmentalGribDialog::UpdateProviderUi() {
       note += wxString::Format("\nWave fields are included every 3 hours; wind/weather and currents remain every %d hour%s.",
                                m_stepHours->GetValue(), m_stepHours->GetValue() == 1 ? "" : "s");
     }
+    if (!currentNote.empty()) note += "\n" + currentNote;
     m_providerNote->SetLabel(note);
   } else if (currentTpxoCache) {
     m_providerNote->SetLabel("Source: TPXO10 astronomical tide model cache. Produces astronomical tidal currents from a local derived cache.");
@@ -843,6 +861,8 @@ void EnvironmentalGribDialog::UpdateProviderUi() {
     m_providerNote->SetLabel("Source: TPXO10 astronomical tide model. Astronomical tide only; does not include surge, wind residual current, river flow, or forecast-model corrections.");
   } else if (currentMarine) {
     m_providerNote->SetLabel("Source: Marine.ie Irish Sea latest run. No credentials; valid time range depends on provider run time.");
+  } else if (!currentNote.empty()) {
+    m_providerNote->SetLabel(currentNote);
   } else if (needsCopernicusCredentials) {
     m_providerNote->SetLabel("Source: Copernicus Marine data. Username/password are used for this operation only; password is passed via environment, not command line.");
   } else if (!currentsEnabled) {
@@ -1179,6 +1199,8 @@ wxString EnvironmentalGribDialog::BuildGenerateCommand() const {
     else if (selectedCurrent.Contains("TPXO direct")) currentSource = "tpxo";
     else if (selectedCurrent.Contains("Existing")) currentSource = "existing-file";
     else if (selectedCurrent.Contains("Marine.ie")) currentSource = "marine_ie_irish_sea";
+    else if (selectedCurrent.Contains("RTOFS")) currentSource = "noaa_rtofs_global";
+    else if (selectedCurrent.Contains("OFS")) currentSource = "noaa_ofs_s111";
     else if (selectedCurrent.Contains("NWS")) currentSource = "copernicus_nws";
     else if (selectedCurrent.Contains("Global")) currentSource = "copernicus_global";
     else if (selectedCurrent.Contains("Auto")) currentSource = "auto";
@@ -1334,6 +1356,10 @@ wxString EnvironmentalGribDialog::DefaultOutputFilenameForSelection() const {
       m_east->GetValue().ToDouble(&east) && m_north->GetValue().ToDouble(&north) &&
       std::abs(west - -8.5) < 0.01 && std::abs(south - 50.5) < 0.01 &&
       std::abs(east - -2.5) < 0.01 && std::abs(north - 56.5) < 0.01;
+  bool looksGulfStream =
+      m_west->GetValue().ToDouble(&west) && m_south->GetValue().ToDouble(&south) &&
+      m_east->GetValue().ToDouble(&east) && m_north->GetValue().ToDouble(&north) &&
+      west >= -85.0 && east <= -60.0 && south >= 20.0 && north <= 42.0;
   bool ukvMixedCadence = weatherProvider.Contains("UKV") && m_stepHours->GetValue() == 1 && m_durationHours->GetValue() > 54;
   if (weatherOn && currentOn) {
     prefix = "environment";
@@ -1348,11 +1374,14 @@ wxString EnvironmentalGribDialog::DefaultOutputFilenameForSelection() const {
     if (currentSource.Contains("TPXO cache")) prefix += "_tpxo_cache";
     else if (currentSource.Contains("TPXO direct")) prefix += "_tpxo";
     else if (currentSource.Contains("Marine.ie")) prefix += "_marine_ie";
+    else if (currentSource.Contains("RTOFS")) prefix += "_noaa_rtofs_global";
+    else if (currentSource.Contains("OFS")) prefix += "_noaa_ofs_s111";
     else if (currentSource.Contains("NWS")) prefix += "_copernicus_nws";
     else if (currentSource.Contains("Global")) prefix += "_copernicus_global";
     else if (currentSource.Contains("Auto")) prefix += "_auto_current";
     else if (currentSource.Contains("Existing")) prefix += "_existing_current";
     if (looksIrishSea) prefix += "_irish_sea";
+    if (currentSource.Contains("RTOFS") && looksGulfStream) prefix += "_gulf_stream";
   } else if (weatherOn) {
     prefix = "weather";
     if (weatherProvider.Contains("GFS")) prefix += "_gfs";
@@ -1370,10 +1399,13 @@ wxString EnvironmentalGribDialog::DefaultOutputFilenameForSelection() const {
     if (currentSource.Contains("TPXO cache")) prefix += "_tpxo_cache";
     else if (currentSource.Contains("TPXO direct")) prefix += "_tpxo";
     else if (currentSource.Contains("Marine.ie")) prefix += "_marine_ie";
+    else if (currentSource.Contains("RTOFS")) prefix += "_noaa_rtofs_global";
+    else if (currentSource.Contains("OFS")) prefix += "_noaa_ofs_s111";
     else if (currentSource.Contains("NWS")) prefix += "_copernicus_nws";
     else if (currentSource.Contains("Global")) prefix += "_copernicus_global";
     else if (currentSource.Contains("Auto")) prefix += "_auto";
     else prefix += "_existing";
+    if (currentSource.Contains("RTOFS") && looksGulfStream) prefix += "_gulf_stream";
   }
   if (!prefix.empty()) return TimestampedFilename(prefix);
 
