@@ -243,6 +243,7 @@ public:
   void SetDialogsStyleSizePosition(bool force_recompute = false);
   /** Set the icon and tooltip for the download request button. */
   void SetRequestButtonBitmap(int type);
+  void SetActionButtonBitmaps();
   void OnMouseEvent(wxMouseEvent &event);
   GRIBUICData *GetCDataDialog() { return m_gGRIBUICData; }
   bool InDataPlot(int id) {
@@ -356,8 +357,13 @@ private:
   void OnOpenFile(wxCommandEvent &event);
   /** Callback invoked when user clicks download/request forecast data. */
   void OnRequestForecastData(wxCommandEvent &event);
+  void OnEnvironmentalGrib(wxCommandEvent &event);
   void createRequestDialog();
   void OnCompositeDialog(wxCommandEvent &event);
+  void RemoveLegacyActionButton(wxWindow *button);
+  wxButton *CreateActionButton(const wxString &label, const wxString &tooltip);
+  void SetActionButtonBitmap(wxButton *button, const char *const *xpm,
+                             const wxString &svgName);
 
   void OnTimeline(wxScrollEvent &event);
   void OnShowCursorData(wxCommandEvent &event);
@@ -400,6 +406,10 @@ private:
   // XyGrib panel configuration
   XyGribConfig_t xyGribConfig;
   bool m_gtk_started;
+  wxButton *m_actionOpenButton;
+  wxButton *m_actionSettingsButton;
+  wxButton *m_actionDownloadButton;
+  wxButton *m_actionGenerateButton;
 
   wxTimer m_tFormatRefresh;
   wxString m_sLastTimeFormat;  // Used to detect time format changes

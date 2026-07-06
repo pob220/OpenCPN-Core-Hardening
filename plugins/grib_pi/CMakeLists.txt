@@ -97,6 +97,8 @@ set(SRC_GRIB
     src/GrabberWin.h
     src/GribUIDialog.cpp
     src/GribUIDialog.h
+    src/EnvironmentalGribDialog.cpp
+    src/EnvironmentalGribDialog.h
     src/CursorData.cpp
     src/CursorData.h
     src/GribSettingsDialog.cpp

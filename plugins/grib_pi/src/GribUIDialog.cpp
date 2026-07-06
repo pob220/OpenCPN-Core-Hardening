@@ -46,6 +46,7 @@
 #include "email.h"
 #include "folder.xpm"
 #include "GribUIDialog.h"
+#include "EnvironmentalGribDialog.h"
 #include <wx/arrimpl.cpp>
 
 #ifdef __ANDROID__
@@ -184,11 +185,47 @@ GRIBUICtrlBar::GRIBUICtrlBar(wxWindow *parent, wxWindowID id,
   m_gCursorData = nullptr;
   m_gGRIBUICData = nullptr;
   m_gtk_started = false;
+  m_actionOpenButton = nullptr;
+  m_actionSettingsButton = nullptr;
+  m_actionDownloadButton = nullptr;
+  m_actionGenerateButton = nullptr;
 
   wxFileConfig *pConf = GetOCPNConfigObject();
 
   m_gGrabber = new GribGrabberWin(this);  // add the grabber to the dialog
   m_fgCtrlGrabberSize->Add(m_gGrabber, 0, wxALL, 0);
+
+  RemoveLegacyActionButton(m_bpOpenFile);
+  RemoveLegacyActionButton(m_bpSettings);
+  RemoveLegacyActionButton(m_bpRequest);
+
+  m_actionOpenButton =
+      CreateActionButton(_("Open GRIB"), _("Open an existing GRIB file."));
+  m_actionOpenButton->Bind(wxEVT_BUTTON, &GRIBUICtrlBar::OnOpenFile, this);
+  m_fgCtrlGrabberSize->Add(m_actionOpenButton, 0, wxALL | wxEXPAND, 1);
+
+  m_actionSettingsButton =
+      CreateActionButton(_("Settings"), _("Configure GRIB display and behaviour."));
+  m_actionSettingsButton->Bind(wxEVT_BUTTON, &GRIBUICtrlBar::OnSettings, this);
+  m_fgCtrlGrabberSize->Add(m_actionSettingsButton, 0, wxALL | wxEXPAND, 1);
+
+  m_actionDownloadButton =
+      CreateActionButton(_("Download GRIB"), _("Download a forecast GRIB."));
+  m_actionDownloadButton->Bind(wxEVT_BUTTON, &GRIBUICtrlBar::OnRequestForecastData,
+                               this);
+  m_fgCtrlGrabberSize->Add(m_actionDownloadButton, 0, wxALL | wxEXPAND, 1);
+
+#ifndef __OCPN__ANDROID__
+  m_actionGenerateButton = CreateActionButton(
+      _("Generate GRIB"),
+      _("Generate a combined weather, wave and current GRIB for OpenCPN and "
+        "Weather Routing."));
+  m_actionGenerateButton->Bind(wxEVT_BUTTON, &GRIBUICtrlBar::OnEnvironmentalGrib,
+                               this);
+  m_fgCtrlGrabberSize->Add(m_actionGenerateButton, 0, wxALL | wxEXPAND, 1);
+#endif
+
+  SetActionButtonBitmaps();
 
   this->SetSizer(m_fgCtrlBarSizer);
   this->Layout();
@@ -382,6 +419,44 @@ GRIBUICtrlBar::~GRIBUICtrlBar() {
   delete m_pTimelineSet;
 }
 
+void GRIBUICtrlBar::RemoveLegacyActionButton(wxWindow *button) {
+  if (!button) return;
+
+  wxSizer *sizer = button->GetContainingSizer();
+  if (sizer) sizer->Detach(button);
+  button->Hide();
+}
+
+wxButton *GRIBUICtrlBar::CreateActionButton(const wxString &label,
+                                            const wxString &tooltip) {
+  wxButton *button =
+      new wxButton(this, wxID_ANY, label, wxDefaultPosition, wxDefaultSize,
+                   wxBU_LEFT);
+  button->SetToolTip(tooltip);
+  button->SetBitmapMargins(wxRound(10 * m_ScaledFactor), 0);
+  button->SetMinSize(
+      wxSize(wxRound(178 * m_ScaledFactor), wxRound(36 * m_ScaledFactor)));
+  return button;
+}
+
+void GRIBUICtrlBar::SetActionButtonBitmap(wxButton *button,
+                                          const char *const *xpm,
+                                          const wxString &svgName) {
+  if (!button) return;
+  button->SetBitmap(GetScaledBitmap(wxBitmap(xpm), svgName, m_ScaledFactor));
+  button->SetBitmapPosition(wxLEFT);
+  button->SetBitmapMargins(wxRound(10 * m_ScaledFactor), 0);
+  button->SetMinSize(
+      wxSize(wxRound(178 * m_ScaledFactor), wxRound(36 * m_ScaledFactor)));
+}
+
+void GRIBUICtrlBar::SetActionButtonBitmaps() {
+  SetActionButtonBitmap(m_actionOpenButton, openfile, "openfile");
+  SetActionButtonBitmap(m_actionSettingsButton, setting, "setting");
+  SetActionButtonBitmap(m_actionDownloadButton, request, "request");
+  SetActionButtonBitmap(m_actionGenerateButton, curdata, "curdata");
+}
+
 void GRIBUICtrlBar::SetScaledBitmap(double factor) {
   //  Round to the nearest "quarter", to avoid rendering artifacts
   m_ScaledFactor = wxRound(factor * 4.0) / 4.0;
@@ -408,6 +483,7 @@ void GRIBUICtrlBar::SetScaledBitmap(double factor) {
       GetScaledBitmap(wxBitmap(setting), "setting", m_ScaledFactor));
 
   SetRequestButtonBitmap(m_ZoneSelMode);
+  SetActionButtonBitmaps();
 
   // Careful here, this MinSize() sets the final width of the control bar,
   // overriding the width of the wxChoice above it.
@@ -424,7 +500,8 @@ void GRIBUICtrlBar::SetRequestButtonBitmap(int type) {
   if (nullptr == m_bpRequest) return;
   m_bpRequest->SetBitmapLabel(
       GetScaledBitmap(wxBitmap(request), "request", m_ScaledFactor));
-  m_bpRequest->SetToolTip(_("Start a download request"));
+  m_bpRequest->SetToolTip(_("Download a forecast GRIB."));
+  SetActionButtonBitmap(m_actionDownloadButton, request, "request");
 }
 
 void GRIBUICtrlBar::OpenFile(bool newestFile) {
@@ -532,6 +609,8 @@ void GRIBUICtrlBar::OpenFile(bool newestFile) {
 #else
   m_bpSettings->Enable(m_pTimelineSet != nullptr);
 #endif
+  if (m_actionSettingsButton)
+    m_actionSettingsButton->Enable(m_bpSettings->IsEnabled());
   m_bpZoomToCenter->Enable(m_pTimelineSet != nullptr);
 
   m_sTimeline->Enable(m_pTimelineSet != nullptr && m_TimeLineHours);
@@ -1142,6 +1221,17 @@ void GRIBUICtrlBar::OnRequestForecastData(wxCommandEvent &event) {
   pReq_Dialog->Show();
 
   SetRequestButtonBitmap(m_ZoneSelMode);  // set appopriate bitmap
+}
+
+void GRIBUICtrlBar::OnEnvironmentalGrib(wxCommandEvent &event) {
+  if (m_tPlayStop.IsRunning()) {
+    return;
+  }
+
+  auto* dialog = new EnvironmentalGribDialog(this);
+  dialog->SetCurrentViewPort(pPlugIn->GetCurrentViewPort());
+  pPlugIn->SetDialogFont(dialog);
+  dialog->Show();
 }
 
 void GRIBUICtrlBar::OnSettings(wxCommandEvent &event) {
