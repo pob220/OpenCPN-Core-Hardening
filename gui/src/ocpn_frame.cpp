@@ -4648,6 +4648,8 @@ void RunSegmentSafetyDiagnostics() {
       {"Runtime hit point 1", 53.402797, -4.558620},
       {"Runtime hit point 2", 54.458160, -5.481610},
       {"Runtime hit point 3", 54.942236, -5.182213},
+      {"Mull of Galloway nearshore probe", 54.680000, -4.870000},
+      {"Luce Bay water probe", 54.700000, -4.570000},
   };
 
   for (size_t i = 0; i < WXSIZEOF(point_cases); ++i) {
@@ -4697,6 +4699,12 @@ void RunSegmentSafetyDiagnostics() {
       {"Portpatrick Killantringan visible land crossing",
        54.875000, -5.110000, 54.770000, -5.010000, 0.0,
        PI_SEGMENT_SAFETY_CROSSES_LAND},
+      {"Mull of Galloway Drummore visible land crossing",
+       54.760000, -5.050000, 54.700000, -4.570000, 0.0,
+       PI_SEGMENT_SAFETY_CROSSES_LAND},
+      {"Mull of Galloway offshore west parallel",
+       54.630000, -5.120000, 54.800000, -5.120000, 0.0,
+       PI_SEGMENT_SAFETY_SAFE},
   };
 
   int failures = 0;
@@ -4837,12 +4845,29 @@ void RunSegmentSafetyDiagnostics() {
       {54.850000, -5.210000},
       {54.875000, -5.210000},
   };
+  const FinalRoutePoint mull_bad_route[] = {
+      {54.820000, -5.120000},
+      {54.760000, -5.050000},
+      {54.700000, -4.570000},
+      {54.610000, -4.480000},
+  };
+  const FinalRoutePoint mull_offshore_route[] = {
+      {54.630000, -5.120000},
+      {54.710000, -5.120000},
+      {54.800000, -5.120000},
+  };
   const FinalRouteDiagnosticCase final_cases[] = {
       {"Portpatrick final route with chart land crossing",
        portpatrick_bad_route, WXSIZEOF(portpatrick_bad_route),
        PI_SEGMENT_SAFETY_CROSSES_LAND},
       {"Portpatrick final route offshore",
        portpatrick_offshore_route, WXSIZEOF(portpatrick_offshore_route),
+       PI_SEGMENT_SAFETY_SAFE},
+      {"Mull of Galloway final route with chart land crossing",
+       mull_bad_route, WXSIZEOF(mull_bad_route),
+       PI_SEGMENT_SAFETY_CROSSES_LAND},
+      {"Mull of Galloway final route offshore",
+       mull_offshore_route, WXSIZEOF(mull_offshore_route),
        PI_SEGMENT_SAFETY_SAFE},
   };
   for (size_t i = 0; i < WXSIZEOF(final_cases); ++i) {
