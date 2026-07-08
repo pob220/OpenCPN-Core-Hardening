@@ -25,6 +25,7 @@
 #define S57CHART_H_
 
 #include <memory>
+#include <vector>
 #include <unordered_map>
 
 #include <wx/wx.h>
@@ -152,6 +153,10 @@ public:
   virtual ListOfObjRazRules *GetObjRuleListAtLatLon(
       float lat, float lon, float select_radius, ViewPort *VPoint,
       int selection_mask = MASK_ALL);
+  virtual size_t CollectFeatureAreaRings(
+      const char *feature_name,
+      std::vector<std::vector<wxPoint2DDouble> > &rings);
+  virtual wxString GetFeatureDebugSummary();
   bool DoesLatLonSelectObject(float lat, float lon, float select_radius,
                               S57Obj *obj);
   bool IsPointInObjArea(float lat, float lon, float select_radius, S57Obj *obj);

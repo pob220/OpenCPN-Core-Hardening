@@ -4942,6 +4942,26 @@ int cm93compchart::GetNativeScale() {
     return (int)1e8;
 }
 
+size_t cm93compchart::CollectFeatureAreaRings(
+    const char *feature_name,
+    std::vector<std::vector<wxPoint2DDouble> > &rings) {
+  size_t before = rings.size();
+
+  if (m_pcm93chart_current)
+    m_pcm93chart_current->CollectFeatureAreaRings(feature_name, rings);
+
+  return rings.size() - before;
+}
+
+wxString cm93compchart::GetFeatureDebugSummary() {
+  if (m_pcm93chart_current)
+    return wxString::Format("current_cm93_scale=%d %s",
+                            m_pcm93chart_current->GetNativeScale(),
+                            m_pcm93chart_current->GetFeatureDebugSummary());
+
+  return "current_cm93_scale=none";
+}
+
 double cm93compchart::GetNormalScaleMin(double canvas_scale_factor,
                                         bool b_allow_overzoom) {
   double oz_factor;

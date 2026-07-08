@@ -24,6 +24,7 @@
 #include <algorithm>  // for std::sort
 #include <list>
 #include <map>
+#include <set>
 #include <vector>
 
 #ifdef __ANDROID__
@@ -4835,6 +4836,113 @@ ListOfObjRazRules *s57chart::GetObjRuleListAtLatLon(float lat, float lon,
   }
 
   return ret_ptr;
+}
+
+size_t s57chart::CollectFeatureAreaRings(
+    const char *feature_name,
+    std::vector<std::vector<wxPoint2DDouble> > &rings) {
+  if (!feature_name) return 0;
+
+  std::set<S57Obj *> seen_objects;
+  const int area_rule_indexes[] = {3, 4};
+
+  for (int priority = 0; priority < PRIO_NUM; ++priority) {
+    for (size_t rule_index = 0;
+         rule_index < sizeof(area_rule_indexes) / sizeof(area_rule_indexes[0]);
+         ++rule_index) {
+      ObjRazRules *rule = razRules[priority][area_rule_indexes[rule_index]];
+      while (rule) {
+        S57Obj *obj = rule->obj;
+        if (obj && obj->Primitive_type == GEO_AREA &&
+            !strncmp(obj->FeatureName, feature_name, 6) &&
+            obj->pPolyTessGeo && !seen_objects.count(obj)) {
+          seen_objects.insert(obj);
+
+          if (!obj->pPolyTessGeo->IsOk()) obj->pPolyTessGeo->BuildDeferredTess();
+          PolyTriGroup *group = obj->pPolyTessGeo->Get_PolyTriGroup_head();
+          if (group && group->pgroup_geom && group->pn_vertex) {
+            int offset = 0;
+            float *poly_geom = group->pgroup_geom;
+            for (int contour = 0; contour < group->nContours; ++contour) {
+              int npt = group->pn_vertex[contour];
+              if (npt >= 3) {
+                std::vector<wxPoint2DDouble> ring;
+                ring.reserve(npt);
+                bool valid_ring = true;
+                for (int i = 0; i < npt; ++i) {
+                  double lon = poly_geom[offset + 2 * i];
+                  double lat = poly_geom[offset + 2 * i + 1];
+                  if (!std::isfinite(lat) || !std::isfinite(lon) ||
+                      lat < -90.0 || lat > 90.0 || lon < -180.0 ||
+                      lon > 180.0) {
+                    valid_ring = false;
+                    break;
+                  }
+                  ring.push_back(wxPoint2DDouble(lon, lat));
+                }
+                if (valid_ring) rings.push_back(ring);
+              }
+              offset += npt * 2;
+            }
+          }
+        }
+        rule = rule->next;
+      }
+    }
+  }
+
+  return rings.size();
+}
+
+wxString s57chart::GetFeatureDebugSummary() {
+  std::set<S57Obj *> seen_objects;
+  int total = 0;
+  int area = 0;
+  int line = 0;
+  int point = 0;
+  int with_poly = 0;
+  int lndare = 0;
+  int coalne = 0;
+  int depare = 0;
+  int drgare = 0;
+  int unsare = 0;
+  int m_covr = 0;
+  int areas = 0;
+  int background = 0;
+
+  for (int priority = 0; priority < PRIO_NUM; ++priority) {
+    for (int lup = 0; lup < LUPNAME_NUM; ++lup) {
+      ObjRazRules *rule = razRules[priority][lup];
+      while (rule) {
+        S57Obj *obj = rule->obj;
+        if (obj && !seen_objects.count(obj)) {
+          seen_objects.insert(obj);
+          ++total;
+          if (obj->Primitive_type == GEO_AREA) ++area;
+          if (obj->Primitive_type == GEO_LINE) ++line;
+          if (obj->Primitive_type == GEO_POINT) ++point;
+          if (obj->pPolyTessGeo) ++with_poly;
+
+          if (!strncmp(obj->FeatureName, "LNDARE", 6)) ++lndare;
+          if (!strncmp(obj->FeatureName, "COALNE", 6)) ++coalne;
+          if (!strncmp(obj->FeatureName, "DEPARE", 6)) ++depare;
+          if (!strncmp(obj->FeatureName, "DRGARE", 6)) ++drgare;
+          if (!strncmp(obj->FeatureName, "UNSARE", 6)) ++unsare;
+          if (!strncmp(obj->FeatureName, "M_COVR", 6)) ++m_covr;
+          if (!strncmp(obj->FeatureName, "$AREAS", 6)) ++areas;
+          if (!strncmp(obj->FeatureName, "BACKGR", 6)) ++background;
+        }
+        rule = rule->next;
+      }
+    }
+  }
+
+  return wxString::Format(
+      "objects total=%d area=%d line=%d point=%d with_poly=%d "
+      "LNDARE=%d COALNE=%d DEPARE=%d DRGARE=%d UNSARE=%d M_COVR=%d "
+      "$AREAS=%d BACKGR=%d",
+      total, area, line, point, with_poly, lndare, coalne, depare, drgare,
+      unsare, m_covr, areas, background);
 }
 
 bool s57chart::DoesLatLonSelectObject(float lat, float lon, float select_radius,
