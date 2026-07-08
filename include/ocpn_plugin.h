@@ -3476,6 +3476,116 @@ extern DECL_EXP wxString GetNewGUID();
  */
 extern "C" DECL_EXP bool PlugIn_GSHHS_CrossesLand(double lat1, double lon1,
                                                   double lat2, double lon2);
+
+enum PlugInSegmentSafetyStatus {
+  PI_SEGMENT_SAFETY_SAFE = 0,
+  PI_SEGMENT_SAFETY_CROSSES_LAND,
+  PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN,
+  PI_SEGMENT_SAFETY_UNSAFE_AREA,
+  PI_SEGMENT_SAFETY_NO_DATA,
+  PI_SEGMENT_SAFETY_ERROR
+};
+
+enum PlugInSegmentSafetySource {
+  PI_SEGMENT_SAFETY_SOURCE_NONE = 0,
+  PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART,
+  PI_SEGMENT_SAFETY_SOURCE_CM93,
+  PI_SEGMENT_SAFETY_SOURCE_GSHHS_FALLBACK
+};
+
+enum PlugInSegmentSafetyDiagnosticReason {
+  PI_SEGMENT_SAFETY_DIAG_NONE = 0,
+  PI_SEGMENT_SAFETY_DIAG_NO_CHART_DATABASE,
+  PI_SEGMENT_SAFETY_DIAG_NO_CANDIDATE_CHART,
+  PI_SEGMENT_SAFETY_DIAG_RASTER_ONLY,
+  PI_SEGMENT_SAFETY_DIAG_UNSUPPORTED_CHART_TYPE,
+  PI_SEGMENT_SAFETY_DIAG_CHART_LOAD_FAILED,
+  PI_SEGMENT_SAFETY_DIAG_NO_LANDARE_GEOMETRY,
+  PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR,
+  PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_HIT,
+  PI_SEGMENT_SAFETY_DIAG_GSHHS_FALLBACK
+};
+
+enum PlugInSegmentSafetyHitCause {
+  PI_SEGMENT_SAFETY_HIT_NONE = 0,
+  PI_SEGMENT_SAFETY_HIT_ENDPOINT_IN_LANDARE,
+  PI_SEGMENT_SAFETY_HIT_SEGMENT_INTERSECTS_LANDARE_EDGE,
+  PI_SEGMENT_SAFETY_HIT_MARGIN_TO_LANDARE_EDGE
+};
+
+struct PlugInSegmentSafetyOptions {
+  int struct_size;
+  double safety_margin_nm;
+  int check_land;
+  int allow_gshhs_fallback;
+};
+
+struct PlugInSegmentSafetyResult {
+  int struct_size;
+  int status;
+  int source;
+  int used_fallback;
+  char message[256];
+  int diagnostic_reason;
+  int chart_stack_entries;
+  int candidate_chart_count;
+  int raster_chart_count;
+  int unsupported_chart_count;
+  int s57_chart_count;
+  int land_ring_count;
+  int bbox_ring_tests;
+  int edge_tests;
+  int cache_build_ms;
+  int chart_select_ms;
+  int geometry_check_ms;
+  int chart_db_index;
+  int hit_cause;
+  double hit_ring_min_lat;
+  double hit_ring_max_lat;
+  double hit_ring_min_lon;
+  double hit_ring_max_lon;
+  int hit_ring_point_count;
+  int hit_edge_index;
+  char chart_path[256];
+  double hit_sample_lat;
+  double hit_sample_lon;
+  int hit_sample_index;
+  int hit_sample_count;
+  int chart_scale;
+  char hit_object[128];
+  int point_cache_hits;
+  int point_cache_misses;
+  int grid_cache_hits;
+  int grid_cache_misses;
+  int grid_build_ms;
+  int grid_cells_total;
+  int grid_cells_land;
+  int grid_cells_water;
+  int grid_cells_drying;
+  int grid_cells_unknown;
+  int grid_lookups;
+  int grid_lookup_ms;
+  int segment_sample_count;
+  int water_tile_shortcuts;
+  int unexpected_tile_builds;
+  int unexpected_lat_tile;
+  int unexpected_lon_tile;
+  double unexpected_tile_min_lat;
+  double unexpected_tile_min_lon;
+};
+
+extern "C" DECL_EXP bool PlugIn_CheckSegmentSafety(
+    double lat1, double lon1, double lat2, double lon2,
+    const PlugInSegmentSafetyOptions *options,
+    PlugInSegmentSafetyResult *result);
+
+extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyGrid(
+    double min_lat, double min_lon, double max_lat, double max_lon,
+    PlugInSegmentSafetyResult *result);
+
+extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyGridForSegment(
+    double lat1, double lon1, double lat2, double lon2,
+    double safety_margin_nm, PlugInSegmentSafetyResult *result);
 /**
  * Plays a sound file asynchronously.
  *

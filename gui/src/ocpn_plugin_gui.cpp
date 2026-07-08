@@ -22,6 +22,11 @@
  *
  * ocpn_plugin.h GUI API funtions up to api level 1.20
  */
+#include <cstddef>
+#include <cmath>
+#include <map>
+#include <set>
+#include <string>
 #include <vector>
 #include "dychart.h"  // Must be ahead due to buggy GL includes handling
 
@@ -54,6 +59,7 @@
 #include "ais.h"
 #include "chartdb.h"
 #include "chcanv.h"
+#include "cm93.h"
 #include "config_mgr.h"
 #include "font_mgr.h"
 #include "gl_chart_canvas.h"
@@ -69,6 +75,7 @@
 #include "routemanagerdialog.h"
 #include "routeman_gui.h"
 #include "s52plib.h"
+#include "s57chart.h"
 #include "shapefile_basemap.h"
 #include "toolbar.h"
 #include "waypointman_gui.h"
@@ -735,6 +742,2020 @@ bool PlugIn_GSHHS_CrossesLand(double lat1, double lon1, double lat2,
   }
   return gshhsCrossesLand(lat1, lon1, lat2, lon2);
   //}
+}
+
+namespace {
+
+void SetSegmentSafetyMessage(PlugInSegmentSafetyResult* result,
+                             const char* message) {
+  if (!result) return;
+  if (result->struct_size <
+      (int)(offsetof(PlugInSegmentSafetyResult, message) +
+            sizeof(result->message)))
+    return;
+  strncpy(result->message, message, sizeof(result->message) - 1);
+  result->message[sizeof(result->message) - 1] = '\0';
+}
+
+void InitSegmentSafetyResult(PlugInSegmentSafetyResult* result) {
+  if (!result) return;
+  if (result->struct_size >=
+      (int)(offsetof(PlugInSegmentSafetyResult, status) +
+            sizeof(result->status)))
+    result->status = PI_SEGMENT_SAFETY_ERROR;
+  if (result->struct_size >=
+      (int)(offsetof(PlugInSegmentSafetyResult, source) +
+            sizeof(result->source)))
+    result->source = PI_SEGMENT_SAFETY_SOURCE_NONE;
+  if (result->struct_size >=
+      (int)(offsetof(PlugInSegmentSafetyResult, used_fallback) +
+            sizeof(result->used_fallback)))
+    result->used_fallback = 0;
+  if (result->struct_size >=
+      (int)(offsetof(PlugInSegmentSafetyResult, message) +
+            sizeof(result->message)))
+    result->message[0] = '\0';
+  if (result->struct_size >=
+      (int)(offsetof(PlugInSegmentSafetyResult, geometry_check_ms) +
+            sizeof(result->geometry_check_ms))) {
+    result->diagnostic_reason = PI_SEGMENT_SAFETY_DIAG_NONE;
+    result->chart_stack_entries = 0;
+    result->candidate_chart_count = 0;
+    result->raster_chart_count = 0;
+    result->unsupported_chart_count = 0;
+    result->s57_chart_count = 0;
+    result->land_ring_count = 0;
+    result->bbox_ring_tests = 0;
+    result->edge_tests = 0;
+    result->cache_build_ms = 0;
+    result->chart_select_ms = 0;
+    result->geometry_check_ms = 0;
+  }
+  if (result->struct_size >=
+      (int)(offsetof(PlugInSegmentSafetyResult, chart_path) +
+            sizeof(result->chart_path))) {
+    result->chart_db_index = -1;
+    result->hit_cause = PI_SEGMENT_SAFETY_HIT_NONE;
+    result->hit_ring_min_lat = 0.0;
+    result->hit_ring_max_lat = 0.0;
+    result->hit_ring_min_lon = 0.0;
+    result->hit_ring_max_lon = 0.0;
+    result->hit_ring_point_count = 0;
+    result->hit_edge_index = -1;
+    result->chart_path[0] = '\0';
+  }
+  if (result->struct_size >=
+      (int)(offsetof(PlugInSegmentSafetyResult, hit_object) +
+            sizeof(result->hit_object))) {
+    result->hit_sample_lat = 0.0;
+    result->hit_sample_lon = 0.0;
+    result->hit_sample_index = -1;
+    result->hit_sample_count = 0;
+    result->chart_scale = -1;
+    result->hit_object[0] = '\0';
+  }
+  if (result->struct_size >=
+      (int)(offsetof(PlugInSegmentSafetyResult, point_cache_misses) +
+            sizeof(result->point_cache_misses))) {
+    result->point_cache_hits = 0;
+    result->point_cache_misses = 0;
+  }
+  if (result->struct_size >=
+      (int)(offsetof(PlugInSegmentSafetyResult, grid_lookups) +
+            sizeof(result->grid_lookups))) {
+    result->grid_cache_hits = 0;
+    result->grid_cache_misses = 0;
+    result->grid_build_ms = 0;
+    result->grid_cells_total = 0;
+    result->grid_cells_land = 0;
+    result->grid_cells_water = 0;
+    result->grid_cells_drying = 0;
+    result->grid_cells_unknown = 0;
+    result->grid_lookups = 0;
+  }
+  if (result->struct_size >=
+      (int)(offsetof(PlugInSegmentSafetyResult, unexpected_tile_builds) +
+            sizeof(result->unexpected_tile_builds))) {
+    result->grid_lookup_ms = 0;
+    result->segment_sample_count = 0;
+    result->water_tile_shortcuts = 0;
+    result->unexpected_tile_builds = 0;
+  }
+  if (result->struct_size >=
+      (int)(offsetof(PlugInSegmentSafetyResult, unexpected_tile_min_lon) +
+            sizeof(result->unexpected_tile_min_lon))) {
+    result->unexpected_lat_tile = 0;
+    result->unexpected_lon_tile = 0;
+    result->unexpected_tile_min_lat = 0.0;
+    result->unexpected_tile_min_lon = 0.0;
+  }
+}
+
+void SetSegmentSafetyStatus(PlugInSegmentSafetyResult* result,
+                            PlugInSegmentSafetyStatus status) {
+  if (!result) return;
+  if (result->struct_size >=
+      (int)(offsetof(PlugInSegmentSafetyResult, status) +
+            sizeof(result->status)))
+    result->status = status;
+}
+
+void SetSegmentSafetySource(PlugInSegmentSafetyResult* result,
+                            PlugInSegmentSafetySource source) {
+  if (!result) return;
+  if (result->struct_size >=
+      (int)(offsetof(PlugInSegmentSafetyResult, source) +
+            sizeof(result->source)))
+    result->source = source;
+}
+
+void SetSegmentSafetyFallback(PlugInSegmentSafetyResult* result,
+                              bool used_fallback) {
+  if (!result) return;
+  if (result->struct_size >=
+      (int)(offsetof(PlugInSegmentSafetyResult, used_fallback) +
+            sizeof(result->used_fallback)))
+    result->used_fallback = used_fallback ? 1 : 0;
+}
+
+PlugInSegmentSafetySource GetSegmentSafetySource(
+    const PlugInSegmentSafetyResult* result) {
+  if (!result) return PI_SEGMENT_SAFETY_SOURCE_NONE;
+  if (result->struct_size >=
+      (int)(offsetof(PlugInSegmentSafetyResult, source) +
+            sizeof(result->source)))
+    return (PlugInSegmentSafetySource)result->source;
+  return PI_SEGMENT_SAFETY_SOURCE_NONE;
+}
+
+bool SegmentSafetyResultHas(const PlugInSegmentSafetyResult* result,
+                            size_t offset, size_t size) {
+  return result && result->struct_size >= (int)(offset + size);
+}
+
+void SetSegmentSafetyDiagnosticReason(
+    PlugInSegmentSafetyResult* result,
+    PlugInSegmentSafetyDiagnosticReason reason) {
+  if (!SegmentSafetyResultHas(
+          result, offsetof(PlugInSegmentSafetyResult, diagnostic_reason),
+          sizeof(result->diagnostic_reason)))
+    return;
+  result->diagnostic_reason = reason;
+}
+
+void SetSegmentSafetyDiagnosticInt(PlugInSegmentSafetyResult* result,
+                                   size_t offset, int value) {
+  if (!SegmentSafetyResultHas(result, offset, sizeof(int))) return;
+  *reinterpret_cast<int*>(reinterpret_cast<char*>(result) + offset) = value;
+}
+
+bool SegmentSafetyOptionsHas(const PlugInSegmentSafetyOptions* options,
+                             size_t offset, size_t size) {
+  return options && options->struct_size >= (int)(offset + size);
+}
+
+double SegmentSafetyOptionMargin(const PlugInSegmentSafetyOptions* options) {
+  if (SegmentSafetyOptionsHas(
+          options, offsetof(PlugInSegmentSafetyOptions, safety_margin_nm),
+          sizeof(options->safety_margin_nm)))
+    return wxMax(0.0, options->safety_margin_nm);
+  return 0.0;
+}
+
+bool SegmentSafetyOptionCheckLand(const PlugInSegmentSafetyOptions* options) {
+  if (SegmentSafetyOptionsHas(options,
+                              offsetof(PlugInSegmentSafetyOptions, check_land),
+                              sizeof(options->check_land)))
+    return options->check_land != 0;
+  return true;
+}
+
+bool SegmentSafetyOptionAllowGshhsFallback(
+    const PlugInSegmentSafetyOptions* options) {
+  if (SegmentSafetyOptionsHas(
+          options, offsetof(PlugInSegmentSafetyOptions, allow_gshhs_fallback),
+          sizeof(options->allow_gshhs_fallback)))
+    return options->allow_gshhs_fallback != 0;
+  return true;
+}
+
+bool IsSegmentSafetyLandObject(const char* feature_name) {
+  return feature_name && !strncmp(feature_name, "LNDARE", 6);
+}
+
+bool IsCm93Chart(ChartBase* chart) {
+  return chart && chart->GetChartType() == CHART_TYPE_CM93COMP;
+}
+
+std::string SegmentSafetyCacheKey(int db_index, bool cm93, double lat,
+                                  double lon) {
+  if (!cm93) return std::to_string(db_index);
+
+  double lat_bucket = floor(lat * 4.0) / 4.0;
+  double lon_bucket = floor(lon * 4.0) / 4.0;
+  return wxString::Format("%d:%.2f:%.2f", db_index, lat_bucket, lon_bucket)
+      .ToStdString();
+}
+
+ViewPort SegmentSafetyViewPortAt(double lat, double lon) {
+  ViewPort vp;
+  ChartCanvas* canvas = gFrame ? gFrame->GetFocusCanvas() : NULL;
+  if (canvas) vp = canvas->GetVP();
+
+  vp.clat = lat;
+  vp.clon = lon;
+  if (vp.pix_width <= 0) vp.pix_width = 1024;
+  if (vp.pix_height <= 0) vp.pix_height = 768;
+  if (vp.view_scale_ppm <= 0.0) vp.view_scale_ppm = 1.0 / 1852.0;
+  if (vp.chart_scale <= 0.0) vp.chart_scale = 100000;
+  if (vp.ref_scale <= 0) vp.ref_scale = vp.chart_scale;
+  vp.SetBoxes();
+  return vp;
+}
+
+double SegmentSafetyNormalizeBearing(double bearing) {
+  while (bearing < 0.0) bearing += 360.0;
+  while (bearing >= 360.0) bearing -= 360.0;
+  return bearing;
+}
+
+bool ChartPointIsLand(s57chart* chart, double lat, double lon, ViewPort& vp) {
+  if (!chart) return false;
+
+  ListOfObjRazRules* rule_list =
+      chart->GetObjRuleListAtLatLon(lat, lon, 0.0, &vp, MASK_AREA);
+  if (!rule_list) return false;
+
+  bool is_land = false;
+  for (ListOfObjRazRules::Node* node = rule_list->GetFirst(); node;
+       node = node->GetNext()) {
+    ObjRazRules* rule = node->GetData();
+    if (rule && rule->obj && IsSegmentSafetyLandObject(rule->obj->FeatureName)) {
+      is_land = true;
+      break;
+    }
+  }
+
+  rule_list->Clear();
+  delete rule_list;
+  return is_land;
+}
+
+enum SegmentSafetyPointClass {
+  SEGMENT_SAFETY_POINT_NO_DATA = 0,
+  SEGMENT_SAFETY_POINT_WATER,
+  SEGMENT_SAFETY_POINT_LAND,
+  SEGMENT_SAFETY_POINT_DRYING
+};
+
+const char* SegmentSafetyPrimitiveName(GeoPrim_t primitive) {
+  switch (primitive) {
+    case GEO_POINT:
+      return "point";
+    case GEO_LINE:
+      return "line";
+    case GEO_AREA:
+      return "area";
+    case GEO_META:
+      return "meta";
+    case GEO_PRIM:
+      return "prim";
+    default:
+      return "unknown";
+  }
+}
+
+wxString SegmentSafetyObjectAttr(S57Obj* obj, const char* attr) {
+  if (!obj || !attr) return wxString();
+  wxString value = obj->GetAttrValueAsString(attr);
+  value.Replace("\"", "'");
+  value.Replace(";", ",");
+  return value;
+}
+
+wxString SegmentSafetyRuleSummary(ObjRazRules* rule) {
+  if (!rule || !rule->obj) return wxString();
+
+  S57Obj* obj = rule->obj;
+  wxString summary = wxString::Format("%s/%s", obj->FeatureName,
+                                      SegmentSafetyPrimitiveName(
+                                          obj->Primitive_type));
+  if (rule->LUP) {
+    summary += wxString::Format("/TNAM=%d/DPRI=%c/DISC=%c", rule->LUP->TNAM,
+                                rule->LUP->DPRI, rule->LUP->DISC);
+    if (!rule->LUP->INST.empty()) {
+      wxString inst = rule->LUP->INST.Left(80);
+      inst.Replace("\"", "'");
+      inst.Replace(";", ",");
+      summary += wxString::Format("/INST=%s", inst);
+    }
+  }
+
+  const char* attrs[] = {"DRVAL1", "DRVAL2", "VALDCO", "WATLEV", "CATWAT"};
+  for (size_t i = 0; i < WXSIZEOF(attrs); ++i) {
+    wxString value = SegmentSafetyObjectAttr(obj, attrs[i]);
+    if (!value.empty()) summary += wxString::Format("/%s=%s", attrs[i], value);
+  }
+
+  return summary;
+}
+
+s57chart* GetSegmentSafetyChartAtPoint(ChartCanvas* canvas, double lat,
+                                       double lon, ViewPort& vp,
+                                       PlugInSegmentSafetySource* source) {
+  if (!canvas) return NULL;
+
+  wxPoint point;
+  if (!canvas->GetCanvasPointPixVP(vp, lat, lon, &point)) return NULL;
+
+  ChartBase* chart = NULL;
+  if (canvas->GetQuiltMode() && canvas->m_pQuilt) {
+    chart = canvas->m_pQuilt->GetChartAtPix(vp, point);
+    if (!chart) chart = canvas->m_pQuilt->GetOverlayChartAtPix(vp, point);
+  } else {
+    chart = canvas->m_singleChart;
+  }
+
+  s57chart* s57 = dynamic_cast<s57chart*>(chart);
+  if (s57 && source) {
+    *source = IsCm93Chart(chart) ? PI_SEGMENT_SAFETY_SOURCE_CM93
+                                : PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART;
+  }
+  return s57;
+}
+
+bool ChartSegmentPointSamplesHitLand(double lat1, double lon1, double lat2,
+                                     double lon2, double safety_margin_nm,
+                                     PlugInSegmentSafetyResult* result,
+                                     int* chart_sample_count,
+                                     int* total_sample_count) {
+  ChartCanvas* canvas =
+      gFrame && gFrame->GetFocusCanvas() ? gFrame->GetFocusCanvas()
+                                         : (gFrame ? gFrame->GetPrimaryCanvas()
+                                                   : NULL);
+  if (!canvas) return false;
+
+  ViewPort vp = canvas->GetVP();
+  double bearing = 0.0;
+  double dist_nm = 0.0;
+  ll_gc_ll_reverse(lat1, lon1, lat2, lon2, &bearing, &dist_nm);
+
+  const int max_samples = 256;
+  int samples = wxMax(2, wxMin(max_samples, (int)ceil(dist_nm / 0.1) + 1));
+  if (total_sample_count) *total_sample_count = samples;
+
+  for (int i = 0; i < samples; ++i) {
+    double sample_dist = samples == 1 ? 0.0 : dist_nm * i / (samples - 1);
+    double lat = lat1;
+    double lon = lon1;
+    if (sample_dist > 0.0)
+      ll_gc_ll(lat1, lon1, bearing, sample_dist, &lat, &lon);
+
+    PlugInSegmentSafetySource source = PI_SEGMENT_SAFETY_SOURCE_NONE;
+    s57chart* chart = GetSegmentSafetyChartAtPoint(canvas, lat, lon, vp, &source);
+    if (!chart) continue;
+
+    if (chart_sample_count) ++*chart_sample_count;
+    if (GetSegmentSafetySource(result) == PI_SEGMENT_SAFETY_SOURCE_NONE)
+      SetSegmentSafetySource(result, source);
+
+    if (ChartPointIsLand(chart, lat, lon, vp)) {
+      if (result) {
+        SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_CROSSES_LAND);
+        SetSegmentSafetySource(result, source);
+        SetSegmentSafetyMessage(result, "segment intersects chart land area");
+      }
+      return true;
+    }
+
+    if (safety_margin_nm > 0.0) {
+      double left_lat, left_lon, right_lat, right_lon;
+      ll_gc_ll(lat, lon, SegmentSafetyNormalizeBearing(bearing - 90.0),
+               safety_margin_nm, &left_lat, &left_lon);
+      ll_gc_ll(lat, lon, SegmentSafetyNormalizeBearing(bearing + 90.0),
+               safety_margin_nm, &right_lat, &right_lon);
+      if (ChartPointIsLand(chart, left_lat, left_lon, vp) ||
+          ChartPointIsLand(chart, right_lat, right_lon, vp)) {
+        if (result) {
+          SetSegmentSafetyStatus(result,
+                                 PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN);
+          SetSegmentSafetySource(result, source);
+          SetSegmentSafetyMessage(result,
+                                  "segment is within chart land safety margin");
+        }
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+struct SegmentSafetyBBox {
+  double min_lat;
+  double max_lat;
+  double min_lon;
+  double max_lon;
+};
+
+struct CachedLandRing {
+  std::vector<wxPoint2DDouble> points;
+  SegmentSafetyBBox bbox;
+};
+
+struct CachedChartLandGeometry {
+  bool loaded;
+  PlugInSegmentSafetySource source;
+  std::string cache_key;
+  wxString chart_path;
+  std::vector<CachedLandRing> rings;
+
+  CachedChartLandGeometry()
+      : loaded(false), source(PI_SEGMENT_SAFETY_SOURCE_NONE) {}
+};
+
+std::map<std::string, CachedChartLandGeometry> s_segment_safety_land_cache;
+
+struct CachedPointSafetyClassification {
+  SegmentSafetyPointClass point_class;
+  PlugInSegmentSafetySource source;
+  int chart_db_index;
+  int chart_scale;
+  char chart_path[256];
+  char hit_object[128];
+
+  CachedPointSafetyClassification()
+      : point_class(SEGMENT_SAFETY_POINT_NO_DATA),
+        source(PI_SEGMENT_SAFETY_SOURCE_NONE),
+        chart_db_index(-1),
+        chart_scale(-1) {
+    chart_path[0] = '\0';
+    hit_object[0] = '\0';
+  }
+};
+
+std::map<std::string, CachedPointSafetyClassification>
+    s_segment_safety_point_cache;
+const size_t kMaxSegmentSafetyPointCacheEntries = 250000;
+
+const double kSegmentSafetyGridTileDegrees = 0.05;
+const double kSegmentSafetyGridResolutionDegrees = 0.00125;
+const size_t kMaxSegmentSafetyGridTiles = 4096;
+
+struct CachedPointSafetyGridTile {
+  int group_index;
+  long lat_tile;
+  long lon_tile;
+  double min_lat;
+  double min_lon;
+  double resolution;
+  int rows;
+  int cols;
+  int land_count;
+  int water_count;
+  int drying_count;
+  int unknown_count;
+  bool built;
+  int chart_db_index;
+  int chart_scale;
+  PlugInSegmentSafetySource source;
+  char chart_path[256];
+  std::vector<unsigned char> classes;
+
+  CachedPointSafetyGridTile()
+      : group_index(0),
+        lat_tile(0),
+        lon_tile(0),
+        min_lat(0.0),
+        min_lon(0.0),
+        resolution(kSegmentSafetyGridResolutionDegrees),
+        rows(0),
+        cols(0),
+        land_count(0),
+        water_count(0),
+        drying_count(0),
+        unknown_count(0),
+        built(false),
+        chart_db_index(-1),
+        chart_scale(-1),
+        source(PI_SEGMENT_SAFETY_SOURCE_NONE) {
+    chart_path[0] = '\0';
+  }
+};
+
+std::map<std::string, CachedPointSafetyGridTile> s_segment_safety_grid_cache;
+
+long s_segment_safety_chart_hit_logs = 0;
+const long kMaxSegmentSafetyChartHitLogs = 20;
+
+struct SegmentSafetyCoreStats {
+  int chart_stack_entries;
+  int candidate_chart_count;
+  int raster_chart_count;
+  int unsupported_chart_count;
+  int s57_chart_count;
+  int land_ring_count;
+  int bbox_ring_tests;
+  int edge_tests;
+  int cache_build_ms;
+  int chart_select_ms;
+  int geometry_check_ms;
+  int point_cache_hits;
+  int point_cache_misses;
+  int grid_cache_hits;
+  int grid_cache_misses;
+  int grid_build_ms;
+  int grid_cells_total;
+  int grid_cells_land;
+  int grid_cells_water;
+  int grid_cells_drying;
+  int grid_cells_unknown;
+  int grid_lookups;
+  int grid_lookup_ms;
+  int segment_sample_count;
+  int water_tile_shortcuts;
+  int unexpected_tile_builds;
+  int unexpected_lat_tile;
+  int unexpected_lon_tile;
+  double unexpected_tile_min_lat;
+  double unexpected_tile_min_lon;
+  bool no_chart_database;
+  bool chart_load_failed;
+  bool zero_land_geometry;
+
+  SegmentSafetyCoreStats()
+      : chart_stack_entries(0),
+        candidate_chart_count(0),
+        raster_chart_count(0),
+        unsupported_chart_count(0),
+        s57_chart_count(0),
+        land_ring_count(0),
+        bbox_ring_tests(0),
+        edge_tests(0),
+        cache_build_ms(0),
+        chart_select_ms(0),
+        geometry_check_ms(0),
+        point_cache_hits(0),
+        point_cache_misses(0),
+        grid_cache_hits(0),
+        grid_cache_misses(0),
+        grid_build_ms(0),
+        grid_cells_total(0),
+        grid_cells_land(0),
+        grid_cells_water(0),
+        grid_cells_drying(0),
+        grid_cells_unknown(0),
+        grid_lookups(0),
+        grid_lookup_ms(0),
+        segment_sample_count(0),
+        water_tile_shortcuts(0),
+        unexpected_tile_builds(0),
+        unexpected_lat_tile(0),
+        unexpected_lon_tile(0),
+        unexpected_tile_min_lat(0.0),
+        unexpected_tile_min_lon(0.0),
+        no_chart_database(false),
+        chart_load_failed(false),
+        zero_land_geometry(false) {}
+};
+
+void ApplySegmentSafetyStats(PlugInSegmentSafetyResult* result,
+                             const SegmentSafetyCoreStats& stats) {
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, chart_stack_entries),
+      stats.chart_stack_entries);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, candidate_chart_count),
+      stats.candidate_chart_count);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, raster_chart_count),
+      stats.raster_chart_count);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, unsupported_chart_count),
+      stats.unsupported_chart_count);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, s57_chart_count),
+      stats.s57_chart_count);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, land_ring_count),
+      stats.land_ring_count);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, bbox_ring_tests),
+      stats.bbox_ring_tests);
+  SetSegmentSafetyDiagnosticInt(result,
+                                offsetof(PlugInSegmentSafetyResult, edge_tests),
+                                stats.edge_tests);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, cache_build_ms),
+      stats.cache_build_ms);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, chart_select_ms),
+      stats.chart_select_ms);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, geometry_check_ms),
+      stats.geometry_check_ms);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, point_cache_hits),
+      stats.point_cache_hits);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, point_cache_misses),
+      stats.point_cache_misses);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, grid_cache_hits),
+      stats.grid_cache_hits);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, grid_cache_misses),
+      stats.grid_cache_misses);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, grid_build_ms),
+      stats.grid_build_ms);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, grid_cells_total),
+      stats.grid_cells_total);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, grid_cells_land),
+      stats.grid_cells_land);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, grid_cells_water),
+      stats.grid_cells_water);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, grid_cells_drying),
+      stats.grid_cells_drying);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, grid_cells_unknown),
+      stats.grid_cells_unknown);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, grid_lookups),
+      stats.grid_lookups);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, grid_lookup_ms),
+      stats.grid_lookup_ms);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, segment_sample_count),
+      stats.segment_sample_count);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, water_tile_shortcuts),
+      stats.water_tile_shortcuts);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, unexpected_tile_builds),
+      stats.unexpected_tile_builds);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, unexpected_lat_tile),
+      stats.unexpected_lat_tile);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, unexpected_lon_tile),
+      stats.unexpected_lon_tile);
+  if (SegmentSafetyResultHas(
+          result, offsetof(PlugInSegmentSafetyResult,
+                           unexpected_tile_min_lon),
+          sizeof(result->unexpected_tile_min_lon))) {
+    result->unexpected_tile_min_lat = stats.unexpected_tile_min_lat;
+    result->unexpected_tile_min_lon = stats.unexpected_tile_min_lon;
+  }
+}
+
+PlugInSegmentSafetyDiagnosticReason SegmentSafetyUnavailableReason(
+    const SegmentSafetyCoreStats& stats) {
+  if (stats.no_chart_database) return PI_SEGMENT_SAFETY_DIAG_NO_CHART_DATABASE;
+  if (stats.chart_load_failed) return PI_SEGMENT_SAFETY_DIAG_CHART_LOAD_FAILED;
+  if (stats.candidate_chart_count == 0) {
+    if (stats.raster_chart_count > 0 && stats.unsupported_chart_count == 0)
+      return PI_SEGMENT_SAFETY_DIAG_RASTER_ONLY;
+    if (stats.unsupported_chart_count > 0 && stats.raster_chart_count == 0)
+      return PI_SEGMENT_SAFETY_DIAG_UNSUPPORTED_CHART_TYPE;
+    return PI_SEGMENT_SAFETY_DIAG_NO_CANDIDATE_CHART;
+  }
+  if (stats.zero_land_geometry)
+    return PI_SEGMENT_SAFETY_DIAG_NO_LANDARE_GEOMETRY;
+  return PI_SEGMENT_SAFETY_DIAG_NO_CANDIDATE_CHART;
+}
+
+const char* SegmentSafetyUnavailableMessage(
+    PlugInSegmentSafetyDiagnosticReason reason) {
+  switch (reason) {
+    case PI_SEGMENT_SAFETY_DIAG_NO_CHART_DATABASE:
+      return "no chart database available for chart land checks";
+    case PI_SEGMENT_SAFETY_DIAG_NO_CANDIDATE_CHART:
+      return "no candidate vector chart found for segment";
+    case PI_SEGMENT_SAFETY_DIAG_RASTER_ONLY:
+      return "only raster chart coverage found for segment";
+    case PI_SEGMENT_SAFETY_DIAG_UNSUPPORTED_CHART_TYPE:
+      return "only unsupported chart types found for segment";
+    case PI_SEGMENT_SAFETY_DIAG_CHART_LOAD_FAILED:
+      return "candidate chart could not be loaded for segment safety";
+    case PI_SEGMENT_SAFETY_DIAG_NO_LANDARE_GEOMETRY:
+      return "candidate vector chart has no LNDARE land geometry";
+    default:
+      return "chart land geometry unavailable for segment";
+  }
+}
+
+double SegmentSafetyDegToRad(double degrees) {
+  return degrees * 3.14159265358979323846 / 180.0;
+}
+
+double SegmentSafetyCross(const wxPoint2DDouble& a, const wxPoint2DDouble& b,
+                          const wxPoint2DDouble& c) {
+  return (b.m_x - a.m_x) * (c.m_y - a.m_y) -
+         (b.m_y - a.m_y) * (c.m_x - a.m_x);
+}
+
+bool SegmentSafetyBBoxIntersects(const SegmentSafetyBBox& a,
+                                 const SegmentSafetyBBox& b) {
+  return !(a.max_lat < b.min_lat || a.min_lat > b.max_lat ||
+           a.max_lon < b.min_lon || a.min_lon > b.max_lon);
+}
+
+SegmentSafetyBBox SegmentSafetyRingBBox(
+    const std::vector<wxPoint2DDouble>& points) {
+  SegmentSafetyBBox box;
+  box.min_lat = box.max_lat = points.empty() ? 0.0 : points[0].m_y;
+  box.min_lon = box.max_lon = points.empty() ? 0.0 : points[0].m_x;
+  for (size_t i = 1; i < points.size(); ++i) {
+    box.min_lat = wxMin(box.min_lat, points[i].m_y);
+    box.max_lat = wxMax(box.max_lat, points[i].m_y);
+    box.min_lon = wxMin(box.min_lon, points[i].m_x);
+    box.max_lon = wxMax(box.max_lon, points[i].m_x);
+  }
+  return box;
+}
+
+SegmentSafetyBBox SegmentSafetySegmentBBox(double lat1, double lon1,
+                                           double lat2, double lon2,
+                                           double margin_nm) {
+  double margin_lat = margin_nm / 60.0;
+  double mid_lat = (lat1 + lat2) / 2.0;
+  double cos_lat = wxMax(0.1, fabs(cos(SegmentSafetyDegToRad(mid_lat))));
+  double margin_lon = margin_nm / (60.0 * cos_lat);
+
+  SegmentSafetyBBox box;
+  box.min_lat = wxMin(lat1, lat2) - margin_lat;
+  box.max_lat = wxMax(lat1, lat2) + margin_lat;
+  box.min_lon = wxMin(lon1, lon2) - margin_lon;
+  box.max_lon = wxMax(lon1, lon2) + margin_lon;
+  return box;
+}
+
+bool SegmentSafetyPointInRing(double lat, double lon,
+                              const std::vector<wxPoint2DDouble>& ring) {
+  bool inside = false;
+  size_t count = ring.size();
+  if (count < 3) return false;
+
+  for (size_t i = 0, j = count - 1; i < count; j = i++) {
+    double xi = ring[i].m_x, yi = ring[i].m_y;
+    double xj = ring[j].m_x, yj = ring[j].m_y;
+    bool intersect = ((yi > lat) != (yj > lat)) &&
+                     (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+bool SegmentSafetyOnSegment(const wxPoint2DDouble& a,
+                            const wxPoint2DDouble& b,
+                            const wxPoint2DDouble& p) {
+  const double eps = 1e-10;
+  return fabs(SegmentSafetyCross(a, b, p)) < eps &&
+         p.m_x >= wxMin(a.m_x, b.m_x) - eps &&
+         p.m_x <= wxMax(a.m_x, b.m_x) + eps &&
+         p.m_y >= wxMin(a.m_y, b.m_y) - eps &&
+         p.m_y <= wxMax(a.m_y, b.m_y) + eps;
+}
+
+bool SegmentSafetySegmentsIntersect(const wxPoint2DDouble& a,
+                                    const wxPoint2DDouble& b,
+                                    const wxPoint2DDouble& c,
+                                    const wxPoint2DDouble& d) {
+  double c1 = SegmentSafetyCross(a, b, c);
+  double c2 = SegmentSafetyCross(a, b, d);
+  double c3 = SegmentSafetyCross(c, d, a);
+  double c4 = SegmentSafetyCross(c, d, b);
+
+  if (((c1 > 0 && c2 < 0) || (c1 < 0 && c2 > 0)) &&
+      ((c3 > 0 && c4 < 0) || (c3 < 0 && c4 > 0)))
+    return true;
+
+  return SegmentSafetyOnSegment(a, b, c) || SegmentSafetyOnSegment(a, b, d) ||
+         SegmentSafetyOnSegment(c, d, a) || SegmentSafetyOnSegment(c, d, b);
+}
+
+double SegmentSafetyPointSegmentDistanceNm(const wxPoint2DDouble& p,
+                                           const wxPoint2DDouble& a,
+                                           const wxPoint2DDouble& b,
+                                           double mean_lat) {
+  double cos_lat = wxMax(0.1, fabs(cos(SegmentSafetyDegToRad(mean_lat))));
+  double px = p.m_x * 60.0 * cos_lat;
+  double py = p.m_y * 60.0;
+  double ax = a.m_x * 60.0 * cos_lat;
+  double ay = a.m_y * 60.0;
+  double bx = b.m_x * 60.0 * cos_lat;
+  double by = b.m_y * 60.0;
+
+  double dx = bx - ax;
+  double dy = by - ay;
+  double denom = dx * dx + dy * dy;
+  double t = denom > 0.0 ? ((px - ax) * dx + (py - ay) * dy) / denom : 0.0;
+  t = wxMax(0.0, wxMin(1.0, t));
+  double cx = ax + t * dx;
+  double cy = ay + t * dy;
+  return sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+}
+
+double SegmentSafetySegmentDistanceNm(const wxPoint2DDouble& a,
+                                      const wxPoint2DDouble& b,
+                                      const wxPoint2DDouble& c,
+                                      const wxPoint2DDouble& d) {
+  if (SegmentSafetySegmentsIntersect(a, b, c, d)) return 0.0;
+  double mean_lat = (a.m_y + b.m_y + c.m_y + d.m_y) / 4.0;
+  return wxMin(
+      wxMin(SegmentSafetyPointSegmentDistanceNm(a, c, d, mean_lat),
+            SegmentSafetyPointSegmentDistanceNm(b, c, d, mean_lat)),
+      wxMin(SegmentSafetyPointSegmentDistanceNm(c, a, b, mean_lat),
+            SegmentSafetyPointSegmentDistanceNm(d, a, b, mean_lat)));
+}
+
+int SegmentSafetyCurrentGroupIndex() {
+  ChartCanvas* canvas =
+      gFrame && gFrame->GetFocusCanvas() ? gFrame->GetFocusCanvas()
+                                         : (gFrame ? gFrame->GetPrimaryCanvas()
+                                                   : NULL);
+  return canvas ? canvas->m_groupIndex : 0;
+}
+
+std::string SegmentSafetyPointCacheKey(double lat, double lon) {
+  const double bucket_degrees = 0.00025;
+  long lat_bucket = lround(lat / bucket_degrees);
+  long lon_bucket = lround(lon / bucket_degrees);
+  return wxString::Format("%d:%ld:%ld", SegmentSafetyCurrentGroupIndex(),
+                          lat_bucket, lon_bucket)
+      .ToStdString();
+}
+
+void StoreSegmentSafetyPointCache(
+    const std::string& key, const CachedPointSafetyClassification& value) {
+  if (s_segment_safety_point_cache.size() >=
+      kMaxSegmentSafetyPointCacheEntries) {
+    s_segment_safety_point_cache.clear();
+  }
+  s_segment_safety_point_cache[key] = value;
+}
+
+void CopySegmentSafetyPointCacheToResult(
+    const CachedPointSafetyClassification& cached,
+    PlugInSegmentSafetyResult* result) {
+  if (!SegmentSafetyResultHas(result,
+                              offsetof(PlugInSegmentSafetyResult, hit_object),
+                              sizeof(result->hit_object)))
+    return;
+
+  result->chart_db_index = cached.chart_db_index;
+  result->chart_scale = cached.chart_scale;
+  strncpy(result->chart_path, cached.chart_path,
+          sizeof(result->chart_path) - 1);
+  result->chart_path[sizeof(result->chart_path) - 1] = '\0';
+  strncpy(result->hit_object, cached.hit_object,
+          sizeof(result->hit_object) - 1);
+  result->hit_object[sizeof(result->hit_object) - 1] = '\0';
+}
+
+CachedPointSafetyClassification MakeSegmentSafetyPointCacheEntry(
+    SegmentSafetyPointClass point_class, PlugInSegmentSafetySource source,
+    int chart_db_index, int chart_scale, const char* chart_path,
+    const char* hit_object) {
+  CachedPointSafetyClassification cached;
+  cached.point_class = point_class;
+  cached.source = source;
+  cached.chart_db_index = chart_db_index;
+  cached.chart_scale = chart_scale;
+  if (chart_path) {
+    strncpy(cached.chart_path, chart_path, sizeof(cached.chart_path) - 1);
+    cached.chart_path[sizeof(cached.chart_path) - 1] = '\0';
+  }
+  if (hit_object) {
+    strncpy(cached.hit_object, hit_object, sizeof(cached.hit_object) - 1);
+    cached.hit_object[sizeof(cached.hit_object) - 1] = '\0';
+  }
+  return cached;
+}
+
+std::string SegmentSafetyGridTileKeyForIndices(long lat_tile, long lon_tile) {
+  return wxString::Format("%d:%ld:%ld:%.6f",
+                          SegmentSafetyCurrentGroupIndex(), lat_tile, lon_tile,
+                          kSegmentSafetyGridResolutionDegrees)
+      .ToStdString();
+}
+
+std::string SegmentSafetyGridTileKey(double lat, double lon, long* lat_tile,
+                                     long* lon_tile) {
+  long lt = floor(lat / kSegmentSafetyGridTileDegrees);
+  long ln = floor(lon / kSegmentSafetyGridTileDegrees);
+  if (lat_tile) *lat_tile = lt;
+  if (lon_tile) *lon_tile = ln;
+  return SegmentSafetyGridTileKeyForIndices(lt, ln);
+}
+
+SegmentSafetyPointClass ChartPointSafetyClassAtRaw(
+    double lat, double lon, PlugInSegmentSafetySource* source,
+    SegmentSafetyCoreStats* stats, PlugInSegmentSafetyResult* result = NULL);
+CachedPointSafetyGridTile BuildSegmentSafetyGridTile(
+    double lat, double lon, long lat_tile, long lon_tile,
+    SegmentSafetyCoreStats* stats);
+
+void StoreSegmentSafetyGridTile(const std::string& key,
+                                const CachedPointSafetyGridTile& tile) {
+  if (s_segment_safety_grid_cache.size() >= kMaxSegmentSafetyGridTiles)
+    s_segment_safety_grid_cache.clear();
+  s_segment_safety_grid_cache[key] = tile;
+}
+
+bool EnsureSegmentSafetyGridTile(long lat_tile, long lon_tile,
+                                 SegmentSafetyCoreStats* stats,
+                                 bool* built = NULL) {
+  if (built) *built = false;
+  std::string key = SegmentSafetyGridTileKeyForIndices(lat_tile, lon_tile);
+  if (s_segment_safety_grid_cache.find(key) !=
+      s_segment_safety_grid_cache.end()) {
+    if (stats) ++stats->grid_cache_hits;
+    return true;
+  }
+
+  if (stats) ++stats->grid_cache_misses;
+  CachedPointSafetyGridTile tile = BuildSegmentSafetyGridTile(
+      lat_tile * kSegmentSafetyGridTileDegrees,
+      lon_tile * kSegmentSafetyGridTileDegrees, lat_tile, lon_tile, stats);
+  StoreSegmentSafetyGridTile(key, tile);
+  if (built) *built = true;
+  return s_segment_safety_grid_cache.find(key) !=
+         s_segment_safety_grid_cache.end();
+}
+
+void RecordUnexpectedSegmentSafetyTileBuild(SegmentSafetyCoreStats* stats,
+                                            long lat_tile, long lon_tile) {
+  if (!stats) return;
+  ++stats->unexpected_tile_builds;
+  if (stats->unexpected_tile_builds == 1) {
+    stats->unexpected_lat_tile = lat_tile;
+    stats->unexpected_lon_tile = lon_tile;
+    stats->unexpected_tile_min_lat =
+        lat_tile * kSegmentSafetyGridTileDegrees;
+    stats->unexpected_tile_min_lon =
+        lon_tile * kSegmentSafetyGridTileDegrees;
+  }
+}
+
+void SegmentSafetyCandidateChartsAt(double lat, double lon,
+                                    std::set<int>& chart_indexes,
+                                    SegmentSafetyCoreStats* stats) {
+  if (!ChartData) {
+    if (stats) stats->no_chart_database = true;
+    return;
+  }
+
+  ChartStack stack;
+  ChartData->BuildChartStack(&stack, lat, lon, SegmentSafetyCurrentGroupIndex());
+  if (stats) stats->chart_stack_entries += stack.nEntry;
+  for (int i = 0; i < stack.nEntry; ++i) {
+    int db_index = stack.GetDBIndex(i);
+    if (db_index < 0) continue;
+    ChartFamilyEnum family =
+        (ChartFamilyEnum)ChartData->GetCSChartFamily(&stack, i);
+    ChartTypeEnum type = (ChartTypeEnum)ChartData->GetCSChartType(&stack, i);
+    if (family == CHART_FAMILY_VECTOR ||
+        type == CHART_TYPE_CM93 || type == CHART_TYPE_CM93COMP) {
+      chart_indexes.insert(db_index);
+    } else if (family == CHART_FAMILY_RASTER) {
+      if (stats) ++stats->raster_chart_count;
+    } else {
+      if (stats) ++stats->unsupported_chart_count;
+    }
+  }
+}
+
+SegmentSafetyPointClass ChartPointSafetyClassAtRaw(
+    double lat, double lon, PlugInSegmentSafetySource* source,
+    SegmentSafetyCoreStats* stats, PlugInSegmentSafetyResult* result) {
+  std::string point_cache_key = SegmentSafetyPointCacheKey(lat, lon);
+  std::map<std::string, CachedPointSafetyClassification>::const_iterator
+      cache_it = s_segment_safety_point_cache.find(point_cache_key);
+  if (cache_it != s_segment_safety_point_cache.end()) {
+    if (stats) ++stats->point_cache_hits;
+    if (source) *source = cache_it->second.source;
+    CopySegmentSafetyPointCacheToResult(cache_it->second, result);
+    return cache_it->second.point_class;
+  }
+  if (stats) ++stats->point_cache_misses;
+
+  std::set<int> chart_indexes;
+  SegmentSafetyCandidateChartsAt(lat, lon, chart_indexes, stats);
+
+  bool chart_checked = false;
+  for (std::set<int>::const_iterator it = chart_indexes.begin();
+       it != chart_indexes.end(); ++it) {
+    ChartBase* chart = ChartData ? ChartData->OpenChartFromDB(*it, FULL_INIT)
+                                 : NULL;
+    s57chart* s57 = dynamic_cast<s57chart*>(chart);
+    if (!s57) continue;
+
+    chart_checked = true;
+    bool cm93 = IsCm93Chart(chart);
+    PlugInSegmentSafetySource chart_source =
+        cm93 ? PI_SEGMENT_SAFETY_SOURCE_CM93
+             : PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART;
+    if (source)
+      *source = chart_source;
+    if (stats) ++stats->s57_chart_count;
+
+    ViewPort vp = SegmentSafetyViewPortAt(lat, lon);
+    if (cm93) {
+      cm93compchart* cm93_chart = dynamic_cast<cm93compchart*>(chart);
+      if (cm93_chart) cm93_chart->SetVPParms(vp);
+    }
+
+    ListOfObjRazRules* rule_list =
+        s57->GetObjRuleListAtLatLon(lat, lon, 0.0, &vp, MASK_AREA);
+    if (!rule_list) continue;
+
+    bool drying = false;
+    for (ListOfObjRazRules::Node* node = rule_list->GetFirst(); node;
+         node = node->GetNext()) {
+      ObjRazRules* rule = node->GetData();
+      if (!rule || !rule->obj) continue;
+      if (!strncmp(rule->obj->FeatureName, "LNDARE", 6)) {
+        wxString chart_path = chart->GetFullPath();
+        wxString object = SegmentSafetyRuleSummary(rule);
+        if (SegmentSafetyResultHas(
+                result, offsetof(PlugInSegmentSafetyResult, hit_object),
+                sizeof(result->hit_object))) {
+          result->chart_db_index = *it;
+          result->chart_scale = chart->GetNativeScale();
+          strncpy(result->chart_path, chart_path.mb_str(),
+                  sizeof(result->chart_path) - 1);
+          result->chart_path[sizeof(result->chart_path) - 1] = '\0';
+          strncpy(result->hit_object, object.mb_str(),
+                  sizeof(result->hit_object) - 1);
+          result->hit_object[sizeof(result->hit_object) - 1] = '\0';
+        }
+        StoreSegmentSafetyPointCache(
+            point_cache_key,
+            MakeSegmentSafetyPointCacheEntry(
+                SEGMENT_SAFETY_POINT_LAND, chart_source, *it,
+                chart->GetNativeScale(), chart_path.mb_str(), object.mb_str()));
+        rule_list->Clear();
+        delete rule_list;
+        return SEGMENT_SAFETY_POINT_LAND;
+      }
+      if (!strncmp(rule->obj->FeatureName, "DRGARE", 6)) drying = true;
+    }
+
+    rule_list->Clear();
+    delete rule_list;
+    SegmentSafetyPointClass point_class =
+        drying ? SEGMENT_SAFETY_POINT_DRYING : SEGMENT_SAFETY_POINT_WATER;
+    wxString chart_path = chart->GetFullPath();
+    StoreSegmentSafetyPointCache(
+        point_cache_key,
+        MakeSegmentSafetyPointCacheEntry(point_class, chart_source, *it,
+                                         chart->GetNativeScale(),
+                                         chart_path.mb_str(), ""));
+    return point_class;
+  }
+
+  SegmentSafetyPointClass point_class =
+      chart_checked ? SEGMENT_SAFETY_POINT_WATER : SEGMENT_SAFETY_POINT_NO_DATA;
+  StoreSegmentSafetyPointCache(
+      point_cache_key,
+      MakeSegmentSafetyPointCacheEntry(
+          point_class, chart_checked ? PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART
+                                     : PI_SEGMENT_SAFETY_SOURCE_NONE,
+          -1, -1, "", ""));
+  return point_class;
+}
+
+CachedPointSafetyGridTile BuildSegmentSafetyGridTile(double lat, double lon,
+                                                     long lat_tile,
+                                                     long lon_tile,
+                                                     SegmentSafetyCoreStats* stats) {
+  wxStopWatch timer;
+  CachedPointSafetyGridTile tile;
+  tile.group_index = SegmentSafetyCurrentGroupIndex();
+  tile.lat_tile = lat_tile;
+  tile.lon_tile = lon_tile;
+  tile.min_lat = lat_tile * kSegmentSafetyGridTileDegrees;
+  tile.min_lon = lon_tile * kSegmentSafetyGridTileDegrees;
+  tile.resolution = kSegmentSafetyGridResolutionDegrees;
+  tile.rows = (int)ceil(kSegmentSafetyGridTileDegrees / tile.resolution) + 1;
+  tile.cols = tile.rows;
+  tile.built = true;
+  tile.classes.assign(tile.rows * tile.cols,
+                      (unsigned char)SEGMENT_SAFETY_POINT_NO_DATA);
+
+  int land = 0, water = 0, drying = 0, unknown = 0;
+  for (int r = 0; r < tile.rows; ++r) {
+    double cell_lat = tile.min_lat + r * tile.resolution;
+    for (int c = 0; c < tile.cols; ++c) {
+      double cell_lon = tile.min_lon + c * tile.resolution;
+      PlugInSegmentSafetySource source = PI_SEGMENT_SAFETY_SOURCE_NONE;
+      PlugInSegmentSafetyResult cell_result = {};
+      cell_result.struct_size = sizeof(cell_result);
+      InitSegmentSafetyResult(&cell_result);
+      SegmentSafetyPointClass point_class =
+          ChartPointSafetyClassAtRaw(cell_lat, cell_lon, &source, stats,
+                                     &cell_result);
+      tile.classes[r * tile.cols + c] = (unsigned char)point_class;
+      if (tile.source == PI_SEGMENT_SAFETY_SOURCE_NONE &&
+          source != PI_SEGMENT_SAFETY_SOURCE_NONE)
+        tile.source = source;
+      if (tile.chart_db_index < 0 && cell_result.chart_db_index >= 0) {
+        tile.chart_db_index = cell_result.chart_db_index;
+        tile.chart_scale = cell_result.chart_scale;
+        snprintf(tile.chart_path, sizeof(tile.chart_path), "%s",
+                 cell_result.chart_path);
+      }
+      switch (point_class) {
+        case SEGMENT_SAFETY_POINT_LAND:
+          ++land;
+          break;
+        case SEGMENT_SAFETY_POINT_WATER:
+          ++water;
+          break;
+        case SEGMENT_SAFETY_POINT_DRYING:
+          ++drying;
+          break;
+        default:
+          ++unknown;
+          break;
+      }
+    }
+  }
+
+  int build_ms = timer.Time();
+  tile.land_count = land;
+  tile.water_count = water;
+  tile.drying_count = drying;
+  tile.unknown_count = unknown;
+  if (stats) {
+    stats->grid_build_ms += build_ms;
+    stats->grid_cells_total += tile.rows * tile.cols;
+    stats->grid_cells_land += land;
+    stats->grid_cells_water += water;
+    stats->grid_cells_drying += drying;
+    stats->grid_cells_unknown += unknown;
+  }
+
+  wxLogMessage(
+      "SEGMENT_SAFETY_GRID built key=%ld:%ld group=%d bbox=[lat %.6f..%.6f "
+      "lon %.6f..%.6f] resolution_deg=%.6f cells=%d land=%d water=%d "
+      "drying=%d unknown=%d build_ms=%d source=%d chart_db_index=%d "
+      "chart_scale=%d chart_path=\"%s\"",
+      lat_tile, lon_tile, tile.group_index, tile.min_lat,
+      tile.min_lat + kSegmentSafetyGridTileDegrees, tile.min_lon,
+      tile.min_lon + kSegmentSafetyGridTileDegrees, tile.resolution,
+      tile.rows * tile.cols, land, water, drying, unknown,
+      build_ms, tile.source, tile.chart_db_index, tile.chart_scale,
+      tile.chart_path);
+
+  return tile;
+}
+
+bool SegmentSafetyAllTouchedTilesAreWater(double lat1, double lon1,
+                                          double lat2, double lon2,
+                                          double safety_margin_nm,
+                                          double bearing, double dist_nm,
+                                          int samples,
+                                          SegmentSafetyCoreStats* stats) {
+  std::set<std::pair<long, long> > tiles;
+  for (int i = 0; i < samples; ++i) {
+    double sample_dist = samples == 1 ? 0.0 : dist_nm * i / (samples - 1);
+    double lat = lat1;
+    double lon = lon1;
+    if (sample_dist > 0.0)
+      ll_gc_ll(lat1, lon1, bearing, sample_dist, &lat, &lon);
+
+    long lat_tile = 0;
+    long lon_tile = 0;
+    SegmentSafetyGridTileKey(lat, lon, &lat_tile, &lon_tile);
+    tiles.insert(std::make_pair(lat_tile, lon_tile));
+
+    if (safety_margin_nm > 0.0) {
+      double left_lat, left_lon, right_lat, right_lon;
+      ll_gc_ll(lat, lon, SegmentSafetyNormalizeBearing(bearing - 90.0),
+               safety_margin_nm, &left_lat, &left_lon);
+      ll_gc_ll(lat, lon, SegmentSafetyNormalizeBearing(bearing + 90.0),
+               safety_margin_nm, &right_lat, &right_lon);
+      SegmentSafetyGridTileKey(left_lat, left_lon, &lat_tile, &lon_tile);
+      tiles.insert(std::make_pair(lat_tile, lon_tile));
+      SegmentSafetyGridTileKey(right_lat, right_lon, &lat_tile, &lon_tile);
+      tiles.insert(std::make_pair(lat_tile, lon_tile));
+    }
+  }
+
+  if (tiles.empty()) return false;
+
+  for (std::set<std::pair<long, long> >::const_iterator it = tiles.begin();
+       it != tiles.end(); ++it) {
+    std::string key = SegmentSafetyGridTileKeyForIndices(it->first, it->second);
+    std::map<std::string, CachedPointSafetyGridTile>::const_iterator tile_it =
+        s_segment_safety_grid_cache.find(key);
+    if (tile_it == s_segment_safety_grid_cache.end()) {
+      bool built = false;
+      if (!EnsureSegmentSafetyGridTile(it->first, it->second, stats, &built))
+        return false;
+      if (built)
+        RecordUnexpectedSegmentSafetyTileBuild(stats, it->first, it->second);
+      tile_it = s_segment_safety_grid_cache.find(key);
+      if (tile_it == s_segment_safety_grid_cache.end()) return false;
+    } else if (stats) {
+      ++stats->grid_cache_hits;
+    }
+
+    const CachedPointSafetyGridTile& tile = tile_it->second;
+    if (tile.classes.empty() || tile.unknown_count > 0 ||
+        tile.land_count > 0 || tile.drying_count > 0)
+      return false;
+  }
+
+  if (stats) ++stats->water_tile_shortcuts;
+  return true;
+}
+
+SegmentSafetyPointClass ChartPointSafetyClassAt(
+    double lat, double lon, PlugInSegmentSafetySource* source,
+    SegmentSafetyCoreStats* stats, PlugInSegmentSafetyResult* result = NULL) {
+  long lat_tile = 0;
+  long lon_tile = 0;
+  std::string key = SegmentSafetyGridTileKey(lat, lon, &lat_tile, &lon_tile);
+  std::map<std::string, CachedPointSafetyGridTile>::const_iterator it =
+      s_segment_safety_grid_cache.find(key);
+  if (it == s_segment_safety_grid_cache.end()) {
+    bool built = false;
+    EnsureSegmentSafetyGridTile(lat_tile, lon_tile, stats, &built);
+    if (built)
+      RecordUnexpectedSegmentSafetyTileBuild(stats, lat_tile, lon_tile);
+    it = s_segment_safety_grid_cache.find(key);
+  } else if (stats) {
+    ++stats->grid_cache_hits;
+  }
+
+  if (it == s_segment_safety_grid_cache.end())
+    return ChartPointSafetyClassAtRaw(lat, lon, source, stats, result);
+
+  const CachedPointSafetyGridTile& tile = it->second;
+  if (stats) ++stats->grid_lookups;
+  int row = (int)lround((lat - tile.min_lat) / tile.resolution);
+  int col = (int)lround((lon - tile.min_lon) / tile.resolution);
+  if (row < 0 || row >= tile.rows || col < 0 || col >= tile.cols)
+    return ChartPointSafetyClassAtRaw(lat, lon, source, stats, result);
+
+  SegmentSafetyPointClass point_class =
+      (SegmentSafetyPointClass)tile.classes[row * tile.cols + col];
+  if (source) *source = tile.source;
+  if (SegmentSafetyResultHas(result, offsetof(PlugInSegmentSafetyResult,
+                                              hit_object),
+                             sizeof(result->hit_object))) {
+    result->chart_db_index = tile.chart_db_index;
+    result->chart_scale = tile.chart_scale;
+    strncpy(result->chart_path, tile.chart_path,
+            sizeof(result->chart_path) - 1);
+    result->chart_path[sizeof(result->chart_path) - 1] = '\0';
+    if (point_class == SEGMENT_SAFETY_POINT_LAND)
+      strncpy(result->hit_object, "grid LAND cell",
+              sizeof(result->hit_object) - 1);
+  }
+  return point_class;
+}
+
+wxString SegmentSafetyPointDiagnostic(double lat, double lon) {
+  SegmentSafetyCoreStats stats;
+  std::set<int> chart_indexes;
+  SegmentSafetyCandidateChartsAt(lat, lon, chart_indexes, &stats);
+
+  wxString objects;
+  wxString source_name = "none";
+  wxString chart_path;
+  wxString point_class = "UNKNOWN";
+  int chart_db_index = -1;
+  int chart_scale = -1;
+  int area_count = 0;
+  int land_count = 0;
+  int drying_count = 0;
+  int depare_count = 0;
+  bool chart_checked = false;
+
+  for (std::set<int>::const_iterator it = chart_indexes.begin();
+       it != chart_indexes.end(); ++it) {
+    ChartBase* chart = ChartData ? ChartData->OpenChartFromDB(*it, FULL_INIT)
+                                 : NULL;
+    s57chart* s57 = dynamic_cast<s57chart*>(chart);
+    if (!s57) continue;
+
+    chart_checked = true;
+    chart_db_index = *it;
+    chart_path = chart->GetFullPath();
+    chart_scale = chart->GetNativeScale();
+    bool cm93 = IsCm93Chart(chart);
+    source_name = cm93 ? "CM93" : "VECTOR_CHART";
+    ViewPort vp = SegmentSafetyViewPortAt(lat, lon);
+    if (cm93) {
+      cm93compchart* cm93_chart = dynamic_cast<cm93compchart*>(chart);
+      if (cm93_chart) cm93_chart->SetVPParms(vp);
+    }
+
+    ListOfObjRazRules* rule_list =
+        s57->GetObjRuleListAtLatLon(lat, lon, 0.0, &vp, MASK_AREA);
+    if (!rule_list) break;
+
+    for (ListOfObjRazRules::Node* node = rule_list->GetFirst(); node;
+         node = node->GetNext()) {
+      ObjRazRules* rule = node->GetData();
+      if (!rule || !rule->obj) continue;
+      ++area_count;
+      if (!objects.empty()) objects += ";";
+      objects += SegmentSafetyRuleSummary(rule);
+
+      if (!strncmp(rule->obj->FeatureName, "LNDARE", 6)) ++land_count;
+      if (!strncmp(rule->obj->FeatureName, "DRGARE", 6)) ++drying_count;
+      if (!strncmp(rule->obj->FeatureName, "DEPARE", 6)) ++depare_count;
+    }
+
+    rule_list->Clear();
+    delete rule_list;
+    break;
+  }
+
+  if (!chart_checked)
+    point_class = "NO_DATA";
+  else if (land_count > 0)
+    point_class = "LAND";
+  else if (drying_count > 0)
+    point_class = "DRYING";
+  else
+    point_class = "WATER_OR_NO_UNSAFE_AREA";
+
+  if (objects.empty()) objects = "none";
+  chart_path.Replace("\"", "'");
+  return wxString::Format(
+      "class=%s source=%s chart_db_index=%d chart_scale=%d chart_path=\"%s\" "
+      "chart_stack_entries=%d candidate_charts=%zu area_objects=%d "
+      "land_objects=%d drying_objects=%d depare_objects=%d objects=\"%s\"",
+      point_class, source_name, chart_db_index, chart_scale, chart_path,
+      stats.chart_stack_entries, chart_indexes.size(), area_count, land_count,
+      drying_count, depare_count, objects);
+}
+
+CachedChartLandGeometry& SegmentSafetyLoadChartLandGeometry(
+    int db_index, double lat, double lon, SegmentSafetyCoreStats* stats) {
+  if (!ChartData) {
+    if (stats) stats->no_chart_database = true;
+    static CachedChartLandGeometry no_chart_data;
+    return no_chart_data;
+  }
+  wxStopWatch cache_timer;
+  ChartBase* chart = ChartData->OpenChartFromDB(db_index, FULL_INIT);
+  bool cm93 = IsCm93Chart(chart);
+  std::string cache_key = SegmentSafetyCacheKey(db_index, cm93, lat, lon);
+  CachedChartLandGeometry& cached = s_segment_safety_land_cache[cache_key];
+  if (cached.loaded) return cached;
+  cached.loaded = true;
+  cached.cache_key = cache_key;
+  if (chart) cached.chart_path = chart->GetFullPath();
+
+  s57chart* s57 = dynamic_cast<s57chart*>(chart);
+  if (!s57) {
+    if (stats) {
+      stats->chart_load_failed = chart == NULL;
+      stats->cache_build_ms += cache_timer.Time();
+    }
+    return cached;
+  }
+
+  cached.source = cm93 ? PI_SEGMENT_SAFETY_SOURCE_CM93
+                       : PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART;
+  if (stats) ++stats->s57_chart_count;
+
+  if (cm93) {
+    cm93compchart* cm93_chart = dynamic_cast<cm93compchart*>(chart);
+    if (cm93_chart) cm93_chart->SetVPParms(SegmentSafetyViewPortAt(lat, lon));
+  }
+
+  std::vector<std::vector<wxPoint2DDouble> > rings;
+  s57->CollectFeatureAreaRings("LNDARE", rings);
+  for (size_t i = 0; i < rings.size(); ++i) {
+    if (rings[i].size() < 3) continue;
+    CachedLandRing ring;
+    ring.points.swap(rings[i]);
+    ring.bbox = SegmentSafetyRingBBox(ring.points);
+    if (ring.bbox.max_lat < lat - 10.0 || ring.bbox.min_lat > lat + 10.0 ||
+        ring.bbox.max_lon < lon - 10.0 || ring.bbox.min_lon > lon + 10.0)
+      continue;
+    cached.rings.push_back(ring);
+  }
+
+  wxLogMessage(
+      "OpenCPN segment safety: cached chart land geometry "
+      "db_index=%d key=%s source=%d type=%d scale=%d land_rings=%zu",
+      db_index, cache_key.c_str(), (int)cached.source,
+      chart ? (int)chart->GetChartType() : -1,
+      chart ? chart->GetNativeScale() : -1, cached.rings.size());
+  for (size_t i = 0; i < cached.rings.size() && i < 8; ++i) {
+    const CachedLandRing& ring = cached.rings[i];
+    wxLogMessage(
+        "OpenCPN segment safety: land ring sample db_index=%d key=%s "
+        "ring=%zu bbox=[lat %.8f..%.8f lon %.8f..%.8f] points=%zu",
+        db_index, cache_key.c_str(), i, ring.bbox.min_lat,
+        ring.bbox.max_lat, ring.bbox.min_lon, ring.bbox.max_lon,
+        ring.points.size());
+  }
+  if (cached.rings.empty()) {
+    wxString chart_path = chart ? chart->GetFullPath() : wxString();
+    wxLogMessage(
+        "OpenCPN segment safety: no LNDARE rings db_index=%d key=%s "
+        "path=%s summary=%s",
+        db_index, cache_key.c_str(), chart_path.c_str(),
+        s57->GetFeatureDebugSummary());
+  }
+  if (stats) {
+    stats->cache_build_ms += cache_timer.Time();
+    if (cached.rings.empty()) stats->zero_land_geometry = true;
+  }
+
+  return cached;
+}
+
+void LogSegmentSafetyChartHit(const char* cause, int db_index,
+                              const std::string& cache_key,
+                              PlugInSegmentSafetySource source,
+                              const CachedLandRing& ring,
+                              double lat1, double lon1, double lat2,
+                              double lon2, double safety_margin_nm,
+                              size_t edge_index) {
+  if (s_segment_safety_chart_hit_logs >= kMaxSegmentSafetyChartHitLogs) return;
+  ++s_segment_safety_chart_hit_logs;
+  wxLogMessage(
+      "OpenCPN segment safety: LNDARE hit #%ld cause=%s db_index=%d key=%s "
+      "source=%d segment=(%.8f,%.8f)->(%.8f,%.8f) margin_nm=%.3f "
+      "ring_bbox=[lat %.8f..%.8f lon %.8f..%.8f] ring_points=%zu "
+      "edge_index=%zu",
+      s_segment_safety_chart_hit_logs, cause, db_index, cache_key.c_str(),
+      (int)source, lat1, lon1, lat2, lon2, safety_margin_nm, ring.bbox.min_lat,
+      ring.bbox.max_lat, ring.bbox.min_lon, ring.bbox.max_lon,
+      ring.points.size(), edge_index);
+}
+
+void SetSegmentSafetyChartHitDetails(PlugInSegmentSafetyResult* result,
+                                     PlugInSegmentSafetyHitCause cause,
+                                     int db_index,
+                                     const CachedChartLandGeometry& chart_cache,
+                                     const CachedLandRing& ring,
+                                     size_t edge_index) {
+  if (!SegmentSafetyResultHas(
+          result, offsetof(PlugInSegmentSafetyResult, chart_path),
+          sizeof(result->chart_path)))
+    return;
+
+  result->chart_db_index = db_index;
+  result->hit_cause = cause;
+  result->hit_ring_min_lat = ring.bbox.min_lat;
+  result->hit_ring_max_lat = ring.bbox.max_lat;
+  result->hit_ring_min_lon = ring.bbox.min_lon;
+  result->hit_ring_max_lon = ring.bbox.max_lon;
+  result->hit_ring_point_count = (int)ring.points.size();
+  result->hit_edge_index = (int)edge_index;
+  strncpy(result->chart_path, chart_cache.chart_path.mb_str(),
+          sizeof(result->chart_path) - 1);
+  result->chart_path[sizeof(result->chart_path) - 1] = '\0';
+}
+
+bool CachedChartSegmentSafetyCheck(double lat1, double lon1, double lat2,
+                                   double lon2, double safety_margin_nm,
+                                   PlugInSegmentSafetyResult* result,
+                                   bool* chart_data_available,
+                                   SegmentSafetyCoreStats* stats) {
+  wxStopWatch select_timer;
+  std::set<int> chart_indexes;
+  SegmentSafetyCandidateChartsAt(lat1, lon1, chart_indexes, stats);
+  SegmentSafetyCandidateChartsAt(lat2, lon2, chart_indexes, stats);
+  SegmentSafetyCandidateChartsAt((lat1 + lat2) / 2.0, (lon1 + lon2) / 2.0,
+                                 chart_indexes, stats);
+  if (stats) {
+    stats->candidate_chart_count = chart_indexes.size();
+    stats->chart_select_ms += select_timer.Time();
+  }
+  if (chart_indexes.empty()) return false;
+
+  wxStopWatch geometry_timer;
+  wxPoint2DDouble start(lon1, lat1);
+  wxPoint2DDouble end(lon2, lat2);
+  SegmentSafetyBBox segment_box =
+      SegmentSafetySegmentBBox(lat1, lon1, lat2, lon2, safety_margin_nm);
+
+  for (std::set<int>::const_iterator it = chart_indexes.begin();
+       it != chart_indexes.end(); ++it) {
+    CachedChartLandGeometry& chart_cache =
+        SegmentSafetyLoadChartLandGeometry(*it, (lat1 + lat2) / 2.0,
+                                           (lon1 + lon2) / 2.0, stats);
+    if (chart_cache.source == PI_SEGMENT_SAFETY_SOURCE_NONE) continue;
+    if (chart_cache.rings.empty()) {
+      if (stats) stats->zero_land_geometry = true;
+      continue;
+    }
+    if (chart_data_available) *chart_data_available = true;
+    if (GetSegmentSafetySource(result) == PI_SEGMENT_SAFETY_SOURCE_NONE)
+      SetSegmentSafetySource(result, chart_cache.source);
+    if (stats) stats->land_ring_count += chart_cache.rings.size();
+
+    for (size_t i = 0; i < chart_cache.rings.size(); ++i) {
+      const CachedLandRing& ring = chart_cache.rings[i];
+      if (!SegmentSafetyBBoxIntersects(segment_box, ring.bbox)) continue;
+      if (stats) ++stats->bbox_ring_tests;
+
+      if (SegmentSafetyPointInRing(lat1, lon1, ring.points) ||
+          SegmentSafetyPointInRing(lat2, lon2, ring.points)) {
+        if (stats) stats->geometry_check_ms += geometry_timer.Time();
+        LogSegmentSafetyChartHit("endpoint-inside-LNDARE", *it,
+                                 chart_cache.cache_key, chart_cache.source,
+                                 ring, lat1, lon1, lat2, lon2,
+                                 safety_margin_nm, 0);
+        SetSegmentSafetyChartHitDetails(
+            result, PI_SEGMENT_SAFETY_HIT_ENDPOINT_IN_LANDARE, *it,
+            chart_cache, ring, 0);
+        SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_CROSSES_LAND);
+        SetSegmentSafetySource(result, chart_cache.source);
+        SetSegmentSafetyMessage(result,
+                                "segment endpoint is inside chart land area");
+        return true;
+      }
+
+      for (size_t j = 0; j < ring.points.size(); ++j) {
+        const wxPoint2DDouble& a = ring.points[j];
+        const wxPoint2DDouble& b = ring.points[(j + 1) % ring.points.size()];
+        if (stats) ++stats->edge_tests;
+        if (SegmentSafetySegmentsIntersect(start, end, a, b)) {
+          if (stats) stats->geometry_check_ms += geometry_timer.Time();
+          LogSegmentSafetyChartHit("segment-intersects-LNDARE-edge", *it,
+                                   chart_cache.cache_key, chart_cache.source,
+                                   ring, lat1, lon1, lat2, lon2,
+                                   safety_margin_nm, j);
+          SetSegmentSafetyChartHitDetails(
+              result, PI_SEGMENT_SAFETY_HIT_SEGMENT_INTERSECTS_LANDARE_EDGE,
+              *it, chart_cache, ring, j);
+          SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_CROSSES_LAND);
+          SetSegmentSafetySource(result, chart_cache.source);
+          SetSegmentSafetyMessage(result,
+                                  "segment intersects chart land boundary");
+          return true;
+        }
+
+        if (safety_margin_nm > 0.0 &&
+            SegmentSafetySegmentDistanceNm(start, end, a, b) <=
+                safety_margin_nm) {
+          if (stats) stats->geometry_check_ms += geometry_timer.Time();
+          LogSegmentSafetyChartHit("approx-margin-to-LNDARE-edge", *it,
+                                   chart_cache.cache_key, chart_cache.source,
+                                   ring, lat1, lon1, lat2, lon2,
+                                   safety_margin_nm, j);
+          SetSegmentSafetyChartHitDetails(
+              result, PI_SEGMENT_SAFETY_HIT_MARGIN_TO_LANDARE_EDGE, *it,
+              chart_cache, ring, j);
+          SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN);
+          SetSegmentSafetySource(result, chart_cache.source);
+          SetSegmentSafetyMessage(
+              result,
+              "segment is within approximate chart land safety margin");
+          return true;
+        }
+      }
+    }
+  }
+
+  if (stats) stats->geometry_check_ms += geometry_timer.Time();
+  return false;
+}
+
+bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
+                                          double lat2, double lon2,
+                                          double safety_margin_nm,
+                                          PlugInSegmentSafetyResult* result,
+                                          bool* chart_data_available,
+                                          SegmentSafetyCoreStats* stats) {
+  wxStopWatch geometry_timer;
+  double bearing = 0.0;
+  double dist_nm = 0.0;
+  ll_gc_ll_reverse(lat1, lon1, lat2, lon2, &bearing, &dist_nm);
+
+  const int max_samples = 512;
+  int samples = wxMax(2, wxMin(max_samples, (int)ceil(dist_nm / 0.05) + 1));
+  bool any_chart_data = false;
+  PlugInSegmentSafetySource first_source = PI_SEGMENT_SAFETY_SOURCE_NONE;
+
+  if (stats) stats->segment_sample_count += samples;
+
+  wxStopWatch grid_lookup_timer;
+  if (SegmentSafetyAllTouchedTilesAreWater(lat1, lon1, lat2, lon2,
+                                           safety_margin_nm, bearing, dist_nm,
+                                           samples, stats)) {
+    if (stats) {
+      stats->grid_lookup_ms += grid_lookup_timer.Time();
+      stats->geometry_check_ms += geometry_timer.Time();
+    }
+    if (chart_data_available) *chart_data_available = true;
+    if (GetSegmentSafetySource(result) == PI_SEGMENT_SAFETY_SOURCE_NONE)
+      SetSegmentSafetySource(result, PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART);
+    return false;
+  }
+
+  for (int i = 0; i < samples; ++i) {
+    double sample_dist = samples == 1 ? 0.0 : dist_nm * i / (samples - 1);
+    double lat = lat1;
+    double lon = lon1;
+    if (sample_dist > 0.0)
+      ll_gc_ll(lat1, lon1, bearing, sample_dist, &lat, &lon);
+
+    PlugInSegmentSafetySource source = PI_SEGMENT_SAFETY_SOURCE_NONE;
+    wxStopWatch lookup_timer;
+    SegmentSafetyPointClass point_class =
+        ChartPointSafetyClassAt(lat, lon, &source, stats, result);
+    if (stats) stats->grid_lookup_ms += lookup_timer.Time();
+    if (point_class == SEGMENT_SAFETY_POINT_NO_DATA) continue;
+
+    any_chart_data = true;
+    if (first_source == PI_SEGMENT_SAFETY_SOURCE_NONE) first_source = source;
+    if (GetSegmentSafetySource(result) == PI_SEGMENT_SAFETY_SOURCE_NONE)
+      SetSegmentSafetySource(result, source);
+
+    if (point_class == SEGMENT_SAFETY_POINT_LAND) {
+      if (stats) stats->geometry_check_ms += geometry_timer.Time();
+      if (chart_data_available) *chart_data_available = true;
+      if (SegmentSafetyResultHas(
+              result, offsetof(PlugInSegmentSafetyResult, hit_object),
+              sizeof(result->hit_object))) {
+        result->hit_sample_lat = lat;
+        result->hit_sample_lon = lon;
+        result->hit_sample_index = i;
+        result->hit_sample_count = samples;
+      }
+      SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_CROSSES_LAND);
+      SetSegmentSafetySource(result, source);
+      SetSegmentSafetyMessage(
+          result, "segment samples intersect chart land area");
+      if (s_segment_safety_chart_hit_logs < kMaxSegmentSafetyChartHitLogs) {
+        ++s_segment_safety_chart_hit_logs;
+        wxLogMessage(
+            "FIRST_LAND_HIT source=chart-point segment=(%.8f,%.8f)->"
+            "(%.8f,%.8f) sample=(%.8f,%.8f) sample_index=%d/%d "
+            "object=\"%s\" chart_db_index=%d chart_scale=%d "
+            "chart_path=\"%s\"",
+            lat1, lon1, lat2, lon2, lat, lon, i + 1, samples,
+            result ? result->hit_object : "", result ? result->chart_db_index : -1,
+            result ? result->chart_scale : -1,
+            result ? result->chart_path : "");
+      }
+      return true;
+    }
+
+    if (safety_margin_nm > 0.0) {
+      double left_lat, left_lon, right_lat, right_lon;
+      ll_gc_ll(lat, lon, SegmentSafetyNormalizeBearing(bearing - 90.0),
+               safety_margin_nm, &left_lat, &left_lon);
+      ll_gc_ll(lat, lon, SegmentSafetyNormalizeBearing(bearing + 90.0),
+               safety_margin_nm, &right_lat, &right_lon);
+      PlugInSegmentSafetySource left_source = PI_SEGMENT_SAFETY_SOURCE_NONE;
+      PlugInSegmentSafetySource right_source = PI_SEGMENT_SAFETY_SOURCE_NONE;
+      wxStopWatch margin_lookup_timer;
+      SegmentSafetyPointClass left_class =
+          ChartPointSafetyClassAt(left_lat, left_lon, &left_source, stats);
+      SegmentSafetyPointClass right_class =
+          ChartPointSafetyClassAt(right_lat, right_lon, &right_source, stats);
+      if (stats) stats->grid_lookup_ms += margin_lookup_timer.Time();
+      if (left_class != SEGMENT_SAFETY_POINT_NO_DATA ||
+          right_class != SEGMENT_SAFETY_POINT_NO_DATA)
+        any_chart_data = true;
+      if (left_class == SEGMENT_SAFETY_POINT_LAND ||
+          right_class == SEGMENT_SAFETY_POINT_LAND) {
+        if (stats) stats->geometry_check_ms += geometry_timer.Time();
+        if (chart_data_available) *chart_data_available = true;
+        SetSegmentSafetyStatus(result,
+                               PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN);
+        SetSegmentSafetySource(
+            result, left_class == SEGMENT_SAFETY_POINT_LAND ? left_source
+                                                            : right_source);
+        SetSegmentSafetyMessage(
+            result,
+            "segment samples are within approximate chart land margin");
+        return true;
+      }
+    }
+  }
+
+  if (any_chart_data) {
+    if (chart_data_available) *chart_data_available = true;
+    if (GetSegmentSafetySource(result) == PI_SEGMENT_SAFETY_SOURCE_NONE)
+      SetSegmentSafetySource(result, first_source);
+  }
+  if (stats) stats->geometry_check_ms += geometry_timer.Time();
+  return false;
+}
+
+bool GshhsSegmentSafetyHitsLand(double lat1, double lon1, double lat2,
+                                double lon2, double safety_margin_nm,
+                                PlugInSegmentSafetyStatus* status) {
+  if (PlugIn_GSHHS_CrossesLand(lat1, lon1, lat2, lon2)) {
+    if (status) *status = PI_SEGMENT_SAFETY_CROSSES_LAND;
+    return true;
+  }
+
+  if (safety_margin_nm <= 0.0) return false;
+
+  double bearing = 0.0;
+  double dist_nm = 0.0;
+  ll_gc_ll_reverse(lat1, lon1, lat2, lon2, &bearing, &dist_nm);
+
+  double lat_up1, lon_up1, lat_up2, lon_up2;
+  double lat_down1, lon_down1, lat_down2, lon_down2;
+  ll_gc_ll(lat1, lon1, SegmentSafetyNormalizeBearing(bearing - 90.0),
+           safety_margin_nm, &lat_up1, &lon_up1);
+  ll_gc_ll(lat2, lon2, SegmentSafetyNormalizeBearing(bearing - 90.0),
+           safety_margin_nm, &lat_up2, &lon_up2);
+  ll_gc_ll(lat1, lon1, SegmentSafetyNormalizeBearing(bearing + 90.0),
+           safety_margin_nm, &lat_down1, &lon_down1);
+  ll_gc_ll(lat2, lon2, SegmentSafetyNormalizeBearing(bearing + 90.0),
+           safety_margin_nm, &lat_down2, &lon_down2);
+
+  if (PlugIn_GSHHS_CrossesLand(lat_up1, lon_up1, lat_up2, lon_up2) ||
+      PlugIn_GSHHS_CrossesLand(lat_down1, lon_down1, lat_down2, lon_down2) ||
+      PlugIn_GSHHS_CrossesLand(lat_up1, lon_up1, lat_down2, lon_down2) ||
+      PlugIn_GSHHS_CrossesLand(lat_down1, lon_down1, lat_up2, lon_up2)) {
+    if (status) *status = PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN;
+    return true;
+  }
+
+  return false;
+}
+
+}  // namespace
+
+wxString PlugIn_SegmentSafetyPointDiagnostic(double lat, double lon) {
+  return SegmentSafetyPointDiagnostic(lat, lon);
+}
+
+bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
+                               double lon2,
+                               const PlugInSegmentSafetyOptions* options,
+                               PlugInSegmentSafetyResult* result) {
+  InitSegmentSafetyResult(result);
+
+  if (options && options->struct_size < (int)sizeof(int)) {
+    SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_ERROR);
+    SetSegmentSafetyMessage(result, "invalid segment safety options");
+    return false;
+  }
+
+  if (result && result->struct_size < (int)sizeof(int)) return false;
+
+  const double safety_margin_nm = SegmentSafetyOptionMargin(options);
+  const bool check_land = SegmentSafetyOptionCheckLand(options);
+  const bool allow_gshhs_fallback =
+      SegmentSafetyOptionAllowGshhsFallback(options);
+
+  if (!check_land) {
+    if (result) {
+      SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_SAFE);
+      SetSegmentSafetyMessage(result, "land checks disabled");
+    }
+    return true;
+  }
+
+  bool chart_data_available = false;
+  SegmentSafetyCoreStats stats;
+  if (ChartSegmentPointClassificationCheck(
+          lat1, lon1, lat2, lon2, safety_margin_nm, result,
+          &chart_data_available, &stats)) {
+    SetSegmentSafetyDiagnosticReason(
+        result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_HIT);
+    ApplySegmentSafetyStats(result, stats);
+    return true;
+  }
+
+  if (!chart_data_available &&
+      CachedChartSegmentSafetyCheck(lat1, lon1, lat2, lon2, safety_margin_nm,
+                                    result, &chart_data_available, &stats)) {
+    SetSegmentSafetyDiagnosticReason(
+        result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_HIT);
+    ApplySegmentSafetyStats(result, stats);
+    return true;
+  }
+
+  if (chart_data_available) {
+    if (result) {
+      SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_SAFE);
+      if (GetSegmentSafetySource(result) == PI_SEGMENT_SAFETY_SOURCE_NONE)
+        SetSegmentSafetySource(result, PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART);
+      SetSegmentSafetyDiagnosticReason(
+          result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR);
+      SetSegmentSafetyMessage(
+          result,
+          "segment is clear using chart point land classification");
+      ApplySegmentSafetyStats(result, stats);
+    }
+    return true;
+  }
+
+  PlugInSegmentSafetyDiagnosticReason unavailable_reason =
+      SegmentSafetyUnavailableReason(stats);
+  if (allow_gshhs_fallback) {
+    PlugInSegmentSafetyStatus fallback_status = PI_SEGMENT_SAFETY_SAFE;
+    bool crosses_land = GshhsSegmentSafetyHitsLand(
+        lat1, lon1, lat2, lon2, safety_margin_nm, &fallback_status);
+    if (result) {
+      SetSegmentSafetySource(result, PI_SEGMENT_SAFETY_SOURCE_GSHHS_FALLBACK);
+      SetSegmentSafetyFallback(result, true);
+      SetSegmentSafetyStatus(result, crosses_land ? fallback_status
+                                                  : PI_SEGMENT_SAFETY_SAFE);
+      SetSegmentSafetyDiagnosticReason(result, unavailable_reason);
+      SetSegmentSafetyMessage(
+          result, crosses_land ? "segment crosses GSHHS shoreline fallback"
+                               : SegmentSafetyUnavailableMessage(
+                                     unavailable_reason));
+      ApplySegmentSafetyStats(result, stats);
+    }
+    return true;
+  }
+
+  if (result) {
+    SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_NO_DATA);
+    SetSegmentSafetyDiagnosticReason(result, unavailable_reason);
+    SetSegmentSafetyMessage(result,
+                            SegmentSafetyUnavailableMessage(unavailable_reason));
+    ApplySegmentSafetyStats(result, stats);
+  }
+  return true;
+}
+
+bool PlugIn_PrewarmSegmentSafetyGrid(double min_lat, double min_lon,
+                                     double max_lat, double max_lon,
+                                     PlugInSegmentSafetyResult* result) {
+  InitSegmentSafetyResult(result);
+
+  if (result && result->struct_size < (int)sizeof(int)) return false;
+
+  if (min_lat > max_lat) std::swap(min_lat, max_lat);
+  if (min_lon > max_lon) std::swap(min_lon, max_lon);
+  min_lat = wxMax(-90.0, wxMin(90.0, min_lat));
+  max_lat = wxMax(-90.0, wxMin(90.0, max_lat));
+
+  long min_lat_tile = floor(min_lat / kSegmentSafetyGridTileDegrees);
+  long max_lat_tile = floor(max_lat / kSegmentSafetyGridTileDegrees);
+  long min_lon_tile = floor(min_lon / kSegmentSafetyGridTileDegrees);
+  long max_lon_tile = floor(max_lon / kSegmentSafetyGridTileDegrees);
+
+  long lat_count = max_lat_tile - min_lat_tile + 1;
+  long lon_count = max_lon_tile - min_lon_tile + 1;
+  long requested_tiles =
+      lat_count > 0 && lon_count > 0 ? lat_count * lon_count : 0;
+  const long max_prewarm_tiles = 1024;
+
+  SegmentSafetyCoreStats stats;
+  long built_tiles = 0;
+  long reused_tiles = 0;
+  bool capped = requested_tiles > max_prewarm_tiles;
+
+  for (long lat_tile = min_lat_tile; lat_tile <= max_lat_tile; ++lat_tile) {
+    for (long lon_tile = min_lon_tile; lon_tile <= max_lon_tile; ++lon_tile) {
+      if (built_tiles + reused_tiles >= max_prewarm_tiles) goto done;
+
+      std::string key = SegmentSafetyGridTileKeyForIndices(lat_tile, lon_tile);
+      if (s_segment_safety_grid_cache.find(key) !=
+          s_segment_safety_grid_cache.end()) {
+        ++stats.grid_cache_hits;
+        ++reused_tiles;
+        continue;
+      }
+
+      bool built = false;
+      EnsureSegmentSafetyGridTile(lat_tile, lon_tile, &stats, &built);
+      if (built) ++built_tiles;
+    }
+  }
+
+done:
+  if (result) {
+    SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_SAFE);
+    SetSegmentSafetySource(result, PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART);
+    SetSegmentSafetyDiagnosticReason(
+        result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR);
+    SetSegmentSafetyMessage(
+        result, capped ? "segment safety grid prewarm capped"
+                       : "segment safety grid prewarmed");
+    ApplySegmentSafetyStats(result, stats);
+  }
+
+  wxString message = wxString::Format(
+      "SEGMENT_SAFETY_GRID prewarm bbox=[lat %.6f..%.6f lon %.6f..%.6f] "
+      "requested_tiles=%ld built_tiles=%ld reused_tiles=%ld capped=%d ",
+      min_lat, max_lat, min_lon, max_lon, requested_tiles, built_tiles,
+      reused_tiles, capped ? 1 : 0);
+  message += wxString::Format(
+      "build_ms=%d cells=%d land=%d water=%d drying=%d unknown=%d "
+      "point_cache_hits=%d point_cache_misses=%d",
+      stats.grid_build_ms, stats.grid_cells_total, stats.grid_cells_land,
+      stats.grid_cells_water, stats.grid_cells_drying,
+      stats.grid_cells_unknown, stats.point_cache_hits,
+      stats.point_cache_misses);
+  wxLogMessage("%s", message.c_str());
+
+  return true;
+}
+
+bool PlugIn_PrewarmSegmentSafetyGridForSegment(
+    double lat1, double lon1, double lat2, double lon2,
+    double safety_margin_nm, PlugInSegmentSafetyResult* result) {
+  InitSegmentSafetyResult(result);
+
+  if (result && result->struct_size < (int)sizeof(int)) return false;
+
+  double bearing = 0.0;
+  double dist_nm = 0.0;
+  ll_gc_ll_reverse(lat1, lon1, lat2, lon2, &bearing, &dist_nm);
+
+  const int max_samples = 512;
+  int samples = wxMax(2, wxMin(max_samples, (int)ceil(dist_nm / 0.05) + 1));
+  std::set<std::pair<long, long> > tiles;
+
+  for (int i = 0; i < samples; ++i) {
+    double sample_dist = samples == 1 ? 0.0 : dist_nm * i / (samples - 1);
+    double lat = lat1;
+    double lon = lon1;
+    if (sample_dist > 0.0)
+      ll_gc_ll(lat1, lon1, bearing, sample_dist, &lat, &lon);
+
+    long lat_tile = 0;
+    long lon_tile = 0;
+    SegmentSafetyGridTileKey(lat, lon, &lat_tile, &lon_tile);
+    tiles.insert(std::make_pair(lat_tile, lon_tile));
+
+    if (safety_margin_nm > 0.0) {
+      double left_lat, left_lon, right_lat, right_lon;
+      ll_gc_ll(lat, lon, SegmentSafetyNormalizeBearing(bearing - 90.0),
+               safety_margin_nm, &left_lat, &left_lon);
+      ll_gc_ll(lat, lon, SegmentSafetyNormalizeBearing(bearing + 90.0),
+               safety_margin_nm, &right_lat, &right_lon);
+      SegmentSafetyGridTileKey(left_lat, left_lon, &lat_tile, &lon_tile);
+      tiles.insert(std::make_pair(lat_tile, lon_tile));
+      SegmentSafetyGridTileKey(right_lat, right_lon, &lat_tile, &lon_tile);
+      tiles.insert(std::make_pair(lat_tile, lon_tile));
+    }
+  }
+
+  const long max_prewarm_tiles = 512;
+  SegmentSafetyCoreStats stats;
+  long built_tiles = 0;
+  long reused_tiles = 0;
+  bool capped = (long)tiles.size() > max_prewarm_tiles;
+
+  long visited = 0;
+  for (std::set<std::pair<long, long> >::const_iterator it = tiles.begin();
+       it != tiles.end(); ++it) {
+    if (visited++ >= max_prewarm_tiles) break;
+    std::string key = SegmentSafetyGridTileKeyForIndices(it->first, it->second);
+    if (s_segment_safety_grid_cache.find(key) !=
+        s_segment_safety_grid_cache.end()) {
+      ++stats.grid_cache_hits;
+      ++reused_tiles;
+      continue;
+    }
+    bool built = false;
+    EnsureSegmentSafetyGridTile(it->first, it->second, &stats, &built);
+    if (built) ++built_tiles;
+  }
+
+  if (result) {
+    SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_SAFE);
+    SetSegmentSafetySource(result, PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART);
+    SetSegmentSafetyDiagnosticReason(
+        result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR);
+    SetSegmentSafetyMessage(
+        result, capped ? "segment safety corridor prewarm capped"
+                       : "segment safety corridor prewarmed");
+    ApplySegmentSafetyStats(result, stats);
+  }
+
+  wxString message = wxString::Format(
+      "SEGMENT_SAFETY_GRID prewarm_segment start=(%.6f,%.6f) "
+      "end=(%.6f,%.6f) margin_nm=%.3f samples=%d requested_tiles=%lu "
+      "built_tiles=%ld reused_tiles=%ld capped=%d ",
+      lat1, lon1, lat2, lon2, safety_margin_nm, samples,
+      static_cast<unsigned long>(tiles.size()), built_tiles, reused_tiles,
+      capped ? 1 : 0);
+  message += wxString::Format(
+      "build_ms=%d cells=%d land=%d water=%d drying=%d unknown=%d "
+      "point_cache_hits=%d point_cache_misses=%d",
+      stats.grid_build_ms, stats.grid_cells_total, stats.grid_cells_land,
+      stats.grid_cells_water, stats.grid_cells_drying,
+      stats.grid_cells_unknown, stats.point_cache_hits,
+      stats.point_cache_misses);
+  wxLogMessage("%s", message.c_str());
+
+  return true;
 }
 
 void PlugInPlaySound(wxString& sound_file) {
