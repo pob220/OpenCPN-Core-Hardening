@@ -870,6 +870,17 @@ void InitSegmentSafetyResult(PlugInSegmentSafetyResult* result) {
     result->grid_cache_size = 0;
     result->grid_cache_evictions = 0;
   }
+  if (result->struct_size >=
+      (int)(offsetof(PlugInSegmentSafetyResult, depth_source_attribute) +
+            sizeof(result->depth_source_attribute))) {
+    result->has_depth = 0;
+    result->min_depth_m = 0.0;
+    result->required_depth_m = 0.0;
+    result->hit_depth_m = 0.0;
+    result->has_drying = 0;
+    result->depth_source_object[0] = '\0';
+    result->depth_source_attribute[0] = '\0';
+  }
 }
 
 void SetSegmentSafetyStatus(PlugInSegmentSafetyResult* result,
@@ -930,6 +941,12 @@ void SetSegmentSafetyDiagnosticInt(PlugInSegmentSafetyResult* result,
   *reinterpret_cast<int*>(reinterpret_cast<char*>(result) + offset) = value;
 }
 
+void SetSegmentSafetyDiagnosticDouble(PlugInSegmentSafetyResult* result,
+                                      size_t offset, double value) {
+  if (!SegmentSafetyResultHas(result, offset, sizeof(double))) return;
+  *reinterpret_cast<double*>(reinterpret_cast<char*>(result) + offset) = value;
+}
+
 bool SegmentSafetyOptionsHas(const PlugInSegmentSafetyOptions* options,
                              size_t offset, size_t size) {
   return options && options->struct_size >= (int)(offset + size);
@@ -958,6 +975,23 @@ bool SegmentSafetyOptionAllowGshhsFallback(
           sizeof(options->allow_gshhs_fallback)))
     return options->allow_gshhs_fallback != 0;
   return true;
+}
+
+bool SegmentSafetyOptionCheckDepth(const PlugInSegmentSafetyOptions* options) {
+  if (SegmentSafetyOptionsHas(options,
+                              offsetof(PlugInSegmentSafetyOptions, check_depth),
+                              sizeof(options->check_depth)))
+    return options->check_depth != 0;
+  return false;
+}
+
+double SegmentSafetyOptionMinimumDepthM(
+    const PlugInSegmentSafetyOptions* options) {
+  if (SegmentSafetyOptionsHas(
+          options, offsetof(PlugInSegmentSafetyOptions, minimum_depth_m),
+          sizeof(options->minimum_depth_m)))
+    return wxMax(0.0, options->minimum_depth_m);
+  return 0.0;
 }
 
 bool IsSegmentSafetyLandObject(const char* feature_name) {
@@ -1081,6 +1115,32 @@ wxString SegmentSafetyRuleSummary(ObjRazRules* rule) {
   return summary;
 }
 
+bool SegmentSafetyParseDouble(wxString value, double* out) {
+  value.Trim(true);
+  value.Trim(false);
+  if (value.empty()) return false;
+  double parsed = 0.0;
+  if (!value.ToDouble(&parsed)) return false;
+  if (out) *out = parsed;
+  return true;
+}
+
+bool SegmentSafetyRuleDepthMinM(ObjRazRules* rule, double* depth_m) {
+  if (!rule || !rule->obj || strncmp(rule->obj->FeatureName, "DEPARE", 6))
+    return false;
+  return SegmentSafetyParseDouble(rule->obj->GetAttrValueAsString("DRVAL1"),
+                                  depth_m);
+}
+
+bool SegmentSafetyRuleIsDrying(ObjRazRules* rule) {
+  if (!rule || !rule->obj) return false;
+  if (!strncmp(rule->obj->FeatureName, "DRGARE", 6)) return true;
+  wxString watlev = rule->obj->GetAttrValueAsString("WATLEV");
+  watlev.Trim(true);
+  watlev.Trim(false);
+  return watlev == "4";
+}
+
 s57chart* GetSegmentSafetyChartAtPoint(ChartCanvas* canvas, double lat,
                                        double lon, ViewPort& vp,
                                        PlugInSegmentSafetySource* source) {
@@ -1202,16 +1262,26 @@ struct CachedPointSafetyClassification {
   PlugInSegmentSafetySource source;
   int chart_db_index;
   int chart_scale;
+  bool has_depth;
+  double min_depth_m;
+  bool has_drying;
   char chart_path[256];
   char hit_object[128];
+  char depth_source_object[128];
+  char depth_source_attribute[32];
 
   CachedPointSafetyClassification()
       : point_class(SEGMENT_SAFETY_POINT_NO_DATA),
         source(PI_SEGMENT_SAFETY_SOURCE_NONE),
         chart_db_index(-1),
-        chart_scale(-1) {
+        chart_scale(-1),
+        has_depth(false),
+        min_depth_m(0.0),
+        has_drying(false) {
     chart_path[0] = '\0';
     hit_object[0] = '\0';
+    depth_source_object[0] = '\0';
+    depth_source_attribute[0] = '\0';
   }
 };
 
@@ -1244,6 +1314,9 @@ struct CachedPointSafetyGridTile {
   PlugInSegmentSafetySource source;
   char chart_path[256];
   std::vector<unsigned char> classes;
+  std::vector<unsigned char> has_depth;
+  std::vector<float> min_depth_m;
+  std::vector<unsigned char> has_drying;
 
   CachedPointSafetyGridTile()
       : group_index(0),
@@ -1278,9 +1351,16 @@ struct CachedSegmentSafetyResult {
   int hit_sample_count;
   double hit_sample_lat;
   double hit_sample_lon;
+  int has_depth;
+  double min_depth_m;
+  double required_depth_m;
+  double hit_depth_m;
+  int has_drying;
   char message[256];
   char chart_path[256];
   char hit_object[128];
+  char depth_source_object[128];
+  char depth_source_attribute[32];
 
   CachedSegmentSafetyResult()
       : status(PI_SEGMENT_SAFETY_ERROR),
@@ -1291,10 +1371,17 @@ struct CachedSegmentSafetyResult {
         hit_sample_index(-1),
         hit_sample_count(0),
         hit_sample_lat(0.0),
-        hit_sample_lon(0.0) {
+        hit_sample_lon(0.0),
+        has_depth(0),
+        min_depth_m(0.0),
+        required_depth_m(0.0),
+        hit_depth_m(0.0),
+        has_drying(0) {
     message[0] = '\0';
     chart_path[0] = '\0';
     hit_object[0] = '\0';
+    depth_source_object[0] = '\0';
+    depth_source_attribute[0] = '\0';
   }
 };
 
@@ -1671,7 +1758,9 @@ std::string SegmentSafetyPointCacheKey(double lat, double lon) {
 
 std::string SegmentSafetySegmentCacheKey(double lat1, double lon1,
                                          double lat2, double lon2,
-                                         double safety_margin_nm) {
+                                         double safety_margin_nm,
+                                         bool check_depth = false,
+                                         double minimum_depth_m = 0.0) {
   long a_lat = lround(lat1 / kSegmentSafetyGridResolutionDegrees);
   long a_lon = lround(lon1 / kSegmentSafetyGridResolutionDegrees);
   long b_lat = lround(lat2 / kSegmentSafetyGridResolutionDegrees);
@@ -1685,10 +1774,12 @@ std::string SegmentSafetySegmentCacheKey(double lat1, double lon1,
                          kSegmentSafetyGridResolutionDegrees * 60.0 *
                              wxMax(0.1, fabs(cos(SegmentSafetyDegToRad(mid_lat)))));
   long margin_bucket = lround(safety_margin_nm / wxMax(0.01, cell_nm));
-  return wxString::Format("%d:%.6f:%ld:%ld:%ld:%ld:%ld",
+  long depth_bucket = lround(minimum_depth_m * 100.0);
+  return wxString::Format("%d:%.6f:%ld:%d:%ld:%ld:%ld:%ld:%ld",
                           SegmentSafetyCurrentGroupIndex(),
                           kSegmentSafetyGridResolutionDegrees, margin_bucket,
-                          a_lat, a_lon, b_lat, b_lon)
+                          check_depth ? 1 : 0, depth_bucket, a_lat, a_lon,
+                          b_lat, b_lon)
       .ToStdString();
 }
 
@@ -1728,6 +1819,22 @@ void CopyCachedSegmentSafetyToResult(const CachedSegmentSafetyResult& cached,
   strncpy(result->hit_object, cached.hit_object,
           sizeof(result->hit_object) - 1);
   result->hit_object[sizeof(result->hit_object) - 1] = '\0';
+  if (SegmentSafetyResultHas(
+          result, offsetof(PlugInSegmentSafetyResult, depth_source_attribute),
+          sizeof(result->depth_source_attribute))) {
+    result->has_depth = cached.has_depth;
+    result->min_depth_m = cached.min_depth_m;
+    result->required_depth_m = cached.required_depth_m;
+    result->hit_depth_m = cached.hit_depth_m;
+    result->has_drying = cached.has_drying;
+    strncpy(result->depth_source_object, cached.depth_source_object,
+            sizeof(result->depth_source_object) - 1);
+    result->depth_source_object[sizeof(result->depth_source_object) - 1] = '\0';
+    strncpy(result->depth_source_attribute, cached.depth_source_attribute,
+            sizeof(result->depth_source_attribute) - 1);
+    result->depth_source_attribute[sizeof(result->depth_source_attribute) - 1] =
+        '\0';
+  }
 }
 
 CachedSegmentSafetyResult MakeCachedSegmentSafetyResult(
@@ -1743,6 +1850,22 @@ CachedSegmentSafetyResult MakeCachedSegmentSafetyResult(
   cached.hit_sample_lon = result->hit_sample_lon;
   cached.hit_sample_index = result->hit_sample_index;
   cached.hit_sample_count = result->hit_sample_count;
+  if (SegmentSafetyResultHas(
+          result, offsetof(PlugInSegmentSafetyResult, depth_source_attribute),
+          sizeof(result->depth_source_attribute))) {
+    cached.has_depth = result->has_depth;
+    cached.min_depth_m = result->min_depth_m;
+    cached.required_depth_m = result->required_depth_m;
+    cached.hit_depth_m = result->hit_depth_m;
+    cached.has_drying = result->has_drying;
+    strncpy(cached.depth_source_object, result->depth_source_object,
+            sizeof(cached.depth_source_object) - 1);
+    cached.depth_source_object[sizeof(cached.depth_source_object) - 1] = '\0';
+    strncpy(cached.depth_source_attribute, result->depth_source_attribute,
+            sizeof(cached.depth_source_attribute) - 1);
+    cached.depth_source_attribute[sizeof(cached.depth_source_attribute) - 1] =
+        '\0';
+  }
   strncpy(cached.message, result->message, sizeof(cached.message) - 1);
   cached.message[sizeof(cached.message) - 1] = '\0';
   strncpy(cached.chart_path, result->chart_path,
@@ -1779,17 +1902,37 @@ void CopySegmentSafetyPointCacheToResult(
   strncpy(result->hit_object, cached.hit_object,
           sizeof(result->hit_object) - 1);
   result->hit_object[sizeof(result->hit_object) - 1] = '\0';
+  if (SegmentSafetyResultHas(
+          result, offsetof(PlugInSegmentSafetyResult, depth_source_attribute),
+          sizeof(result->depth_source_attribute))) {
+    result->has_depth = cached.has_depth ? 1 : 0;
+    result->min_depth_m = cached.min_depth_m;
+    result->has_drying = cached.has_drying ? 1 : 0;
+    strncpy(result->depth_source_object, cached.depth_source_object,
+            sizeof(result->depth_source_object) - 1);
+    result->depth_source_object[sizeof(result->depth_source_object) - 1] = '\0';
+    strncpy(result->depth_source_attribute, cached.depth_source_attribute,
+            sizeof(result->depth_source_attribute) - 1);
+    result->depth_source_attribute[sizeof(result->depth_source_attribute) - 1] =
+        '\0';
+  }
 }
 
 CachedPointSafetyClassification MakeSegmentSafetyPointCacheEntry(
     SegmentSafetyPointClass point_class, PlugInSegmentSafetySource source,
     int chart_db_index, int chart_scale, const char* chart_path,
-    const char* hit_object) {
+    const char* hit_object, bool has_depth = false,
+    double min_depth_m = 0.0, bool has_drying = false,
+    const char* depth_source_object = NULL,
+    const char* depth_source_attribute = NULL) {
   CachedPointSafetyClassification cached;
   cached.point_class = point_class;
   cached.source = source;
   cached.chart_db_index = chart_db_index;
   cached.chart_scale = chart_scale;
+  cached.has_depth = has_depth;
+  cached.min_depth_m = min_depth_m;
+  cached.has_drying = has_drying;
   if (chart_path) {
     strncpy(cached.chart_path, chart_path, sizeof(cached.chart_path) - 1);
     cached.chart_path[sizeof(cached.chart_path) - 1] = '\0';
@@ -1797,6 +1940,17 @@ CachedPointSafetyClassification MakeSegmentSafetyPointCacheEntry(
   if (hit_object) {
     strncpy(cached.hit_object, hit_object, sizeof(cached.hit_object) - 1);
     cached.hit_object[sizeof(cached.hit_object) - 1] = '\0';
+  }
+  if (depth_source_object) {
+    strncpy(cached.depth_source_object, depth_source_object,
+            sizeof(cached.depth_source_object) - 1);
+    cached.depth_source_object[sizeof(cached.depth_source_object) - 1] = '\0';
+  }
+  if (depth_source_attribute) {
+    strncpy(cached.depth_source_attribute, depth_source_attribute,
+            sizeof(cached.depth_source_attribute) - 1);
+    cached.depth_source_attribute[sizeof(cached.depth_source_attribute) - 1] =
+        '\0';
   }
   return cached;
 }
@@ -1958,6 +2112,9 @@ SegmentSafetyPointClass ChartPointSafetyClassAtRaw(
     if (!rule_list) continue;
 
     bool drying = false;
+    bool has_depth = false;
+    double min_depth_m = 0.0;
+    wxString depth_object;
     for (ListOfObjRazRules::Node* node = rule_list->GetFirst(); node;
          node = node->GetNext()) {
       ObjRazRules* rule = node->GetData();
@@ -1986,7 +2143,15 @@ SegmentSafetyPointClass ChartPointSafetyClassAtRaw(
         delete rule_list;
         return SEGMENT_SAFETY_POINT_LAND;
       }
-      if (!strncmp(rule->obj->FeatureName, "DRGARE", 6)) drying = true;
+      if (SegmentSafetyRuleIsDrying(rule)) drying = true;
+      double rule_depth = 0.0;
+      if (SegmentSafetyRuleDepthMinM(rule, &rule_depth)) {
+        if (!has_depth || rule_depth < min_depth_m) {
+          has_depth = true;
+          min_depth_m = rule_depth;
+          depth_object = SegmentSafetyRuleSummary(rule);
+        }
+      }
     }
 
     rule_list->Clear();
@@ -1994,11 +2159,31 @@ SegmentSafetyPointClass ChartPointSafetyClassAtRaw(
     SegmentSafetyPointClass point_class =
         drying ? SEGMENT_SAFETY_POINT_DRYING : SEGMENT_SAFETY_POINT_WATER;
     wxString chart_path = chart->GetFullPath();
+    if (SegmentSafetyResultHas(
+            result, offsetof(PlugInSegmentSafetyResult, depth_source_attribute),
+            sizeof(result->depth_source_attribute))) {
+      result->has_depth = has_depth ? 1 : 0;
+      result->min_depth_m = has_depth ? min_depth_m : 0.0;
+      result->has_drying = drying ? 1 : 0;
+      if (has_depth) {
+        strncpy(result->depth_source_object, depth_object.mb_str(),
+                sizeof(result->depth_source_object) - 1);
+        result->depth_source_object[sizeof(result->depth_source_object) - 1] =
+            '\0';
+        strncpy(result->depth_source_attribute, "DEPARE/DRVAL1",
+                sizeof(result->depth_source_attribute) - 1);
+        result->depth_source_attribute
+            [sizeof(result->depth_source_attribute) - 1] = '\0';
+      }
+    }
     StoreSegmentSafetyPointCache(
         point_cache_key,
         MakeSegmentSafetyPointCacheEntry(point_class, chart_source, it->second,
                                          chart->GetNativeScale(),
-                                         chart_path.mb_str(), ""));
+                                         chart_path.mb_str(), "", has_depth,
+                                         min_depth_m, drying,
+                                         depth_object.mb_str(),
+                                         has_depth ? "DEPARE/DRVAL1" : NULL));
     return point_class;
   }
 
@@ -2030,6 +2215,9 @@ CachedPointSafetyGridTile BuildSegmentSafetyGridTile(double lat, double lon,
   tile.built = true;
   tile.classes.assign(tile.rows * tile.cols,
                       (unsigned char)SEGMENT_SAFETY_POINT_NO_DATA);
+  tile.has_depth.assign(tile.rows * tile.cols, 0);
+  tile.min_depth_m.assign(tile.rows * tile.cols, 0.0f);
+  tile.has_drying.assign(tile.rows * tile.cols, 0);
 
   int land = 0, water = 0, drying = 0, unknown = 0;
   for (int r = 0; r < tile.rows; ++r) {
@@ -2043,7 +2231,16 @@ CachedPointSafetyGridTile BuildSegmentSafetyGridTile(double lat, double lon,
       SegmentSafetyPointClass point_class =
           ChartPointSafetyClassAtRaw(cell_lat, cell_lon, &source, stats,
                                      &cell_result);
-      tile.classes[r * tile.cols + c] = (unsigned char)point_class;
+      int cell_index = r * tile.cols + c;
+      tile.classes[cell_index] = (unsigned char)point_class;
+      if (SegmentSafetyResultHas(
+              &cell_result,
+              offsetof(PlugInSegmentSafetyResult, depth_source_attribute),
+              sizeof(cell_result.depth_source_attribute))) {
+        tile.has_depth[cell_index] = cell_result.has_depth ? 1 : 0;
+        tile.min_depth_m[cell_index] = (float)cell_result.min_depth_m;
+        tile.has_drying[cell_index] = cell_result.has_drying ? 1 : 0;
+      }
       if (tile.source == PI_SEGMENT_SAFETY_SOURCE_NONE &&
           source != PI_SEGMENT_SAFETY_SOURCE_NONE)
         tile.source = source;
@@ -2192,6 +2389,7 @@ SegmentSafetyPointClass ChartPointSafetyClassAt(
   SegmentSafetyPointClass point_class =
       (SegmentSafetyPointClass)tile.classes[row * tile.cols + col];
   if (source) *source = tile.source;
+  int cell_index = row * tile.cols + col;
   if (SegmentSafetyResultHas(result, offsetof(PlugInSegmentSafetyResult,
                                               hit_object),
                              sizeof(result->hit_object))) {
@@ -2203,6 +2401,29 @@ SegmentSafetyPointClass ChartPointSafetyClassAt(
     if (point_class == SEGMENT_SAFETY_POINT_LAND)
       strncpy(result->hit_object, "grid LAND cell",
               sizeof(result->hit_object) - 1);
+  }
+  if (SegmentSafetyResultHas(
+          result, offsetof(PlugInSegmentSafetyResult, depth_source_attribute),
+          sizeof(result->depth_source_attribute))) {
+    bool has_depth = cell_index >= 0 &&
+                     cell_index < (int)tile.has_depth.size() &&
+                     tile.has_depth[cell_index] != 0;
+    bool has_drying = cell_index >= 0 &&
+                      cell_index < (int)tile.has_drying.size() &&
+                      tile.has_drying[cell_index] != 0;
+    result->has_depth = has_depth ? 1 : 0;
+    result->min_depth_m = has_depth ? tile.min_depth_m[cell_index] : 0.0;
+    result->has_drying = has_drying ? 1 : 0;
+    if (has_depth) {
+      strncpy(result->depth_source_object, "grid DEPARE cell",
+              sizeof(result->depth_source_object) - 1);
+      result->depth_source_object[sizeof(result->depth_source_object) - 1] =
+          '\0';
+      strncpy(result->depth_source_attribute, "DEPARE/DRVAL1",
+              sizeof(result->depth_source_attribute) - 1);
+      result->depth_source_attribute
+          [sizeof(result->depth_source_attribute) - 1] = '\0';
+    }
   }
   return point_class;
 }
@@ -2277,7 +2498,9 @@ bool SegmentSafetyGridCellAt(long lat_cell, long lon_cell,
 void SegmentSafetyCheckGridCellNeighborhood(
     long lat_cell, long lon_cell, int radius_cells,
     PlugInSegmentSafetySource* first_source, bool* any_chart_data,
-    bool* all_water, bool* land_hit, SegmentSafetyCoreStats* stats,
+    bool* all_water, bool* land_hit, bool* drying_hit, bool* shallow_hit,
+    bool* unknown_depth_hit, bool check_depth, double minimum_depth_m,
+    SegmentSafetyCoreStats* stats,
     PlugInSegmentSafetyResult* result, int sample_index, int sample_count) {
   for (int dlat = -radius_cells; dlat <= radius_cells; ++dlat) {
     for (int dlon = -radius_cells; dlon <= radius_cells; ++dlon) {
@@ -2286,6 +2509,7 @@ void SegmentSafetyCheckGridCellNeighborhood(
       if (!SegmentSafetyGridCellAt(lat_cell + dlat, lon_cell + dlon, &source,
                                    stats, result, &point_class)) {
         *all_water = false;
+        if (check_depth) *unknown_depth_hit = true;
         continue;
       }
 
@@ -2293,6 +2517,12 @@ void SegmentSafetyCheckGridCellNeighborhood(
       if (*first_source == PI_SEGMENT_SAFETY_SOURCE_NONE)
         *first_source = source;
       if (point_class != SEGMENT_SAFETY_POINT_WATER) *all_water = false;
+      if (SegmentSafetyResultHas(
+              result, offsetof(PlugInSegmentSafetyResult,
+                               depth_source_attribute),
+              sizeof(result->depth_source_attribute))) {
+        result->required_depth_m = minimum_depth_m;
+      }
       if (point_class == SEGMENT_SAFETY_POINT_LAND) {
         *land_hit = true;
         if (SegmentSafetyResultHas(
@@ -2307,12 +2537,69 @@ void SegmentSafetyCheckGridCellNeighborhood(
         }
         return;
       }
+      if (!check_depth) continue;
+      if (point_class == SEGMENT_SAFETY_POINT_WATER &&
+          SegmentSafetyResultHas(
+              result, offsetof(PlugInSegmentSafetyResult,
+                               depth_source_attribute),
+              sizeof(result->depth_source_attribute)) &&
+          !result->has_depth) {
+        *unknown_depth_hit = true;
+        result->hit_sample_lat =
+            (lat_cell + dlat) * kSegmentSafetyGridResolutionDegrees;
+        result->hit_sample_lon =
+            (lon_cell + dlon) * kSegmentSafetyGridResolutionDegrees;
+        result->hit_sample_index = sample_index;
+        result->hit_sample_count = sample_count;
+        result->required_depth_m = minimum_depth_m;
+        strncpy(result->hit_object, "grid UNKNOWN_DEPTH cell",
+                sizeof(result->hit_object) - 1);
+        result->hit_object[sizeof(result->hit_object) - 1] = '\0';
+        return;
+      }
+      if (point_class == SEGMENT_SAFETY_POINT_DRYING) {
+        *drying_hit = true;
+        if (SegmentSafetyResultHas(
+                result, offsetof(PlugInSegmentSafetyResult, hit_object),
+                sizeof(result->hit_object))) {
+          result->hit_sample_lat =
+              (lat_cell + dlat) * kSegmentSafetyGridResolutionDegrees;
+          result->hit_sample_lon =
+              (lon_cell + dlon) * kSegmentSafetyGridResolutionDegrees;
+          result->hit_sample_index = sample_index;
+          result->hit_sample_count = sample_count;
+          strncpy(result->hit_object, "grid DRYING cell",
+                  sizeof(result->hit_object) - 1);
+          result->hit_object[sizeof(result->hit_object) - 1] = '\0';
+        }
+        return;
+      }
+      if (SegmentSafetyResultHas(
+              result, offsetof(PlugInSegmentSafetyResult,
+                               depth_source_attribute),
+              sizeof(result->depth_source_attribute)) &&
+          result->has_depth && result->min_depth_m < minimum_depth_m) {
+        *shallow_hit = true;
+        result->hit_sample_lat =
+            (lat_cell + dlat) * kSegmentSafetyGridResolutionDegrees;
+        result->hit_sample_lon =
+            (lon_cell + dlon) * kSegmentSafetyGridResolutionDegrees;
+        result->hit_sample_index = sample_index;
+        result->hit_sample_count = sample_count;
+        result->hit_depth_m = result->min_depth_m;
+        strncpy(result->hit_object, "grid TOO_SHALLOW cell",
+                sizeof(result->hit_object) - 1);
+        result->hit_object[sizeof(result->hit_object) - 1] = '\0';
+        return;
+      }
     }
   }
 }
 
 bool SegmentSafetyGridTraversalCheck(double lat1, double lon1, double lat2,
                                      double lon2, double safety_margin_nm,
+                                     bool check_depth,
+                                     double minimum_depth_m,
                                      PlugInSegmentSafetyResult* result,
                                      bool* chart_data_available,
                                      SegmentSafetyCoreStats* stats,
@@ -2344,6 +2631,9 @@ bool SegmentSafetyGridTraversalCheck(double lat1, double lon1, double lat2,
   bool any_chart_data = false;
   bool all_water = true;
   bool land_hit = false;
+  bool drying_hit = false;
+  bool shallow_hit = false;
+  bool unknown_depth_hit = false;
   PlugInSegmentSafetySource first_source = PI_SEGMENT_SAFETY_SOURCE_NONE;
 
   long x = x0;
@@ -2351,17 +2641,29 @@ bool SegmentSafetyGridTraversalCheck(double lat1, double lon1, double lat2,
   for (long i = 0; i < steps; ++i) {
     SegmentSafetyCheckGridCellNeighborhood(
         y, x, radius_cells, &first_source, &any_chart_data, &all_water,
-        &land_hit, stats, result, (int)i, (int)steps);
-    if (land_hit) {
+        &land_hit, &drying_hit, &shallow_hit, &unknown_depth_hit, check_depth,
+        minimum_depth_m, stats, result, (int)i, (int)steps);
+    if (land_hit || drying_hit || shallow_hit || unknown_depth_hit) {
       if (chart_data_available) *chart_data_available = true;
-      SetSegmentSafetyStatus(result, radius_cells > 0
-                                         ? PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN
-                                         : PI_SEGMENT_SAFETY_CROSSES_LAND);
+      PlugInSegmentSafetyStatus status =
+          radius_cells > 0 ? PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN
+                           : PI_SEGMENT_SAFETY_CROSSES_LAND;
+      const char* message = radius_cells > 0
+                                ? "segment grid traversal enters chart land margin"
+                                : "segment grid traversal intersects chart land";
+      if (drying_hit) {
+        status = PI_SEGMENT_SAFETY_DRYING_AREA;
+        message = "segment grid traversal intersects chart drying area";
+      } else if (shallow_hit) {
+        status = PI_SEGMENT_SAFETY_TOO_SHALLOW;
+        message = "segment grid traversal intersects chart area shallower than required depth";
+      } else if (unknown_depth_hit) {
+        status = PI_SEGMENT_SAFETY_UNKNOWN_DEPTH;
+        message = "segment grid traversal lacks chart depth data";
+      }
+      SetSegmentSafetyStatus(result, status);
       SetSegmentSafetySource(result, first_source);
-      SetSegmentSafetyMessage(
-          result, radius_cells > 0
-                      ? "segment grid traversal enters chart land margin"
-                      : "segment grid traversal intersects chart land");
+      SetSegmentSafetyMessage(result, message);
       return true;
     }
 
@@ -2403,6 +2705,9 @@ wxString SegmentSafetyPointDiagnostic(double lat, double lon) {
   int land_count = 0;
   int drying_count = 0;
   int depare_count = 0;
+  bool has_depth = false;
+  double min_depth_m = 0.0;
+  wxString depth_attr = "none";
   bool chart_checked = false;
 
   for (std::set<int>::const_iterator it = chart_indexes.begin();
@@ -2437,8 +2742,18 @@ wxString SegmentSafetyPointDiagnostic(double lat, double lon) {
       objects += SegmentSafetyRuleSummary(rule);
 
       if (!strncmp(rule->obj->FeatureName, "LNDARE", 6)) ++land_count;
-      if (!strncmp(rule->obj->FeatureName, "DRGARE", 6)) ++drying_count;
-      if (!strncmp(rule->obj->FeatureName, "DEPARE", 6)) ++depare_count;
+      if (SegmentSafetyRuleIsDrying(rule)) ++drying_count;
+      double rule_depth = 0.0;
+      if (SegmentSafetyRuleDepthMinM(rule, &rule_depth)) {
+        ++depare_count;
+        if (!has_depth || rule_depth < min_depth_m) {
+          has_depth = true;
+          min_depth_m = rule_depth;
+          depth_attr = rule->obj->GetAttrValueAsString("DRVAL1");
+        }
+      } else if (!strncmp(rule->obj->FeatureName, "DEPARE", 6)) {
+        ++depare_count;
+      }
     }
 
     rule_list->Clear();
@@ -2463,7 +2778,10 @@ wxString SegmentSafetyPointDiagnostic(double lat, double lon) {
       "land_objects=%d drying_objects=%d depare_objects=%d objects=\"%s\"",
       point_class, source_name, chart_db_index, chart_scale, chart_path,
       stats.chart_stack_entries, chart_indexes.size(), area_count, land_count,
-      drying_count, depare_count, objects);
+      drying_count, depare_count, objects) +
+      wxString::Format(" has_depth=%d min_depth_m=%.2f depth_attr=\"%s\"",
+                       has_depth ? 1 : 0, has_depth ? min_depth_m : 0.0,
+                       depth_attr);
 }
 
 CachedChartLandGeometry& SegmentSafetyLoadChartLandGeometry(
@@ -2698,6 +3016,8 @@ bool CachedChartSegmentSafetyCheck(double lat1, double lon1, double lat2,
 bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
                                           double lat2, double lon2,
                                           double safety_margin_nm,
+                                          bool check_depth,
+                                          double minimum_depth_m,
                                           PlugInSegmentSafetyResult* result,
                                           bool* chart_data_available,
                                           SegmentSafetyCoreStats* stats,
@@ -2714,7 +3034,8 @@ bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
   PlugInSegmentSafetySource first_source = PI_SEGMENT_SAFETY_SOURCE_NONE;
 
   if (SegmentSafetyGridTraversalCheck(lat1, lon1, lat2, lon2,
-                                      safety_margin_nm, result,
+                                      safety_margin_nm, check_depth,
+                                      minimum_depth_m, result,
                                       chart_data_available, stats,
                                       open_water_shortcut)) {
     if (stats) stats->geometry_check_ms += geometry_timer.Time();
@@ -2726,7 +3047,8 @@ bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
   }
 
   wxStopWatch grid_lookup_timer;
-  if (SegmentSafetyAllTouchedTilesAreWater(lat1, lon1, lat2, lon2,
+  if (!check_depth &&
+      SegmentSafetyAllTouchedTilesAreWater(lat1, lon1, lat2, lon2,
                                            safety_margin_nm, bearing, dist_nm,
                                            samples, stats)) {
     if (stats) {
@@ -2740,7 +3062,8 @@ bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
     return false;
   }
 
-  if (SegmentSafetyCoarseSampledCellsAreWater(lat1, lon1, lat2, lon2,
+  if (!check_depth &&
+      SegmentSafetyCoarseSampledCellsAreWater(lat1, lon1, lat2, lon2,
                                               safety_margin_nm, bearing,
                                               dist_nm, stats)) {
     if (stats) {
@@ -2801,6 +3124,77 @@ bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
             result ? result->chart_scale : -1,
             result ? result->chart_path : "");
       }
+      return true;
+    }
+
+    if (check_depth && point_class == SEGMENT_SAFETY_POINT_WATER &&
+        SegmentSafetyResultHas(
+            result, offsetof(PlugInSegmentSafetyResult,
+                             depth_source_attribute),
+            sizeof(result->depth_source_attribute)) &&
+        !result->has_depth) {
+      if (stats) stats->geometry_check_ms += geometry_timer.Time();
+      if (chart_data_available) *chart_data_available = true;
+      result->hit_sample_lat = lat;
+      result->hit_sample_lon = lon;
+      result->hit_sample_index = i;
+      result->hit_sample_count = samples;
+      result->required_depth_m = minimum_depth_m;
+      strncpy(result->hit_object, "chart UNKNOWN_DEPTH area",
+              sizeof(result->hit_object) - 1);
+      result->hit_object[sizeof(result->hit_object) - 1] = '\0';
+      SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_UNKNOWN_DEPTH);
+      SetSegmentSafetySource(result, source);
+      SetSegmentSafetyMessage(result,
+                              "segment samples lack chart depth data");
+      return true;
+    }
+
+    if (check_depth && point_class == SEGMENT_SAFETY_POINT_DRYING) {
+      if (stats) stats->geometry_check_ms += geometry_timer.Time();
+      if (chart_data_available) *chart_data_available = true;
+      if (SegmentSafetyResultHas(
+              result, offsetof(PlugInSegmentSafetyResult, hit_object),
+              sizeof(result->hit_object))) {
+        result->hit_sample_lat = lat;
+        result->hit_sample_lon = lon;
+        result->hit_sample_index = i;
+        result->hit_sample_count = samples;
+        result->required_depth_m = minimum_depth_m;
+        result->has_drying = 1;
+        strncpy(result->hit_object, "chart DRYING area",
+                sizeof(result->hit_object) - 1);
+        result->hit_object[sizeof(result->hit_object) - 1] = '\0';
+      }
+      SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_DRYING_AREA);
+      SetSegmentSafetySource(result, source);
+      SetSegmentSafetyMessage(result,
+                              "segment samples intersect chart drying area");
+      return true;
+    }
+
+    if (check_depth &&
+        SegmentSafetyResultHas(
+            result, offsetof(PlugInSegmentSafetyResult,
+                             depth_source_attribute),
+            sizeof(result->depth_source_attribute)) &&
+        result->has_depth && result->min_depth_m < minimum_depth_m) {
+      if (stats) stats->geometry_check_ms += geometry_timer.Time();
+      if (chart_data_available) *chart_data_available = true;
+      result->hit_sample_lat = lat;
+      result->hit_sample_lon = lon;
+      result->hit_sample_index = i;
+      result->hit_sample_count = samples;
+      result->required_depth_m = minimum_depth_m;
+      result->hit_depth_m = result->min_depth_m;
+      strncpy(result->hit_object, "chart TOO_SHALLOW area",
+              sizeof(result->hit_object) - 1);
+      result->hit_object[sizeof(result->hit_object) - 1] = '\0';
+      SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_TOO_SHALLOW);
+      SetSegmentSafetySource(result, source);
+      SetSegmentSafetyMessage(
+          result,
+          "segment samples intersect chart area shallower than required depth");
       return true;
     }
 
@@ -2907,8 +3301,10 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
   const bool check_land = SegmentSafetyOptionCheckLand(options);
   const bool allow_gshhs_fallback =
       SegmentSafetyOptionAllowGshhsFallback(options);
+  const bool check_depth = SegmentSafetyOptionCheckDepth(options);
+  const double minimum_depth_m = SegmentSafetyOptionMinimumDepthM(options);
 
-  if (!check_land) {
+  if (!check_land && !check_depth) {
     if (result) {
       SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_SAFE);
       SetSegmentSafetyMessage(result, "land checks disabled");
@@ -2919,7 +3315,12 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
   bool chart_data_available = false;
   SegmentSafetyCoreStats stats;
   const std::string segment_cache_key =
-      SegmentSafetySegmentCacheKey(lat1, lon1, lat2, lon2, safety_margin_nm);
+      SegmentSafetySegmentCacheKey(lat1, lon1, lat2, lon2, safety_margin_nm,
+                                   check_depth, minimum_depth_m);
+  if (SegmentSafetyResultHas(
+          result, offsetof(PlugInSegmentSafetyResult, depth_source_attribute),
+          sizeof(result->depth_source_attribute)))
+    result->required_depth_m = minimum_depth_m;
   std::map<std::string, CachedSegmentSafetyResult>::const_iterator
       segment_cache_it =
           s_segment_safety_segment_cache.find(segment_cache_key);
@@ -2933,7 +3334,8 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
 
   bool open_water_shortcut = false;
   if (ChartSegmentPointClassificationCheck(
-          lat1, lon1, lat2, lon2, safety_margin_nm, result,
+          lat1, lon1, lat2, lon2, safety_margin_nm, check_depth,
+          minimum_depth_m, result,
           &chart_data_available, &stats, &open_water_shortcut)) {
     SetSegmentSafetyDiagnosticReason(
         result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_HIT);
