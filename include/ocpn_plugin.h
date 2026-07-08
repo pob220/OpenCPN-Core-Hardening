@@ -3572,6 +3572,11 @@ struct PlugInSegmentSafetyResult {
   int unexpected_lon_tile;
   double unexpected_tile_min_lat;
   double unexpected_tile_min_lon;
+  int segment_cache_hits;
+  int segment_cache_misses;
+  int segment_cache_stores;
+  int grid_cache_size;
+  int grid_cache_evictions;
 };
 
 extern "C" DECL_EXP bool PlugIn_CheckSegmentSafety(
