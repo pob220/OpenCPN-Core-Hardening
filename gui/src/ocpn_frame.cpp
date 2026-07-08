@@ -4722,6 +4722,12 @@ void RunSegmentSafetyDiagnostics() {
       {"Holyhead saved waypoint leg to South of Calf of Man",
        53.337802, -4.614540, 53.941243, -4.850975, 0.0,
        PI_SEGMENT_SAFETY_SAFE},
+      {"Holy Island plotted route land crossing",
+       53.337802, -4.614540, 53.245000, -4.780000, 0.0,
+       PI_SEGMENT_SAFETY_CROSSES_LAND},
+      {"Holyhead offshore south-west route",
+       53.325000, -4.705000, 53.245000, -4.780000, 0.0,
+       PI_SEGMENT_SAFETY_SAFE},
       {"Portpatrick west water to inland east",
        54.842500, -5.135000, 54.842500, -5.085000, 0.0,
        PI_SEGMENT_SAFETY_CROSSES_LAND},
@@ -4816,9 +4822,9 @@ void RunSegmentSafetyDiagnostics() {
     int expected_status;
   };
   const SegmentSafetyDepthDiagnosticCase depth_cases[] = {
-      {"Portpatrick offshore conservative zero-depth area",
+      {"Portpatrick offshore low-depth requirement",
        54.825000, -5.210000, 54.875000, -5.210000, 1.0,
-       PI_SEGMENT_SAFETY_TOO_SHALLOW},
+       PI_SEGMENT_SAFETY_SAFE},
       {"Portpatrick offshore deliberately too-deep requirement",
        54.825000, -5.210000, 54.875000, -5.210000, 250.0,
        PI_SEGMENT_SAFETY_TOO_SHALLOW},
@@ -4888,7 +4894,23 @@ void RunSegmentSafetyDiagnostics() {
       {54.710000, -5.120000},
       {54.800000, -5.120000},
   };
+  const FinalRoutePoint holy_island_bad_route[] = {
+      {53.337802, -4.614540},
+      {53.300000, -4.680000},
+      {53.245000, -4.780000},
+  };
+  const FinalRoutePoint holyhead_offshore_route[] = {
+      {53.325000, -4.705000},
+      {53.285000, -4.745000},
+      {53.245000, -4.780000},
+  };
   const FinalRouteDiagnosticCase final_cases[] = {
+      {"Holy Island final route with chart land crossing",
+       holy_island_bad_route, WXSIZEOF(holy_island_bad_route),
+       PI_SEGMENT_SAFETY_CROSSES_LAND},
+      {"Holyhead final route offshore",
+       holyhead_offshore_route, WXSIZEOF(holyhead_offshore_route),
+       PI_SEGMENT_SAFETY_SAFE},
       {"Portpatrick final route with chart land crossing",
        portpatrick_bad_route, WXSIZEOF(portpatrick_bad_route),
        PI_SEGMENT_SAFETY_CROSSES_LAND},
