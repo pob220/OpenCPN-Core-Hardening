@@ -222,6 +222,7 @@ Options for starting opencpn
   -u, --unit_test_1=<num>      	Display a slideshow of <num> charts and then exit.
                                 Zero or negative <num> specifies no limit.
   -U, --unit_test_2
+  --segment_safety_test         Run built-in segment safety diagnostics and exit.
   -s, --safe_mode              	Run without plugins, opengl and other "dangerous" stuff
   -W, --config_wizard          	Start with initial configuration wizard
 
@@ -560,6 +561,7 @@ void MyApp::OnInitCmdLine(wxCmdLineParser &parser) {
   parser.AddOption("l", "loglevel");
   parser.AddOption("u", "unit_test_1", "", wxCMD_LINE_VAL_NUMBER);
   parser.AddSwitch("U", "unit_test_2");
+  parser.AddSwitch("", "segment_safety_test");
   parser.AddParam("import GPX files", wxCMD_LINE_VAL_STRING,
                   wxCMD_LINE_PARAM_OPTIONAL | wxCMD_LINE_PARAM_MULTIPLE);
   parser.AddSwitch("s", "safe_mode");
@@ -615,6 +617,7 @@ bool MyApp::OnCmdLineParsed(wxCmdLineParser &parser) {
   g_NeedDBUpdate = parser.Found("rebuild_chart_db") ? 2 : 0;
   g_parse_all_enc = parser.Found("parse_all_enc");
   g_config_wizard = parser.Found("config_wizard");
+  g_segment_safety_test = parser.Found("segment_safety_test");
   if (parser.Found("unit_test_1", &number)) {
     g_unit_test_1 = static_cast<int>(number);
     if (g_unit_test_1 == 0) g_unit_test_1 = -1;
@@ -641,6 +644,7 @@ bool MyApp::OnCmdLineParsed(wxCmdLineParser &parser) {
       "rebuild_chart_db",
       "parse_all_enc",
       "unit_test_1",
+      "segment_safety_test",
       "safe_mode",
       "loglevel"};
   for (const auto &opt : kStartOptions) {
