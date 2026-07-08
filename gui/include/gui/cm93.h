@@ -459,6 +459,10 @@ public:
                                             float select_radius,
                                             ViewPort *VPoint,
                                             int selection_mask = MASK_ALL);
+  size_t CollectFeatureAreaRings(
+      const char *feature_name,
+      std::vector<std::vector<wxPoint2DDouble> > &rings) override;
+  wxString GetFeatureDebugSummary() override;
   S57ObjectDesc *CreateObjDescription(const ObjRazRules *obj);
 
   std::unordered_map<unsigned, VE_Element *> &Get_ve_hash(void);

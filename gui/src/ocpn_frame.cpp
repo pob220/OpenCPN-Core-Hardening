@@ -4551,6 +4551,283 @@ void MyFrame::PositionIENCToolbar() {
 // Defered initialization for anything that is not required to render the
 // initial frame and takes a while to initialize.  This gets opencpn up and
 // running much faster.
+extern wxString PlugIn_SegmentSafetyPointDiagnostic(double lat, double lon);
+
+namespace {
+
+struct PointSafetyDiagnosticCase {
+  const char* name;
+  double lat;
+  double lon;
+};
+
+struct SegmentSafetyDiagnosticCase {
+  const char* name;
+  double lat1;
+  double lon1;
+  double lat2;
+  double lon2;
+  double safety_margin_nm;
+  int expected_status;
+};
+
+const char* SegmentSafetyStatusName(int status) {
+  switch (status) {
+    case PI_SEGMENT_SAFETY_SAFE:
+      return "SAFE";
+    case PI_SEGMENT_SAFETY_CROSSES_LAND:
+      return "CROSSES_LAND";
+    case PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN:
+      return "WITHIN_LAND_MARGIN";
+    case PI_SEGMENT_SAFETY_UNSAFE_AREA:
+      return "UNSAFE_AREA";
+    case PI_SEGMENT_SAFETY_NO_DATA:
+      return "NO_DATA";
+    case PI_SEGMENT_SAFETY_ERROR:
+      return "ERROR";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+const char* SegmentSafetySourceName(int source) {
+  switch (source) {
+    case PI_SEGMENT_SAFETY_SOURCE_NONE:
+      return "NONE";
+    case PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART:
+      return "VECTOR_CHART";
+    case PI_SEGMENT_SAFETY_SOURCE_CM93:
+      return "CM93";
+    case PI_SEGMENT_SAFETY_SOURCE_GSHHS_FALLBACK:
+      return "GSHHS_FALLBACK";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+const char* SegmentSafetyHitCauseName(int cause) {
+  switch (cause) {
+    case PI_SEGMENT_SAFETY_HIT_NONE:
+      return "NONE";
+    case PI_SEGMENT_SAFETY_HIT_ENDPOINT_IN_LANDARE:
+      return "ENDPOINT_IN_LANDARE";
+    case PI_SEGMENT_SAFETY_HIT_SEGMENT_INTERSECTS_LANDARE_EDGE:
+      return "SEGMENT_INTERSECTS_LANDARE_EDGE";
+    case PI_SEGMENT_SAFETY_HIT_MARGIN_TO_LANDARE_EDGE:
+      return "MARGIN_TO_LANDARE_EDGE";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+bool SegmentSafetyStatusMatchesExpected(int status, int expected_status) {
+  if (expected_status == PI_SEGMENT_SAFETY_SAFE)
+    return status == PI_SEGMENT_SAFETY_SAFE;
+  if (expected_status == PI_SEGMENT_SAFETY_CROSSES_LAND)
+    return status == PI_SEGMENT_SAFETY_CROSSES_LAND ||
+           status == PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN ||
+           status == PI_SEGMENT_SAFETY_UNSAFE_AREA;
+  return status == expected_status;
+}
+
+void RunSegmentSafetyDiagnostics() {
+  wxLogMessage("SEGMENT_SAFETY_TEST begin chart_only=1 fallback=0");
+
+  const PointSafetyDiagnosticCase point_cases[] = {
+      {"Portpatrick/Killantringan land probe", 54.842500, -5.090000},
+      {"Portpatrick offshore water probe", 54.842500, -5.155000},
+      {"Strangford Lough drying/nearshore probe", 54.385000, -5.560000},
+      {"Holyhead offshore water probe", 53.325000, -4.705000},
+      {"Menai Strait channel probe", 53.215000, -4.185000},
+      {"Runtime hit point 1", 53.402797, -4.558620},
+      {"Runtime hit point 2", 54.458160, -5.481610},
+      {"Runtime hit point 3", 54.942236, -5.182213},
+  };
+
+  for (size_t i = 0; i < WXSIZEOF(point_cases); ++i) {
+    const PointSafetyDiagnosticCase& pc = point_cases[i];
+    wxString diagnostic = PlugIn_SegmentSafetyPointDiagnostic(pc.lat, pc.lon);
+    wxLogMessage(
+        "POINT_SAFETY_TEST point=\"%s\" lat=%.8f lon=%.8f %s",
+        pc.name, pc.lat, pc.lon, diagnostic.c_str());
+  }
+
+  for (int pass = 1; pass <= 2; ++pass) {
+    PlugInSegmentSafetyResult prewarm = {};
+    prewarm.struct_size = sizeof(prewarm);
+    PlugIn_PrewarmSegmentSafetyGridForSegment(
+        53.325000, -4.705000, 54.000000, -4.835000, 0.0, &prewarm);
+    wxLogMessage(
+        "SEGMENT_SAFETY_GRID_TEST pass=%d route=\"Holyhead outside TSS to "
+        "South of Calf of Man\" status=%s source=%s message=\"%s\" "
+        "grid_cache_hits=%d grid_cache_misses=%d grid_build_ms=%d "
+        "grid_cells=%d land=%d water=%d drying=%d unknown=%d "
+        "grid_lookup_ms=%d samples=%d water_tile_shortcuts=%d "
+        "unexpected_tile_builds=%d point_cache_hits=%d point_cache_misses=%d",
+        pass, SegmentSafetyStatusName(prewarm.status),
+        SegmentSafetySourceName(prewarm.source), prewarm.message,
+        prewarm.grid_cache_hits, prewarm.grid_cache_misses,
+        prewarm.grid_build_ms, prewarm.grid_cells_total,
+        prewarm.grid_cells_land, prewarm.grid_cells_water,
+        prewarm.grid_cells_drying, prewarm.grid_cells_unknown,
+        prewarm.grid_lookup_ms, prewarm.segment_sample_count,
+        prewarm.water_tile_shortcuts, prewarm.unexpected_tile_builds,
+        prewarm.point_cache_hits, prewarm.point_cache_misses);
+  }
+
+  const SegmentSafetyDiagnosticCase cases[] = {
+      {"Holyhead outside TSS to South of Calf of Man",
+       53.325000, -4.705000, 54.000000, -4.835000, 0.0,
+       PI_SEGMENT_SAFETY_SAFE},
+      {"Portpatrick west water to inland east",
+       54.842500, -5.135000, 54.842500, -5.085000, 0.0,
+       PI_SEGMENT_SAFETY_CROSSES_LAND},
+      {"Portpatrick nearshore offshore parallel",
+       54.825000, -5.210000, 54.875000, -5.210000, 0.0,
+       PI_SEGMENT_SAFETY_SAFE},
+      {"Portpatrick Killantringan visible land crossing",
+       54.875000, -5.110000, 54.770000, -5.010000, 0.0,
+       PI_SEGMENT_SAFETY_CROSSES_LAND},
+  };
+
+  int failures = 0;
+  for (size_t i = 0; i < WXSIZEOF(cases); ++i) {
+    const SegmentSafetyDiagnosticCase& tc = cases[i];
+    PlugInSegmentSafetyOptions options = {};
+    options.struct_size = sizeof(options);
+    options.safety_margin_nm = tc.safety_margin_nm;
+    options.check_land = 1;
+    options.allow_gshhs_fallback = 0;
+
+    PlugInSegmentSafetyResult result = {};
+    result.struct_size = sizeof(result);
+    bool ok = PlugIn_CheckSegmentSafety(tc.lat1, tc.lon1, tc.lat2, tc.lon2,
+                                        &options, &result);
+    bool pass = ok &&
+                SegmentSafetyStatusMatchesExpected(result.status,
+                                                   tc.expected_status);
+    if (!pass) ++failures;
+
+    wxString line = wxString::Format(
+        "SEGMENT_SAFETY_TEST case=\"%s\" pass=%d expected=%s status=%s "
+        "source=%s fallback=%d reason=%d message=\"%s\" ",
+        tc.name, pass ? 1 : 0,
+        SegmentSafetyStatusName(tc.expected_status),
+        SegmentSafetyStatusName(result.status),
+        SegmentSafetySourceName(result.source), result.used_fallback,
+        result.diagnostic_reason, result.message);
+    line += wxString::Format(
+        "start=(%.8f,%.8f) end=(%.8f,%.8f) margin_nm=%.3f "
+        "chart_db_index=%d chart_path=\"%s\" land_rings=%d ",
+        tc.lat1, tc.lon1, tc.lat2, tc.lon2, tc.safety_margin_nm,
+        result.chart_db_index, result.chart_path, result.land_ring_count);
+    line += wxString::Format(
+        "bbox_ring_tests=%d edge_tests=%d hit_cause=%s "
+        "ring_bbox=[lat %.8f..%.8f lon %.8f..%.8f] "
+        "ring_points=%d edge_index=%d ",
+        result.bbox_ring_tests, result.edge_tests,
+        SegmentSafetyHitCauseName(result.hit_cause),
+        result.hit_ring_min_lat, result.hit_ring_max_lat,
+        result.hit_ring_min_lon, result.hit_ring_max_lon,
+        result.hit_ring_point_count, result.hit_edge_index);
+    line += wxString::Format(
+        "chart_stack_entries=%d candidate_charts=%d raster_charts=%d "
+        "unsupported_charts=%d s57_charts=%d cache_ms=%d select_ms=%d "
+        "geometry_ms=%d sample=(%.8f,%.8f) sample_index=%d/%d "
+        "chart_scale=%d point_cache_hits=%d point_cache_misses=%d "
+        "grid_cache_hits=%d grid_cache_misses=%d grid_build_ms=%d "
+        "grid_cells=%d land=%d water=%d drying=%d unknown=%d "
+        "grid_lookups=%d grid_lookup_ms=%d samples=%d "
+        "water_tile_shortcuts=%d unexpected_tile_builds=%d "
+        "hit_object=\"%s\"",
+        result.chart_stack_entries, result.candidate_chart_count,
+        result.raster_chart_count, result.unsupported_chart_count,
+        result.s57_chart_count, result.cache_build_ms, result.chart_select_ms,
+        result.geometry_check_ms, result.hit_sample_lat,
+        result.hit_sample_lon, result.hit_sample_index + 1,
+        result.hit_sample_count, result.chart_scale, result.point_cache_hits,
+        result.point_cache_misses, result.grid_cache_hits,
+        result.grid_cache_misses, result.grid_build_ms,
+        result.grid_cells_total, result.grid_cells_land,
+        result.grid_cells_water, result.grid_cells_drying,
+        result.grid_cells_unknown, result.grid_lookups,
+        result.grid_lookup_ms, result.segment_sample_count,
+        result.water_tile_shortcuts, result.unexpected_tile_builds,
+        result.hit_object);
+    wxLogMessage("%s", line.c_str());
+  }
+
+  struct FinalRoutePoint {
+    double lat;
+    double lon;
+  };
+  struct FinalRouteDiagnosticCase {
+    const char* name;
+    const FinalRoutePoint* points;
+    size_t point_count;
+    int expected_status;
+  };
+  const FinalRoutePoint portpatrick_bad_route[] = {
+      {54.890000, -5.180000},
+      {54.875000, -5.110000},
+      {54.770000, -5.010000},
+      {54.720000, -4.980000},
+  };
+  const FinalRoutePoint portpatrick_offshore_route[] = {
+      {54.825000, -5.220000},
+      {54.850000, -5.210000},
+      {54.875000, -5.210000},
+  };
+  const FinalRouteDiagnosticCase final_cases[] = {
+      {"Portpatrick final route with chart land crossing",
+       portpatrick_bad_route, WXSIZEOF(portpatrick_bad_route),
+       PI_SEGMENT_SAFETY_CROSSES_LAND},
+      {"Portpatrick final route offshore",
+       portpatrick_offshore_route, WXSIZEOF(portpatrick_offshore_route),
+       PI_SEGMENT_SAFETY_SAFE},
+  };
+  for (size_t i = 0; i < WXSIZEOF(final_cases); ++i) {
+    const FinalRouteDiagnosticCase& fc = final_cases[i];
+    int route_status = PI_SEGMENT_SAFETY_SAFE;
+    size_t failed_segment = 0;
+    PlugInSegmentSafetyResult failed_result = {};
+    for (size_t j = 1; j < fc.point_count; ++j) {
+      PlugInSegmentSafetyOptions options = {};
+      options.struct_size = sizeof(options);
+      options.safety_margin_nm = 0.0;
+      options.check_land = 1;
+      options.allow_gshhs_fallback = 0;
+      PlugInSegmentSafetyResult result = {};
+      result.struct_size = sizeof(result);
+      PlugIn_CheckSegmentSafety(fc.points[j - 1].lat, fc.points[j - 1].lon,
+                                fc.points[j].lat, fc.points[j].lon, &options,
+                                &result);
+      if (result.status == PI_SEGMENT_SAFETY_CROSSES_LAND ||
+          result.status == PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN ||
+          result.status == PI_SEGMENT_SAFETY_UNSAFE_AREA) {
+        route_status = result.status;
+        failed_segment = j;
+        failed_result = result;
+        break;
+      }
+    }
+    bool pass = SegmentSafetyStatusMatchesExpected(route_status,
+                                                   fc.expected_status);
+    if (!pass) ++failures;
+    wxLogMessage(
+        "FINAL_ROUTE_SAFETY_TEST case=\"%s\" pass=%d expected=%s status=%s "
+        "failed_segment=%zu sample=(%.8f,%.8f) object=\"%s\"",
+        fc.name, pass ? 1 : 0, SegmentSafetyStatusName(fc.expected_status),
+        SegmentSafetyStatusName(route_status), failed_segment,
+        failed_result.hit_sample_lat, failed_result.hit_sample_lon,
+        failed_result.hit_object);
+  }
+
+  wxLogMessage("SEGMENT_SAFETY_TEST end failures=%d", failures);
+}
+
+}  // namespace
+
 void MyFrame::OnInitTimer(wxTimerEvent &event) {
   InitTimer.Stop();
   wxString msg;
@@ -4825,6 +5102,12 @@ void MyFrame::OnInitTimer(wxTimerEvent &event) {
       gFrame->FrameCOGTimer.Start(2000, wxTIMER_CONTINUOUS);
       //      Start up the Ten Hz timer....
       gFrame->FrameTenHzTimer.Start(100, wxTIMER_CONTINUOUS);
+
+      if (g_segment_safety_test) {
+        RunSegmentSafetyDiagnostics();
+        wxLog::FlushActive();
+        CallAfter([this]() { Close(true); });
+      }
 
       break;
     }
