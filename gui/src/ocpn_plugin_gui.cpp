@@ -1906,14 +1906,26 @@ SegmentSafetyPointClass ChartPointSafetyClassAtRaw(
   std::set<int> chart_indexes;
   SegmentSafetyCandidateChartsAt(lat, lon, chart_indexes, stats);
 
-  bool chart_checked = false;
+  std::vector<std::pair<int, int> > candidate_scales;
   for (std::set<int>::const_iterator it = chart_indexes.begin();
        it != chart_indexes.end(); ++it) {
     ChartBase* chart = ChartData ? ChartData->OpenChartFromDB(*it, FULL_INIT)
                                  : NULL;
     s57chart* s57 = dynamic_cast<s57chart*>(chart);
     if (!s57) continue;
+    candidate_scales.push_back(std::make_pair(chart->GetNativeScale(), *it));
+  }
+  std::sort(candidate_scales.begin(), candidate_scales.end());
 
+  bool chart_checked = false;
+  for (std::vector<std::pair<int, int> >::const_iterator it =
+           candidate_scales.begin();
+       it != candidate_scales.end(); ++it) {
+    ChartBase* chart = ChartData ? ChartData->OpenChartFromDB(it->second,
+                                                              FULL_INIT)
+                                 : NULL;
+    s57chart* s57 = dynamic_cast<s57chart*>(chart);
+    if (!s57) continue;
     chart_checked = true;
     bool cm93 = IsCm93Chart(chart);
     PlugInSegmentSafetySource chart_source =
@@ -1944,7 +1956,7 @@ SegmentSafetyPointClass ChartPointSafetyClassAtRaw(
         if (SegmentSafetyResultHas(
                 result, offsetof(PlugInSegmentSafetyResult, hit_object),
                 sizeof(result->hit_object))) {
-          result->chart_db_index = *it;
+          result->chart_db_index = it->second;
           result->chart_scale = chart->GetNativeScale();
           strncpy(result->chart_path, chart_path.mb_str(),
                   sizeof(result->chart_path) - 1);
@@ -1956,7 +1968,7 @@ SegmentSafetyPointClass ChartPointSafetyClassAtRaw(
         StoreSegmentSafetyPointCache(
             point_cache_key,
             MakeSegmentSafetyPointCacheEntry(
-                SEGMENT_SAFETY_POINT_LAND, chart_source, *it,
+                SEGMENT_SAFETY_POINT_LAND, chart_source, it->second,
                 chart->GetNativeScale(), chart_path.mb_str(), object.mb_str()));
         rule_list->Clear();
         delete rule_list;
@@ -1972,7 +1984,7 @@ SegmentSafetyPointClass ChartPointSafetyClassAtRaw(
     wxString chart_path = chart->GetFullPath();
     StoreSegmentSafetyPointCache(
         point_cache_key,
-        MakeSegmentSafetyPointCacheEntry(point_class, chart_source, *it,
+        MakeSegmentSafetyPointCacheEntry(point_class, chart_source, it->second,
                                          chart->GetNativeScale(),
                                          chart_path.mb_str(), ""));
     return point_class;
