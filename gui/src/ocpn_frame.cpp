@@ -4617,6 +4617,12 @@ const char* SegmentSafetyStatusName(int status) {
       return "NO_DATA";
     case PI_SEGMENT_SAFETY_ERROR:
       return "ERROR";
+    case PI_SEGMENT_SAFETY_DRYING_AREA:
+      return "DRYING_AREA";
+    case PI_SEGMENT_SAFETY_TOO_SHALLOW:
+      return "TOO_SHALLOW";
+    case PI_SEGMENT_SAFETY_UNKNOWN_DEPTH:
+      return "UNKNOWN_DEPTH";
     default:
       return "UNKNOWN";
   }
@@ -4790,6 +4796,56 @@ void RunSegmentSafetyDiagnostics() {
         result.water_tile_shortcuts, result.unexpected_tile_builds,
         result.hit_object);
     wxLogMessage("%s", line.c_str());
+  }
+
+  struct SegmentSafetyDepthDiagnosticCase {
+    const char* name;
+    double lat1;
+    double lon1;
+    double lat2;
+    double lon2;
+    double minimum_depth_m;
+    int expected_status;
+  };
+  const SegmentSafetyDepthDiagnosticCase depth_cases[] = {
+      {"Portpatrick offshore low required depth",
+       54.825000, -5.210000, 54.875000, -5.210000, 1.0,
+       PI_SEGMENT_SAFETY_SAFE},
+      {"Portpatrick offshore deliberately too-deep requirement",
+       54.825000, -5.210000, 54.875000, -5.210000, 250.0,
+       PI_SEGMENT_SAFETY_TOO_SHALLOW},
+  };
+  for (size_t i = 0; i < WXSIZEOF(depth_cases); ++i) {
+    const SegmentSafetyDepthDiagnosticCase& tc = depth_cases[i];
+    PlugInSegmentSafetyOptions options = {};
+    options.struct_size = sizeof(options);
+    options.safety_margin_nm = 0.0;
+    options.check_land = 1;
+    options.allow_gshhs_fallback = 0;
+    options.check_depth = 1;
+    options.minimum_depth_m = tc.minimum_depth_m;
+
+    PlugInSegmentSafetyResult result = {};
+    result.struct_size = sizeof(result);
+    bool ok = PlugIn_CheckSegmentSafety(tc.lat1, tc.lon1, tc.lat2, tc.lon2,
+                                        &options, &result);
+    bool pass = ok &&
+                SegmentSafetyStatusMatchesExpected(result.status,
+                                                   tc.expected_status);
+    if (!pass) ++failures;
+    wxLogMessage(
+        "SEGMENT_SAFETY_DEPTH_TEST case=\"%s\" pass=%d expected=%s "
+        "status=%s source=%s required_depth_m=%.2f has_depth=%d "
+        "min_depth_m=%.2f hit_depth_m=%.2f has_drying=%d "
+        "sample=(%.8f,%.8f) object=\"%s\" depth_object=\"%s\" "
+        "depth_attr=\"%s\" message=\"%s\"",
+        tc.name, pass ? 1 : 0, SegmentSafetyStatusName(tc.expected_status),
+        SegmentSafetyStatusName(result.status),
+        SegmentSafetySourceName(result.source), tc.minimum_depth_m,
+        result.has_depth, result.min_depth_m, result.hit_depth_m,
+        result.has_drying, result.hit_sample_lat, result.hit_sample_lon,
+        result.hit_object, result.depth_source_object,
+        result.depth_source_attribute, result.message);
   }
 
   struct FinalRoutePoint {

@@ -3483,7 +3483,10 @@ enum PlugInSegmentSafetyStatus {
   PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN,
   PI_SEGMENT_SAFETY_UNSAFE_AREA,
   PI_SEGMENT_SAFETY_NO_DATA,
-  PI_SEGMENT_SAFETY_ERROR
+  PI_SEGMENT_SAFETY_ERROR,
+  PI_SEGMENT_SAFETY_DRYING_AREA,
+  PI_SEGMENT_SAFETY_TOO_SHALLOW,
+  PI_SEGMENT_SAFETY_UNKNOWN_DEPTH
 };
 
 enum PlugInSegmentSafetySource {
@@ -3518,6 +3521,8 @@ struct PlugInSegmentSafetyOptions {
   double safety_margin_nm;
   int check_land;
   int allow_gshhs_fallback;
+  int check_depth;
+  double minimum_depth_m;
 };
 
 struct PlugInSegmentSafetyResult {
@@ -3577,6 +3582,13 @@ struct PlugInSegmentSafetyResult {
   int segment_cache_stores;
   int grid_cache_size;
   int grid_cache_evictions;
+  int has_depth;
+  double min_depth_m;
+  double required_depth_m;
+  double hit_depth_m;
+  int has_drying;
+  char depth_source_object[128];
+  char depth_source_attribute[32];
 };
 
 extern "C" DECL_EXP bool PlugIn_CheckSegmentSafety(
