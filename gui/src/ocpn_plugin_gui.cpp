@@ -746,6 +746,11 @@ bool PlugIn_GSHHS_CrossesLand(double lat1, double lon1, double lat2,
 
 namespace {
 
+void CopySegmentSafetyString(char* dest, size_t dest_size, const char* source) {
+  if (!dest || dest_size == 0) return;
+  snprintf(dest, dest_size, "%s", source ? source : "");
+}
+
 void SetSegmentSafetyMessage(PlugInSegmentSafetyResult* result,
                              const char* message) {
   if (!result) return;
@@ -753,8 +758,7 @@ void SetSegmentSafetyMessage(PlugInSegmentSafetyResult* result,
       (int)(offsetof(PlugInSegmentSafetyResult, message) +
             sizeof(result->message)))
     return;
-  strncpy(result->message, message, sizeof(result->message) - 1);
-  result->message[sizeof(result->message) - 1] = '\0';
+  CopySegmentSafetyString(result->message, sizeof(result->message), message);
 }
 
 void InitSegmentSafetyResult(PlugInSegmentSafetyResult* result) {
@@ -1801,12 +1805,10 @@ void CopyCachedSegmentSafetyToResult(const CachedSegmentSafetyResult& cached,
   result->hit_sample_lon = cached.hit_sample_lon;
   result->hit_sample_index = cached.hit_sample_index;
   result->hit_sample_count = cached.hit_sample_count;
-  strncpy(result->chart_path, cached.chart_path,
-          sizeof(result->chart_path) - 1);
-  result->chart_path[sizeof(result->chart_path) - 1] = '\0';
-  strncpy(result->hit_object, cached.hit_object,
-          sizeof(result->hit_object) - 1);
-  result->hit_object[sizeof(result->hit_object) - 1] = '\0';
+  CopySegmentSafetyString(result->chart_path, sizeof(result->chart_path),
+                          cached.chart_path);
+  CopySegmentSafetyString(result->hit_object, sizeof(result->hit_object),
+                          cached.hit_object);
   if (SegmentSafetyResultHas(
           result, offsetof(PlugInSegmentSafetyResult, depth_source_attribute),
           sizeof(result->depth_source_attribute))) {
@@ -1815,13 +1817,12 @@ void CopyCachedSegmentSafetyToResult(const CachedSegmentSafetyResult& cached,
     result->required_depth_m = cached.required_depth_m;
     result->hit_depth_m = cached.hit_depth_m;
     result->has_drying = cached.has_drying;
-    strncpy(result->depth_source_object, cached.depth_source_object,
-            sizeof(result->depth_source_object) - 1);
-    result->depth_source_object[sizeof(result->depth_source_object) - 1] = '\0';
-    strncpy(result->depth_source_attribute, cached.depth_source_attribute,
-            sizeof(result->depth_source_attribute) - 1);
-    result->depth_source_attribute[sizeof(result->depth_source_attribute) - 1] =
-        '\0';
+    CopySegmentSafetyString(result->depth_source_object,
+                            sizeof(result->depth_source_object),
+                            cached.depth_source_object);
+    CopySegmentSafetyString(result->depth_source_attribute,
+                            sizeof(result->depth_source_attribute),
+                            cached.depth_source_attribute);
   }
 }
 
@@ -1846,22 +1847,19 @@ CachedSegmentSafetyResult MakeCachedSegmentSafetyResult(
     cached.required_depth_m = result->required_depth_m;
     cached.hit_depth_m = result->hit_depth_m;
     cached.has_drying = result->has_drying;
-    strncpy(cached.depth_source_object, result->depth_source_object,
-            sizeof(cached.depth_source_object) - 1);
-    cached.depth_source_object[sizeof(cached.depth_source_object) - 1] = '\0';
-    strncpy(cached.depth_source_attribute, result->depth_source_attribute,
-            sizeof(cached.depth_source_attribute) - 1);
-    cached.depth_source_attribute[sizeof(cached.depth_source_attribute) - 1] =
-        '\0';
+    CopySegmentSafetyString(cached.depth_source_object,
+                            sizeof(cached.depth_source_object),
+                            result->depth_source_object);
+    CopySegmentSafetyString(cached.depth_source_attribute,
+                            sizeof(cached.depth_source_attribute),
+                            result->depth_source_attribute);
   }
-  strncpy(cached.message, result->message, sizeof(cached.message) - 1);
-  cached.message[sizeof(cached.message) - 1] = '\0';
-  strncpy(cached.chart_path, result->chart_path,
-          sizeof(cached.chart_path) - 1);
-  cached.chart_path[sizeof(cached.chart_path) - 1] = '\0';
-  strncpy(cached.hit_object, result->hit_object,
-          sizeof(cached.hit_object) - 1);
-  cached.hit_object[sizeof(cached.hit_object) - 1] = '\0';
+  CopySegmentSafetyString(cached.message, sizeof(cached.message),
+                          result->message);
+  CopySegmentSafetyString(cached.chart_path, sizeof(cached.chart_path),
+                          result->chart_path);
+  CopySegmentSafetyString(cached.hit_object, sizeof(cached.hit_object),
+                          result->hit_object);
   return cached;
 }
 
@@ -3313,10 +3311,16 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
       segment_cache_it =
           s_segment_safety_segment_cache.find(segment_cache_key);
   if (segment_cache_it != s_segment_safety_segment_cache.end()) {
-    ++stats.segment_cache_hits;
-    CopyCachedSegmentSafetyToResult(segment_cache_it->second, result);
-    ApplySegmentSafetyStats(result, stats);
-    return true;
+    // Replaying unsafe rejects is conservative.  Replaying SAFE accepts is not
+    // yet used while the experimental chart/grid service is being hardened,
+    // since chart-set and scale changes are not represented by a stable
+    // generation id in this cache key.
+    if (segment_cache_it->second.status != PI_SEGMENT_SAFETY_SAFE) {
+      ++stats.segment_cache_hits;
+      CopyCachedSegmentSafetyToResult(segment_cache_it->second, result);
+      ApplySegmentSafetyStats(result, stats);
+      return true;
+    }
   }
   ++stats.segment_cache_misses;
 
@@ -3359,11 +3363,6 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
         SetSegmentSafetyMessage(
             result,
             "segment is clear using cached open-water chart grid cells");
-        StoreSegmentSafetySegmentCache(
-            segment_cache_key,
-            MakeCachedSegmentSafetyResult(
-                result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR),
-            &stats);
       }
       ApplySegmentSafetyStats(result, stats);
     }
