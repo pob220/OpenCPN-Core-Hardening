@@ -4824,6 +4824,9 @@ void RunSegmentSafetyDiagnostics() {
   const SegmentSafetyDepthDiagnosticCase depth_cases[] = {
       {"Portpatrick offshore low-depth requirement",
        54.825000, -5.210000, 54.875000, -5.210000, 1.0,
+       PI_SEGMENT_SAFETY_SAFE},
+      {"Mull nearshore shallow-depth requirement",
+       54.680000, -4.870000, 54.700000, -4.570000, 1.0,
        PI_SEGMENT_SAFETY_TOO_SHALLOW},
       {"Portpatrick offshore deliberately too-deep requirement",
        54.825000, -5.210000, 54.875000, -5.210000, 250.0,

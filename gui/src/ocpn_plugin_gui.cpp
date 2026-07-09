@@ -41,6 +41,12 @@
 #include <wx/notebook.h>
 #include <wx/string.h>
 #include <wx/window.h>
+#include <wx/filefn.h>
+#include <wx/filename.h>
+#include <wx/jsonreader.h>
+#include <wx/jsonval.h>
+#include <wx/jsonwriter.h>
+#include <wx/wfstream.h>
 
 #include "o_sound/o_sound.h"
 
@@ -988,6 +994,17 @@ double SegmentSafetyOptionMinimumDepthM(
   return 0.0;
 }
 
+bool SegmentSafetyOptionForceAuthoritativeFineValidation(
+    const PlugInSegmentSafetyOptions* options) {
+  if (SegmentSafetyOptionsHas(
+          options,
+          offsetof(PlugInSegmentSafetyOptions,
+                   force_authoritative_fine_validation),
+          sizeof(options->force_authoritative_fine_validation)))
+    return options->force_authoritative_fine_validation != 0;
+  return false;
+}
+
 bool IsSegmentSafetyLandObject(const char* feature_name) {
   return feature_name && !strncmp(feature_name, "LNDARE", 6);
 }
@@ -1305,6 +1322,9 @@ const size_t kMaxSegmentSafetyPointCacheEntries = 250000;
 
 const double kSegmentSafetyGridTileDegrees = 0.05;
 const double kSegmentSafetyGridResolutionDegrees = 0.00125;
+const int kSegmentSafetyCoarseRouteMaskFactor = 4;
+const int kSegmentSafetyPersistentCacheVersion = 1;
+const int kSegmentSafetyRouteMaskAlgorithmVersion = 3;
 const size_t kMaxSegmentSafetyGridTiles = 4096;
 const size_t kMaxSegmentSafetySegmentCacheEntries = 100000;
 long s_segment_safety_grid_cache_evictions = 0;
@@ -1399,6 +1419,8 @@ struct CachedSegmentSafetyRouteMaskTile {
   int unknown_depth_count;
   int no_chart_count;
   int margin_count;
+  bool authoritative_fine;
+  bool persistent_certified_safe;
 
   CachedSegmentSafetyRouteMaskTile()
       : group_index(0),
@@ -1424,13 +1446,76 @@ struct CachedSegmentSafetyRouteMaskTile {
         shallow_count(0),
         unknown_depth_count(0),
         no_chart_count(0),
-        margin_count(0) {
+        margin_count(0),
+        authoritative_fine(false),
+        persistent_certified_safe(false) {
     chart_path[0] = '\0';
   }
 };
 
 std::map<std::string, CachedSegmentSafetyRouteMaskTile>
     s_segment_safety_route_mask_cache;
+
+enum SegmentSafetyCoarseRouteMaskState {
+  SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE = 0,
+  SEGMENT_SAFETY_COARSE_MIXED,
+  SEGMENT_SAFETY_COARSE_NO_CHART,
+  SEGMENT_SAFETY_COARSE_DEPTH_UNPROVEN,
+  SEGMENT_SAFETY_COARSE_MISSING
+};
+
+struct CachedSegmentSafetyCoarseRouteMaskCell {
+  int group_index;
+  long lat_cell;
+  long lon_cell;
+  double min_lat;
+  double min_lon;
+  double degrees;
+  bool check_depth;
+  double minimum_depth_m;
+  double safety_margin_nm;
+  SegmentSafetyCoarseRouteMaskState state;
+  uint32_t block_summary_flags;
+  int fine_tiles_checked;
+  int fine_tiles_clear;
+  int fine_tiles_mixed;
+  PlugInSegmentSafetySource source;
+
+  CachedSegmentSafetyCoarseRouteMaskCell()
+      : group_index(0),
+        lat_cell(0),
+        lon_cell(0),
+        min_lat(0.0),
+        min_lon(0.0),
+        degrees(kSegmentSafetyGridTileDegrees *
+                kSegmentSafetyCoarseRouteMaskFactor),
+        check_depth(false),
+        minimum_depth_m(0.0),
+        safety_margin_nm(0.0),
+        state(SEGMENT_SAFETY_COARSE_MISSING),
+        block_summary_flags(SEGMENT_SAFETY_ROUTE_NEEDS_TILE),
+        fine_tiles_checked(0),
+        fine_tiles_clear(0),
+        fine_tiles_mixed(0),
+        source(PI_SEGMENT_SAFETY_SOURCE_NONE) {}
+};
+
+std::map<std::string, CachedSegmentSafetyCoarseRouteMaskCell>
+    s_segment_safety_coarse_route_mask_cache;
+
+std::map<std::string, CachedSegmentSafetyCoarseRouteMaskCell>
+    s_segment_safety_persistent_certified_safe_cache;
+bool s_segment_safety_persistent_cache_enabled = false;
+bool s_segment_safety_persistent_cache_loaded = false;
+bool s_segment_safety_persistent_cache_dirty = false;
+wxString s_segment_safety_chart_identity;
+long s_segment_safety_persistent_entries_loaded = 0;
+long s_segment_safety_persistent_entries_saved = 0;
+long s_segment_safety_persistent_entries_used = 0;
+long s_segment_safety_persistent_entries_ignored = 0;
+long s_segment_safety_persistent_stale_ignored = 0;
+long s_segment_safety_persistent_malformed_ignored = 0;
+long s_segment_safety_persistent_entries_stored = 0;
 
 int SegmentSafetyCurrentGroupIndex();
 
@@ -1444,6 +1529,21 @@ std::string SegmentSafetyRouteMaskKey(long lat_tile, long lon_tile,
   snprintf(buf, sizeof(buf), "%d:%ld:%ld:r%.8f:m%ld:d%d:%ld",
            SegmentSafetyCurrentGroupIndex(), lat_tile, lon_tile,
            kSegmentSafetyGridResolutionDegrees, margin_mm,
+           check_depth ? 1 : 0, depth_cm);
+  return std::string(buf);
+}
+
+std::string SegmentSafetyCoarseRouteMaskKey(long lat_cell, long lon_cell,
+                                            double safety_margin_nm,
+                                            bool check_depth,
+                                            double minimum_depth_m) {
+  long margin_mm = lround(wxMax(0.0, safety_margin_nm) * 1000.0);
+  long depth_cm = check_depth ? lround(wxMax(0.0, minimum_depth_m) * 100.0) : 0;
+  char buf[160];
+  snprintf(buf, sizeof(buf), "%d:%ld:%ld:cr%.8f:f%d:m%ld:d%d:%ld",
+           SegmentSafetyCurrentGroupIndex(), lat_cell, lon_cell,
+           kSegmentSafetyGridTileDegrees * kSegmentSafetyCoarseRouteMaskFactor,
+           kSegmentSafetyCoarseRouteMaskFactor, margin_mm,
            check_depth ? 1 : 0, depth_cm);
   return std::string(buf);
 }
@@ -1533,6 +1633,15 @@ struct SegmentSafetyCoreStats {
   int segment_cache_misses;
   int segment_cache_stores;
   int unexpected_tile_builds;
+  int coarse_cells_checked;
+  int coarse_certified_safe_hits;
+  int coarse_mixed_fallbacks;
+  int coarse_unknown_fallbacks;
+  int coarse_no_chart;
+  int coarse_depth_unproven;
+  int coarse_missing;
+  int fine_tiles_avoided;
+  int coarse_build_ms;
   int unexpected_lat_tile;
   int unexpected_lon_tile;
   double unexpected_tile_min_lat;
@@ -1571,6 +1680,15 @@ struct SegmentSafetyCoreStats {
         segment_cache_misses(0),
         segment_cache_stores(0),
         unexpected_tile_builds(0),
+        coarse_cells_checked(0),
+        coarse_certified_safe_hits(0),
+        coarse_mixed_fallbacks(0),
+        coarse_unknown_fallbacks(0),
+        coarse_no_chart(0),
+        coarse_depth_unproven(0),
+        coarse_missing(0),
+        fine_tiles_avoided(0),
+        coarse_build_ms(0),
         unexpected_lat_tile(0),
         unexpected_lon_tile(0),
         unexpected_tile_min_lat(0.0),
@@ -1863,6 +1981,292 @@ int SegmentSafetyCurrentGroupIndex() {
                                          : (gFrame ? gFrame->GetPrimaryCanvas()
                                                    : NULL);
   return canvas ? canvas->m_groupIndex : 0;
+}
+
+void SegmentSafetyHashAdd(uint64_t* hash, const wxString& text) {
+  if (!hash) return;
+  wxCharBuffer utf8 = text.ToUTF8();
+  const char* data = utf8.data() ? utf8.data() : "";
+  while (*data) {
+    *hash ^= (unsigned char)*data++;
+    *hash *= 1099511628211ULL;
+  }
+  *hash ^= (unsigned char)'|';
+  *hash *= 1099511628211ULL;
+}
+
+wxString SegmentSafetyChartIdentity() {
+  if (!ChartData) return wxEmptyString;
+
+  uint64_t hash = 1469598103934665603ULL;
+  SegmentSafetyHashAdd(&hash, ChartData->GetDBFileName());
+  SegmentSafetyHashAdd(&hash, wxString::Format("dbv=%d", ChartData->GetVersion()));
+  SegmentSafetyHashAdd(&hash, wxString::Format("group=%d", SegmentSafetyCurrentGroupIndex()));
+  int entries = ChartData->GetChartTableEntries();
+  SegmentSafetyHashAdd(&hash, wxString::Format("entries=%d", entries));
+  for (int i = 0; i < entries; ++i) {
+    const ChartTableEntry& cte = ChartData->GetChartTableEntry(i);
+    SegmentSafetyHashAdd(&hash, wxString::FromUTF8(cte.GetFullPath().c_str()));
+    SegmentSafetyHashAdd(
+        &hash, wxString::Format("t=%ld:e=%ld:scale=%d:type=%d:family=%d",
+                                (long)cte.GetFileTime(),
+                                (long)cte.GetChartEditionDate(),
+                                cte.GetScale(), cte.GetChartType(),
+                                cte.GetChartFamily()));
+    const std::vector<int>& groups = cte.GetGroupArray();
+    for (size_t j = 0; j < groups.size(); ++j)
+      SegmentSafetyHashAdd(&hash, wxString::Format("g%d", groups[j]));
+  }
+  return wxString::Format("ocpn-chartdb-v1-%016llx",
+                          (unsigned long long)hash);
+}
+
+void SegmentSafetyRefreshPersistentChartIdentity() {
+  if (!wxThread::IsMain()) return;
+  wxString identity = SegmentSafetyChartIdentity();
+  wxMutexLocker lock(s_segment_safety_cache_mutex);
+  if (identity != s_segment_safety_chart_identity) {
+    wxLogMessage("WR_CERT_SAFE_CACHE chart_identity old=\"%s\" new=\"%s\"",
+                 s_segment_safety_chart_identity, identity);
+    s_segment_safety_chart_identity = identity;
+  }
+}
+
+wxString SegmentSafetyPersistentCachePath() {
+  wxString base = g_Platform ? g_Platform->GetPrivateDataDir()
+                             : *GetpPrivateApplicationDataLocation();
+  wxFileName dir(base, "");
+  dir.AppendDir("weather_routing");
+  wxFileName::Mkdir(dir.GetPath(), wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+  return dir.GetPathWithSep() + "chart_safety_certified_cache.json";
+}
+
+std::string SegmentSafetyPersistentProofKey(
+    long lat_cell, long lon_cell, double safety_margin_nm, bool check_depth,
+    double minimum_depth_m) {
+  wxMutexLocker lock(s_segment_safety_cache_mutex);
+  if (s_segment_safety_chart_identity.IsEmpty()) return std::string();
+  return (s_segment_safety_chart_identity + ":" +
+          wxString::FromUTF8(SegmentSafetyCoarseRouteMaskKey(
+                                 lat_cell, lon_cell, safety_margin_nm,
+                                 check_depth, minimum_depth_m)
+                                 .c_str()))
+      .ToStdString();
+}
+
+bool SegmentSafetyPersistentCacheLoadLocked(const wxString& path) {
+  if (s_segment_safety_persistent_cache_loaded) return true;
+  s_segment_safety_persistent_cache_loaded = true;
+  s_segment_safety_persistent_certified_safe_cache.clear();
+  s_segment_safety_persistent_entries_loaded = 0;
+  s_segment_safety_persistent_entries_ignored = 0;
+  s_segment_safety_persistent_stale_ignored = 0;
+  s_segment_safety_persistent_malformed_ignored = 0;
+
+  if (!wxFileExists(path)) {
+    wxLogMessage(
+        "WR_CERT_SAFE_CACHE load enabled=1 entries_loaded=0 "
+        "cache_file_path=\"%s\" reason=missing",
+        path);
+    return true;
+  }
+
+  wxFileInputStream input(path);
+  if (!input.IsOk()) {
+    ++s_segment_safety_persistent_malformed_ignored;
+    wxLogMessage(
+        "WR_CERT_SAFE_CACHE load enabled=1 cache_malformed_ignored=1 "
+        "cache_file_path=\"%s\" reason=open_failed",
+        path);
+    return false;
+  }
+
+  wxJSONReader reader;
+  wxJSONValue root;
+  int errors = reader.Parse(input, &root);
+  if (errors || !root.IsObject() ||
+      root.Get("format_version", 0).AsInt() !=
+          kSegmentSafetyPersistentCacheVersion ||
+      root.Get("route_mask_algorithm_version", 0).AsInt() !=
+          kSegmentSafetyRouteMaskAlgorithmVersion ||
+      !root.HasMember("entries") || !root["entries"].IsArray()) {
+    ++s_segment_safety_persistent_malformed_ignored;
+    wxLogMessage(
+        "WR_CERT_SAFE_CACHE load enabled=1 cache_malformed_ignored=1 "
+        "cache_file_path=\"%s\" reason=parse_or_version errors=%d",
+        path, errors);
+    return false;
+  }
+
+  wxJSONValue entries = root["entries"];
+  for (int i = 0; i < entries.Size(); ++i) {
+    wxJSONValue entry = entries[i];
+    if (!entry.IsObject() || !entry.HasMember("key") ||
+        !entry.Get("certified_safe", false).AsBool()) {
+      ++s_segment_safety_persistent_entries_ignored;
+      continue;
+    }
+    CachedSegmentSafetyCoarseRouteMaskCell cell;
+    cell.group_index = entry.Get("group_index", 0).AsInt();
+    cell.lat_cell = entry.Get("lat_cell", 0).AsInt();
+    cell.lon_cell = entry.Get("lon_cell", 0).AsInt();
+    cell.degrees = entry.Get("coarse_degrees", cell.degrees).AsDouble();
+    cell.min_lat = entry.Get("min_lat", cell.lat_cell * cell.degrees).AsDouble();
+    cell.min_lon = entry.Get("min_lon", cell.lon_cell * cell.degrees).AsDouble();
+    cell.check_depth = entry.Get("check_depth", false).AsBool();
+    cell.minimum_depth_m = entry.Get("minimum_depth_m", 0.0).AsDouble();
+    cell.safety_margin_nm = entry.Get("safety_margin_nm", 0.0).AsDouble();
+    cell.state = SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE;
+    cell.block_summary_flags = SEGMENT_SAFETY_ROUTE_CLEAR;
+    cell.fine_tiles_checked =
+        kSegmentSafetyCoarseRouteMaskFactor * kSegmentSafetyCoarseRouteMaskFactor;
+    cell.fine_tiles_clear = cell.fine_tiles_checked;
+    cell.fine_tiles_mixed = 0;
+    cell.source = (PlugInSegmentSafetySource)entry.Get(
+        "source", (int)PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART)
+                      .AsInt();
+    wxString key = entry.Get("key", "").AsString();
+    if (key.IsEmpty()) {
+      ++s_segment_safety_persistent_entries_ignored;
+      continue;
+    }
+    s_segment_safety_persistent_certified_safe_cache[key.ToStdString()] = cell;
+    ++s_segment_safety_persistent_entries_loaded;
+  }
+
+  wxLogMessage(
+      "WR_CERT_SAFE_CACHE load enabled=1 entries_loaded=%ld entries_ignored=%ld "
+      "cache_malformed_ignored=%ld cache_file_path=\"%s\"",
+      s_segment_safety_persistent_entries_loaded,
+      s_segment_safety_persistent_entries_ignored,
+      s_segment_safety_persistent_malformed_ignored, path);
+  return true;
+}
+
+void SegmentSafetyPersistentCacheEnsureLoaded() {
+  if (!s_segment_safety_persistent_cache_enabled) return;
+  wxString path = SegmentSafetyPersistentCachePath();
+  wxMutexLocker lock(s_segment_safety_cache_mutex);
+  SegmentSafetyPersistentCacheLoadLocked(path);
+}
+
+bool SegmentSafetyPersistentCacheSave() {
+  wxString path = SegmentSafetyPersistentCachePath();
+  wxMutexLocker lock(s_segment_safety_cache_mutex);
+  if (!s_segment_safety_persistent_cache_enabled) {
+    wxLogMessage("WR_CERT_SAFE_CACHE save enabled=0 cache_file_path=\"%s\"",
+                 path);
+    return true;
+  }
+  if (!s_segment_safety_persistent_cache_dirty) return true;
+
+  wxJSONValue root;
+  root["format_version"] = kSegmentSafetyPersistentCacheVersion;
+  root["route_mask_algorithm_version"] =
+      kSegmentSafetyRouteMaskAlgorithmVersion;
+  root["updated_utc"] = wxDateTime::UNow().ToUTC().FormatISOCombined('T');
+  wxJSONValue entries;
+  long saved = 0;
+  for (std::map<std::string, CachedSegmentSafetyCoarseRouteMaskCell>::const_iterator
+           it = s_segment_safety_persistent_certified_safe_cache.begin();
+       it != s_segment_safety_persistent_certified_safe_cache.end(); ++it) {
+    const CachedSegmentSafetyCoarseRouteMaskCell& cell = it->second;
+    if (cell.state != SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE) continue;
+    wxJSONValue entry;
+    entry["key"] = wxString::FromUTF8(it->first.c_str());
+    entry["certified_safe"] = true;
+    entry["group_index"] = cell.group_index;
+    entry["lat_cell"] = (wxInt64)cell.lat_cell;
+    entry["lon_cell"] = (wxInt64)cell.lon_cell;
+    entry["min_lat"] = cell.min_lat;
+    entry["min_lon"] = cell.min_lon;
+    entry["coarse_degrees"] = cell.degrees;
+    entry["coarse_factor"] = kSegmentSafetyCoarseRouteMaskFactor;
+    entry["grid_resolution_degrees"] = kSegmentSafetyGridResolutionDegrees;
+    entry["safety_margin_nm"] = cell.safety_margin_nm;
+    entry["check_depth"] = cell.check_depth;
+    entry["minimum_depth_m"] = cell.minimum_depth_m;
+    entry["source"] = (int)cell.source;
+    entries.Append(entry);
+    ++saved;
+  }
+  root["entries"] = entries;
+
+  wxFileName::Mkdir(wxFileName(path).GetPath(), wxS_DIR_DEFAULT,
+                    wxPATH_MKDIR_FULL);
+  wxString tmp_path = path + ".tmp";
+  wxRemoveFile(tmp_path);
+  bool write_ok = false;
+  {
+    wxFileOutputStream output(tmp_path);
+    if (output.IsOk()) {
+      wxJSONWriter writer(wxJSONWRITER_STYLED);
+      writer.Write(root, output);
+      write_ok = output.IsOk();
+    }
+  }
+  if (!write_ok) {
+    wxLogMessage(
+        "WR_CERT_SAFE_CACHE save failed cache_file_path=\"%s\" entries=%ld",
+        path, saved);
+    wxRemoveFile(tmp_path);
+    return false;
+  }
+  if (!wxRenameFile(tmp_path, path, true)) {
+    wxLogMessage(
+        "WR_CERT_SAFE_CACHE save failed cache_file_path=\"%s\" entries=%ld "
+        "reason=rename_failed",
+        path, saved);
+    wxRemoveFile(tmp_path);
+    return false;
+  }
+  s_segment_safety_persistent_entries_saved = saved;
+  s_segment_safety_persistent_cache_dirty = false;
+  wxLogMessage(
+      "WR_CERT_SAFE_CACHE save enabled=1 entries_saved=%ld cache_file_path=\"%s\" "
+      "cache_file_size=%llu",
+      saved, path, (unsigned long long)wxFileName(path).GetSize().GetValue());
+  return true;
+}
+
+bool SegmentSafetyPersistentLookupCertifiedSafe(
+    long lat_cell, long lon_cell, double safety_margin_nm, bool check_depth,
+    double minimum_depth_m, CachedSegmentSafetyCoarseRouteMaskCell* cell) {
+  if (!s_segment_safety_persistent_cache_enabled) return false;
+  SegmentSafetyPersistentCacheEnsureLoaded();
+  std::string key = SegmentSafetyPersistentProofKey(
+      lat_cell, lon_cell, safety_margin_nm, check_depth, minimum_depth_m);
+  if (key.empty()) return false;
+  wxMutexLocker lock(s_segment_safety_cache_mutex);
+  std::map<std::string, CachedSegmentSafetyCoarseRouteMaskCell>::const_iterator
+      it = s_segment_safety_persistent_certified_safe_cache.find(key);
+  if (it == s_segment_safety_persistent_certified_safe_cache.end()) {
+    ++s_segment_safety_persistent_stale_ignored;
+    return false;
+  }
+  if (cell) *cell = it->second;
+  ++s_segment_safety_persistent_entries_used;
+  wxLogMessage(
+      "WR_CERT_SAFE_CACHE use cache_used_as_proof=1 cache_key_match=1 "
+      "lat_cell=%ld lon_cell=%ld entries_used=%ld fine_tiles_avoided=%d",
+      lat_cell, lon_cell, s_segment_safety_persistent_entries_used,
+      kSegmentSafetyCoarseRouteMaskFactor * kSegmentSafetyCoarseRouteMaskFactor);
+  return true;
+}
+
+void SegmentSafetyPersistentStoreCertifiedSafe(
+    const CachedSegmentSafetyCoarseRouteMaskCell& cell) {
+  if (!s_segment_safety_persistent_cache_enabled ||
+      cell.state != SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE)
+    return;
+  std::string key = SegmentSafetyPersistentProofKey(
+      cell.lat_cell, cell.lon_cell, cell.safety_margin_nm, cell.check_depth,
+      cell.minimum_depth_m);
+  if (key.empty()) return;
+  wxMutexLocker lock(s_segment_safety_cache_mutex);
+  s_segment_safety_persistent_certified_safe_cache[key] = cell;
+  s_segment_safety_persistent_cache_dirty = true;
+  ++s_segment_safety_persistent_entries_stored;
 }
 
 std::string SegmentSafetyPointCacheKey(double lat, double lon) {
@@ -2208,6 +2612,200 @@ bool LookupSegmentSafetyRouteMaskTile(
   return true;
 }
 
+void StoreSegmentSafetyCoarseRouteMaskCell(
+    const std::string& key,
+    const CachedSegmentSafetyCoarseRouteMaskCell& cell) {
+  wxMutexLocker lock(s_segment_safety_cache_mutex);
+  if (s_segment_safety_coarse_route_mask_cache.size() >=
+      kMaxSegmentSafetyGridTiles)
+    s_segment_safety_coarse_route_mask_cache.clear();
+  s_segment_safety_coarse_route_mask_cache[key] = cell;
+}
+
+bool LookupSegmentSafetyCoarseRouteMaskCell(
+    const std::string& key, CachedSegmentSafetyCoarseRouteMaskCell* cell) {
+  wxMutexLocker lock(s_segment_safety_cache_mutex);
+  std::map<std::string, CachedSegmentSafetyCoarseRouteMaskCell>::const_iterator
+      it = s_segment_safety_coarse_route_mask_cache.find(key);
+  if (it == s_segment_safety_coarse_route_mask_cache.end()) return false;
+  if (cell) *cell = it->second;
+  return true;
+}
+
+bool BuildSegmentSafetyCoarseRouteMaskCellFromFine(
+    long coarse_lat_cell, long coarse_lon_cell, double safety_margin_nm,
+    bool check_depth, double minimum_depth_m,
+    CachedSegmentSafetyCoarseRouteMaskCell* cell,
+    SegmentSafetyCoreStats* stats) {
+  if (!cell) return false;
+
+  wxStopWatch timer;
+  CachedSegmentSafetyCoarseRouteMaskCell coarse;
+  coarse.group_index = SegmentSafetyCurrentGroupIndex();
+  coarse.lat_cell = coarse_lat_cell;
+  coarse.lon_cell = coarse_lon_cell;
+  coarse.min_lat = coarse_lat_cell * coarse.degrees;
+  coarse.min_lon = coarse_lon_cell * coarse.degrees;
+  coarse.check_depth = check_depth;
+  coarse.minimum_depth_m = minimum_depth_m;
+  coarse.safety_margin_nm = safety_margin_nm;
+  coarse.block_summary_flags = SEGMENT_SAFETY_ROUTE_CLEAR;
+
+  bool missing = false;
+  bool all_clear = true;
+  long start_lat_tile = coarse_lat_cell * kSegmentSafetyCoarseRouteMaskFactor;
+  long start_lon_tile = coarse_lon_cell * kSegmentSafetyCoarseRouteMaskFactor;
+
+  for (int dlat = 0; dlat < kSegmentSafetyCoarseRouteMaskFactor; ++dlat) {
+    for (int dlon = 0; dlon < kSegmentSafetyCoarseRouteMaskFactor; ++dlon) {
+      long fine_lat_tile = start_lat_tile + dlat;
+      long fine_lon_tile = start_lon_tile + dlon;
+      std::string mask_key = SegmentSafetyRouteMaskKey(
+          fine_lat_tile, fine_lon_tile, safety_margin_nm, check_depth,
+          minimum_depth_m);
+      CachedSegmentSafetyRouteMaskTile mask;
+      if (!LookupSegmentSafetyRouteMaskTile(mask_key, &mask) || !mask.built ||
+          mask.block_flags.empty()) {
+        missing = true;
+        continue;
+      }
+
+      ++coarse.fine_tiles_checked;
+      if (coarse.source == PI_SEGMENT_SAFETY_SOURCE_NONE)
+        coarse.source = mask.source;
+      coarse.block_summary_flags |= mask.block_summary_flags;
+      bool tile_clear =
+          mask.block_summary_flags == SEGMENT_SAFETY_ROUTE_CLEAR &&
+          mask.clear_count == mask.rows * mask.cols;
+      if (tile_clear) {
+        ++coarse.fine_tiles_clear;
+      } else {
+        ++coarse.fine_tiles_mixed;
+        all_clear = false;
+      }
+    }
+  }
+
+  if (missing) {
+    coarse.state = SEGMENT_SAFETY_COARSE_MISSING;
+    coarse.block_summary_flags |= SEGMENT_SAFETY_ROUTE_NEEDS_TILE;
+    return false;
+  }
+
+  if (all_clear) {
+    coarse.state = SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE;
+  } else if (coarse.block_summary_flags &
+             SEGMENT_SAFETY_ROUTE_BLOCK_NO_CHART) {
+    coarse.state = SEGMENT_SAFETY_COARSE_NO_CHART;
+  } else if (coarse.block_summary_flags &
+             SEGMENT_SAFETY_ROUTE_BLOCK_UNKNOWN_DEPTH) {
+    coarse.state = SEGMENT_SAFETY_COARSE_DEPTH_UNPROVEN;
+  } else {
+    coarse.state = SEGMENT_SAFETY_COARSE_MIXED;
+  }
+
+  if (stats) stats->coarse_build_ms += timer.Time();
+  *cell = coarse;
+  return true;
+}
+
+bool EnsureSegmentSafetyCoarseRouteMaskCell(
+    long coarse_lat_cell, long coarse_lon_cell, double safety_margin_nm,
+    bool check_depth, double minimum_depth_m,
+    CachedSegmentSafetyCoarseRouteMaskCell* cell,
+    SegmentSafetyCoreStats* stats) {
+  std::string key = SegmentSafetyCoarseRouteMaskKey(
+      coarse_lat_cell, coarse_lon_cell, safety_margin_nm, check_depth,
+      minimum_depth_m);
+  if (LookupSegmentSafetyCoarseRouteMaskCell(key, cell)) return true;
+
+  CachedSegmentSafetyCoarseRouteMaskCell persistent;
+  if (SegmentSafetyPersistentLookupCertifiedSafe(
+          coarse_lat_cell, coarse_lon_cell, safety_margin_nm, check_depth,
+          minimum_depth_m, &persistent)) {
+    StoreSegmentSafetyCoarseRouteMaskCell(key, persistent);
+    if (cell) *cell = persistent;
+    return true;
+  }
+
+  CachedSegmentSafetyCoarseRouteMaskCell built;
+  if (!BuildSegmentSafetyCoarseRouteMaskCellFromFine(
+          coarse_lat_cell, coarse_lon_cell, safety_margin_nm, check_depth,
+          minimum_depth_m, &built, stats))
+    return false;
+  StoreSegmentSafetyCoarseRouteMaskCell(key, built);
+  SegmentSafetyPersistentStoreCertifiedSafe(built);
+  if (cell) *cell = built;
+  return true;
+}
+
+bool LookupCertifiedSegmentSafetyCoarseRouteMaskCellForFineTile(
+    long lat_tile, long lon_tile, double safety_margin_nm, bool check_depth,
+    double minimum_depth_m, CachedSegmentSafetyCoarseRouteMaskCell* cell) {
+  long coarse_lat_cell =
+      (long)floor((double)lat_tile / kSegmentSafetyCoarseRouteMaskFactor);
+  long coarse_lon_cell =
+      (long)floor((double)lon_tile / kSegmentSafetyCoarseRouteMaskFactor);
+  std::string key = SegmentSafetyCoarseRouteMaskKey(
+      coarse_lat_cell, coarse_lon_cell, safety_margin_nm, check_depth,
+      minimum_depth_m);
+
+  CachedSegmentSafetyCoarseRouteMaskCell coarse;
+  if (LookupSegmentSafetyCoarseRouteMaskCell(key, &coarse)) {
+    if (coarse.state == SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE) {
+      if (cell) *cell = coarse;
+      return true;
+    }
+  }
+  if (SegmentSafetyPersistentLookupCertifiedSafe(
+          coarse_lat_cell, coarse_lon_cell, safety_margin_nm, check_depth,
+          minimum_depth_m, &coarse)) {
+    StoreSegmentSafetyCoarseRouteMaskCell(key, coarse);
+    if (coarse.state == SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE) {
+      if (cell) *cell = coarse;
+      return true;
+    }
+  }
+  return false;
+}
+
+CachedSegmentSafetyRouteMaskTile
+BuildPersistentCertifiedSafeRouteMaskTile(
+    long lat_tile, long lon_tile, double safety_margin_nm, bool check_depth,
+    double minimum_depth_m,
+    const CachedSegmentSafetyCoarseRouteMaskCell& coarse) {
+  CachedSegmentSafetyRouteMaskTile mask;
+  mask.group_index = SegmentSafetyCurrentGroupIndex();
+  mask.lat_tile = lat_tile;
+  mask.lon_tile = lon_tile;
+  mask.min_lat = lat_tile * kSegmentSafetyGridTileDegrees;
+  mask.min_lon = lon_tile * kSegmentSafetyGridTileDegrees;
+  mask.resolution = kSegmentSafetyGridResolutionDegrees;
+  mask.rows = (int)lround(kSegmentSafetyGridTileDegrees /
+                          kSegmentSafetyGridResolutionDegrees) +
+              1;
+  mask.cols = mask.rows;
+  mask.check_depth = check_depth;
+  mask.minimum_depth_m = minimum_depth_m;
+  mask.safety_margin_nm = safety_margin_nm;
+  mask.margin_cells = 0;
+  mask.built = true;
+  mask.source = coarse.source != PI_SEGMENT_SAFETY_SOURCE_NONE
+                    ? coarse.source
+                    : PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART;
+  mask.chart_db_index = -1;
+  mask.chart_scale = -1;
+  snprintf(mask.chart_path, sizeof(mask.chart_path),
+           "persistent certified safe coarse cell");
+  mask.block_flags.assign(mask.rows * mask.cols,
+                          SEGMENT_SAFETY_ROUTE_CLEAR);
+  mask.block_summary_flags = SEGMENT_SAFETY_ROUTE_CLEAR;
+  mask.clear_count = mask.rows * mask.cols;
+  mask.authoritative_fine = false;
+  mask.persistent_certified_safe = true;
+  return mask;
+}
+
 uint16_t SegmentSafetyRouteMaskFlagsForBaseCell(
     const CachedPointSafetyGridTile& tile, int cell_index, bool check_depth,
     double minimum_depth_m) {
@@ -2317,6 +2915,8 @@ CachedSegmentSafetyRouteMaskTile BuildSegmentSafetyRouteMaskTile(
   mask.minimum_depth_m = minimum_depth_m;
   mask.safety_margin_nm = safety_margin_nm;
   mask.built = true;
+  mask.authoritative_fine = true;
+  mask.persistent_certified_safe = false;
   mask.source = base_tile.source;
   mask.chart_db_index = base_tile.chart_db_index;
   mask.chart_scale = base_tile.chart_scale;
@@ -2466,11 +3066,14 @@ bool EnsureSegmentSafetyRouteMaskTile(long lat_tile, long lon_tile,
                                       bool check_depth,
                                       double minimum_depth_m,
                                       SegmentSafetyCoreStats* stats,
-                                      bool* built = NULL) {
+                                      bool* built = NULL,
+                                      bool force_authoritative_fine = false) {
   if (built) *built = false;
   std::string key = SegmentSafetyRouteMaskKey(
       lat_tile, lon_tile, safety_margin_nm, check_depth, minimum_depth_m);
-  if (LookupSegmentSafetyRouteMaskTile(key, NULL)) {
+  CachedSegmentSafetyRouteMaskTile existing;
+  if (LookupSegmentSafetyRouteMaskTile(key, &existing) &&
+      (!force_authoritative_fine || existing.authoritative_fine)) {
     if (stats) ++stats->grid_cache_hits;
     return true;
   }
@@ -3073,6 +3676,7 @@ bool SegmentSafetyGridCellAt(long lat_cell, long lon_cell,
 bool SegmentSafetyRouteMaskCellAt(long lat_cell, long lon_cell,
                                   double safety_margin_nm, bool check_depth,
                                   double minimum_depth_m,
+                                  bool force_authoritative_fine,
                                   SegmentSafetyCoreStats* stats,
                                   PlugInSegmentSafetyResult* result,
                                   uint16_t* block_flags,
@@ -3085,14 +3689,17 @@ bool SegmentSafetyRouteMaskCellAt(long lat_cell, long lon_cell,
   std::string key = SegmentSafetyRouteMaskKey(
       lat_tile, lon_tile, safety_margin_nm, check_depth, minimum_depth_m);
   CachedSegmentSafetyRouteMaskTile mask;
-  if (!LookupSegmentSafetyRouteMaskTile(key, &mask)) {
+  if (!LookupSegmentSafetyRouteMaskTile(key, &mask) ||
+      (force_authoritative_fine && !mask.authoritative_fine)) {
     bool built = false;
     if (!EnsureSegmentSafetyRouteMaskTile(lat_tile, lon_tile,
                                           safety_margin_nm, check_depth,
-                                          minimum_depth_m, stats, &built))
+                                          minimum_depth_m, stats, &built,
+                                          force_authoritative_fine))
       return false;
     if (built) RecordUnexpectedSegmentSafetyTileBuild(stats, lat_tile, lon_tile);
     if (!LookupSegmentSafetyRouteMaskTile(key, &mask)) return false;
+    if (force_authoritative_fine && !mask.authoritative_fine) return false;
   } else if (stats) {
     ++stats->grid_cache_hits;
   }
@@ -3183,13 +3790,107 @@ void SegmentSafetySetRouteMaskHitResult(PlugInSegmentSafetyResult* result,
   result->hit_object[sizeof(result->hit_object) - 1] = '\0';
 }
 
+bool SegmentSafetyCoarseRouteMaskCertifiedSafeCheck(
+    double lat1, double lon1, double lat2, double lon2,
+    double safety_margin_nm, bool check_depth, double minimum_depth_m,
+    PlugInSegmentSafetyResult* result, SegmentSafetyCoreStats* stats,
+    bool* answered) {
+  if (answered) *answered = false;
+
+  double coarse_degrees =
+      kSegmentSafetyGridTileDegrees * kSegmentSafetyCoarseRouteMaskFactor;
+  long min_lat_cell =
+      (long)floor(wxMin(lat1, lat2) / coarse_degrees);
+  long max_lat_cell =
+      (long)floor(wxMax(lat1, lat2) / coarse_degrees);
+  long min_lon_cell =
+      (long)floor(wxMin(lon1, lon2) / coarse_degrees);
+  long max_lon_cell =
+      (long)floor(wxMax(lon1, lon2) / coarse_degrees);
+
+  long lat_count = max_lat_cell - min_lat_cell + 1;
+  long lon_count = max_lon_cell - min_lon_cell + 1;
+  long coarse_count =
+      lat_count > 0 && lon_count > 0 ? lat_count * lon_count : 0;
+  const long max_coarse_bbox_cells = 256;
+  if (coarse_count <= 0 || coarse_count > max_coarse_bbox_cells) {
+    if (stats) ++stats->coarse_unknown_fallbacks;
+    return false;
+  }
+
+  PlugInSegmentSafetySource first_source = PI_SEGMENT_SAFETY_SOURCE_NONE;
+  for (long lat_cell = min_lat_cell; lat_cell <= max_lat_cell; ++lat_cell) {
+    for (long lon_cell = min_lon_cell; lon_cell <= max_lon_cell; ++lon_cell) {
+      CachedSegmentSafetyCoarseRouteMaskCell coarse;
+      if (stats) ++stats->coarse_cells_checked;
+      if (!EnsureSegmentSafetyCoarseRouteMaskCell(
+              lat_cell, lon_cell, safety_margin_nm, check_depth,
+              minimum_depth_m, &coarse, stats)) {
+        if (stats) ++stats->coarse_missing;
+        return false;
+      }
+
+      if (coarse.source != PI_SEGMENT_SAFETY_SOURCE_NONE &&
+          first_source == PI_SEGMENT_SAFETY_SOURCE_NONE)
+        first_source = coarse.source;
+
+      if (coarse.state != SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE) {
+        if (stats) {
+          if (coarse.state == SEGMENT_SAFETY_COARSE_NO_CHART)
+            ++stats->coarse_no_chart;
+          else if (coarse.state == SEGMENT_SAFETY_COARSE_DEPTH_UNPROVEN)
+            ++stats->coarse_depth_unproven;
+          else
+            ++stats->coarse_mixed_fallbacks;
+        }
+        return false;
+      }
+    }
+  }
+
+  if (answered) *answered = true;
+  if (stats) {
+    ++stats->coarse_certified_safe_hits;
+    stats->fine_tiles_avoided +=
+        (int)(coarse_count * kSegmentSafetyCoarseRouteMaskFactor *
+              kSegmentSafetyCoarseRouteMaskFactor);
+  }
+  SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_SAFE);
+  SetSegmentSafetySource(
+      result, first_source != PI_SEGMENT_SAFETY_SOURCE_NONE
+                  ? first_source
+                  : PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART);
+  SetSegmentSafetyDiagnosticReason(
+      result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR);
+  SetSegmentSafetyMessage(result, "coarse route mask certified clear");
+  return true;
+}
+
 bool SegmentSafetyRouteMaskTraversalCheck(
     double lat1, double lon1, double lat2, double lon2,
     double safety_margin_nm, bool check_depth, double minimum_depth_m,
+    bool force_authoritative_fine,
     PlugInSegmentSafetyResult* result, bool* chart_data_available,
     SegmentSafetyCoreStats* stats, bool* open_water_shortcut,
     bool* answered) {
   if (answered) *answered = false;
+
+  bool coarse_answered = false;
+  if (!force_authoritative_fine &&
+      SegmentSafetyCoarseRouteMaskCertifiedSafeCheck(
+          lat1, lon1, lat2, lon2, safety_margin_nm, check_depth,
+          minimum_depth_m, result, stats, &coarse_answered)) {
+    if (chart_data_available) *chart_data_available = true;
+    if (open_water_shortcut) *open_water_shortcut = true;
+    if (answered) *answered = true;
+    return false;
+  }
+  if (!force_authoritative_fine && coarse_answered) {
+    if (chart_data_available) *chart_data_available = true;
+    if (open_water_shortcut) *open_water_shortcut = true;
+    if (answered) *answered = true;
+    return false;
+  }
 
   long y0 = lround(lat1 / kSegmentSafetyGridResolutionDegrees);
   long x0 = lround(lon1 / kSegmentSafetyGridResolutionDegrees);
@@ -3214,8 +3915,9 @@ bool SegmentSafetyRouteMaskTraversalCheck(
     uint16_t flags = SEGMENT_SAFETY_ROUTE_NEEDS_TILE;
     PlugInSegmentSafetySource source = PI_SEGMENT_SAFETY_SOURCE_NONE;
     if (!SegmentSafetyRouteMaskCellAt(y, x, safety_margin_nm, check_depth,
-                                      minimum_depth_m, stats, result, &flags,
-                                      &source)) {
+                                      minimum_depth_m,
+                                      force_authoritative_fine, stats, result,
+                                      &flags, &source)) {
       if (answered) *answered = false;
       return false;
     }
@@ -3805,6 +4507,7 @@ bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
                                           double safety_margin_nm,
                                           bool check_depth,
                                           double minimum_depth_m,
+                                          bool force_authoritative_fine,
                                           PlugInSegmentSafetyResult* result,
                                           bool* chart_data_available,
                                           SegmentSafetyCoreStats* stats,
@@ -3823,7 +4526,8 @@ bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
   bool route_mask_answered = false;
   if (SegmentSafetyRouteMaskTraversalCheck(
           lat1, lon1, lat2, lon2, safety_margin_nm, check_depth,
-          minimum_depth_m, result, chart_data_available, stats,
+          minimum_depth_m, force_authoritative_fine, result,
+          chart_data_available, stats,
           open_water_shortcut, &route_mask_answered)) {
     if (stats) stats->geometry_check_ms += geometry_timer.Time();
     return true;
@@ -4109,6 +4813,10 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
   std::chrono::steady_clock::time_point query_start =
       std::chrono::steady_clock::now();
   InitSegmentSafetyResult(result);
+  if (wxThread::IsMain()) {
+    SegmentSafetyRefreshPersistentChartIdentity();
+    SegmentSafetyPersistentCacheEnsureLoaded();
+  }
 
   if (options && options->struct_size < (int)sizeof(int)) {
     SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_ERROR);
@@ -4124,6 +4832,8 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
       SegmentSafetyOptionAllowGshhsFallback(options);
   const bool check_depth = SegmentSafetyOptionCheckDepth(options);
   const double minimum_depth_m = SegmentSafetyOptionMinimumDepthM(options);
+  const bool force_authoritative_fine =
+      SegmentSafetyOptionForceAuthoritativeFineValidation(options);
 
   if (!check_land && !check_depth) {
     if (result) {
@@ -4179,6 +4889,7 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
     wxLogMessage(
         "WR_GRID_SEGMENT_QUERY #%ld phase=%s worker=%d segment=(%.8f,%.8f)->"
         "(%.8f,%.8f) margin_nm=%.3f depth_check=%d status=%d source=%d "
+        "authoritative_fine=%d persistent_cache_used_in_query=%d "
         "unsafe_flags=%d all_safe_tile_shortcuts=%d mixed_tile_cell_checks=%ld "
         "missing_tile_requests=%d tile_cache_hits=%d tile_cache_misses=%d "
         "grid_lookups=%d samples=%d query_time_us=%lld "
@@ -4186,12 +4897,31 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
         "message=\"%s\".",
         query_log_index, phase, wxThread::IsMain() ? 0 : 1, lat1, lon1, lat2,
         lon2, safety_margin_nm, check_depth ? 1 : 0, result->status,
-        result->source, unsafe_flags, stats.water_tile_shortcuts,
+        result->source, force_authoritative_fine ? 1 : 0,
+        force_authoritative_fine ? 0 : stats.coarse_certified_safe_hits,
+        unsafe_flags, stats.water_tile_shortcuts,
         mixed_cell_checks, stats.unexpected_tile_builds, stats.grid_cache_hits,
         stats.grid_cache_misses, stats.grid_lookups,
         stats.segment_sample_count, (long long)elapsed_us, chart_api_calls,
         (!wxThread::IsMain() && chart_api_calls == 0) ? 1 : 0,
         result->message);
+    if (stats.coarse_cells_checked > 0 ||
+        stats.coarse_certified_safe_hits > 0 ||
+        stats.coarse_missing > 0) {
+      wxLogMessage(
+          "WR_COARSE_SAFETY_QUERY_SUMMARY #%ld coarse_cells_checked=%d "
+          "coarse_certified_safe_hits=%d coarse_mixed_fallbacks=%d "
+          "coarse_unknown_fallbacks=%d coarse_no_chart=%d "
+          "coarse_depth_unproven=%d coarse_missing=%d fine_tiles_avoided=%d "
+          "query_time_us=%lld chart_api_calls_during_query=%d "
+          "worker_thread_query_without_chart_api=%d",
+          query_log_index, stats.coarse_cells_checked,
+          stats.coarse_certified_safe_hits, stats.coarse_mixed_fallbacks,
+          stats.coarse_unknown_fallbacks, stats.coarse_no_chart,
+          stats.coarse_depth_unproven, stats.coarse_missing,
+          stats.fine_tiles_avoided, (long long)elapsed_us, chart_api_calls,
+          (!wxThread::IsMain() && chart_api_calls == 0) ? 1 : 0);
+    }
   };
   const std::string segment_cache_key =
       SegmentSafetySegmentCacheKey(lat1, lon1, lat2, lon2, safety_margin_nm,
@@ -4220,7 +4950,7 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
   bool open_water_shortcut = false;
   if (ChartSegmentPointClassificationCheck(
           lat1, lon1, lat2, lon2, safety_margin_nm, check_depth,
-          minimum_depth_m, result,
+          minimum_depth_m, force_authoritative_fine, result,
           &chart_data_available, &stats, &open_water_shortcut)) {
     SetSegmentSafetyDiagnosticReason(
         result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_HIT);
@@ -4500,6 +5230,8 @@ bool PlugIn_PrewarmSegmentSafetyRouteMask(
     const PlugInSegmentSafetyOptions* options,
     PlugInSegmentSafetyResult* result) {
   InitSegmentSafetyResult(result);
+  SegmentSafetyRefreshPersistentChartIdentity();
+  SegmentSafetyPersistentCacheEnsureLoaded();
 
   if (result && result->struct_size < (int)sizeof(int)) return false;
 
@@ -4530,10 +5262,36 @@ bool PlugIn_PrewarmSegmentSafetyRouteMask(
   long base_reused_tiles = 0;
   long mask_built_tiles = 0;
   long mask_reused_tiles = 0;
+  long fine_tiles_avoided_by_certified_safe = 0;
+  long coarse_requested_cells = 0;
+  long coarse_built_cells = 0;
+  long coarse_reused_cells = 0;
+  long coarse_certified_safe_cells = 0;
+  long coarse_missing_cells = 0;
   bool capped = false;
 
   for (long lat_tile = min_lat_tile; lat_tile <= max_lat_tile; ++lat_tile) {
     for (long lon_tile = min_lon_tile; lon_tile <= max_lon_tile; ++lon_tile) {
+      CachedSegmentSafetyCoarseRouteMaskCell certified_coarse;
+      if (LookupCertifiedSegmentSafetyCoarseRouteMaskCellForFineTile(
+              lat_tile, lon_tile, safety_margin_nm, check_depth,
+              minimum_depth_m, &certified_coarse)) {
+        std::string mask_key = SegmentSafetyRouteMaskKey(
+            lat_tile, lon_tile, safety_margin_nm, check_depth,
+            minimum_depth_m);
+        if (!LookupSegmentSafetyRouteMaskTile(mask_key, NULL)) {
+          StoreSegmentSafetyRouteMaskTile(
+              mask_key, BuildPersistentCertifiedSafeRouteMaskTile(
+                            lat_tile, lon_tile, safety_margin_nm, check_depth,
+                            minimum_depth_m, certified_coarse));
+        }
+        ++fine_tiles_avoided_by_certified_safe;
+        ++base_reused_tiles;
+        ++mask_reused_tiles;
+        ++stats.fine_tiles_avoided;
+        continue;
+      }
+
       std::string base_key =
           SegmentSafetyGridTileKeyForIndices(lat_tile, lon_tile);
       if (LookupSegmentSafetyGridTile(base_key, NULL)) {
@@ -4564,6 +5322,34 @@ bool PlugIn_PrewarmSegmentSafetyRouteMask(
     }
   }
 
+  double coarse_degrees =
+      kSegmentSafetyGridTileDegrees * kSegmentSafetyCoarseRouteMaskFactor;
+  long min_coarse_lat = (long)floor(min_lat / coarse_degrees);
+  long max_coarse_lat = (long)floor(max_lat / coarse_degrees);
+  long min_coarse_lon = (long)floor(min_lon / coarse_degrees);
+  long max_coarse_lon = (long)floor(max_lon / coarse_degrees);
+  for (long lat_cell = min_coarse_lat; lat_cell <= max_coarse_lat; ++lat_cell) {
+    for (long lon_cell = min_coarse_lon; lon_cell <= max_coarse_lon;
+         ++lon_cell) {
+      ++coarse_requested_cells;
+      std::string coarse_key = SegmentSafetyCoarseRouteMaskKey(
+          lat_cell, lon_cell, safety_margin_nm, check_depth, minimum_depth_m);
+      CachedSegmentSafetyCoarseRouteMaskCell coarse;
+      if (LookupSegmentSafetyCoarseRouteMaskCell(coarse_key, &coarse)) {
+        ++coarse_reused_cells;
+      } else if (EnsureSegmentSafetyCoarseRouteMaskCell(
+                     lat_cell, lon_cell, safety_margin_nm, check_depth,
+                     minimum_depth_m, &coarse, &stats)) {
+        ++coarse_built_cells;
+      } else {
+        ++coarse_missing_cells;
+        continue;
+      }
+      if (coarse.state == SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE)
+        ++coarse_certified_safe_cells;
+    }
+  }
+
   if (result) {
     SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_SAFE);
     SetSegmentSafetySource(result, PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART);
@@ -4578,11 +5364,17 @@ bool PlugIn_PrewarmSegmentSafetyRouteMask(
   wxString message = wxString::Format(
       "WR_ROUTE_MASK_PREWARM bbox=[lat %.6f..%.6f lon %.6f..%.6f] "
       "requested_tiles=%ld base_built=%ld base_reused=%ld "
-      "masks_built=%ld masks_reused=%ld capped=%d margin_nm=%.3f "
-      "depth_check=%d min_depth_m=%.2f ",
+      "masks_built=%ld masks_reused=%ld fine_tiles_avoided=%ld "
+      "capped=%d margin_nm=%.3f "
+      "depth_check=%d min_depth_m=%.2f coarse_requested=%ld "
+      "coarse_built=%ld coarse_reused=%ld coarse_certified_safe=%ld "
+      "coarse_missing=%ld ",
       min_lat, max_lat, min_lon, max_lon, requested_tiles, base_built_tiles,
-      base_reused_tiles, mask_built_tiles, mask_reused_tiles, capped ? 1 : 0,
-      safety_margin_nm, check_depth ? 1 : 0, minimum_depth_m);
+      base_reused_tiles, mask_built_tiles, mask_reused_tiles,
+      fine_tiles_avoided_by_certified_safe, capped ? 1 : 0, safety_margin_nm,
+      check_depth ? 1 : 0, minimum_depth_m,
+      coarse_requested_cells, coarse_built_cells, coarse_reused_cells,
+      coarse_certified_safe_cells, coarse_missing_cells);
   message += wxString::Format(
       "build_ms=%d cells=%d land=%d water=%d drying=%d unknown=%d "
       "point_cache_hits=%d point_cache_misses=%d grid_cache_size=%lu "
@@ -4594,6 +5386,14 @@ bool PlugIn_PrewarmSegmentSafetyRouteMask(
       (unsigned long)SegmentSafetyGridCacheSize(),
       s_segment_safety_grid_cache_evictions);
   wxLogMessage("%s", message.c_str());
+  wxLogMessage(
+      "WR_COARSE_SAFETY_BUILD scope=bbox requested=%ld built=%ld reused=%ld "
+      "certified_safe=%ld missing=%ld certification_method=fine-mask-all-clear "
+      "coarse_build_time_ms=%d fine_tiles_built=%ld fine_tiles_reused=%ld",
+      coarse_requested_cells, coarse_built_cells, coarse_reused_cells,
+      coarse_certified_safe_cells, coarse_missing_cells, stats.coarse_build_ms,
+      mask_built_tiles, mask_reused_tiles);
+  SegmentSafetyPersistentCacheSave();
 
   return true;
 }
@@ -4604,6 +5404,8 @@ bool PlugIn_PrewarmSegmentSafetyRouteMaskForSegment(
     const PlugInSegmentSafetyOptions* options,
     PlugInSegmentSafetyResult* result) {
   InitSegmentSafetyResult(result);
+  SegmentSafetyRefreshPersistentChartIdentity();
+  SegmentSafetyPersistentCacheEnsureLoaded();
 
   if (result && result->struct_size < (int)sizeof(int)) return false;
 
@@ -4664,10 +5466,36 @@ bool PlugIn_PrewarmSegmentSafetyRouteMaskForSegment(
   long base_reused_tiles = 0;
   long mask_built_tiles = 0;
   long mask_reused_tiles = 0;
+  long fine_tiles_avoided_by_certified_safe = 0;
+  long coarse_requested_cells = 0;
+  long coarse_built_cells = 0;
+  long coarse_reused_cells = 0;
+  long coarse_certified_safe_cells = 0;
+  long coarse_missing_cells = 0;
   bool capped = false;
 
   for (std::set<std::pair<long, long> >::const_iterator it = tiles.begin();
        it != tiles.end(); ++it) {
+    CachedSegmentSafetyCoarseRouteMaskCell certified_coarse;
+    if (LookupCertifiedSegmentSafetyCoarseRouteMaskCellForFineTile(
+            it->first, it->second, safety_margin_nm, check_depth,
+            minimum_depth_m, &certified_coarse)) {
+      std::string mask_key = SegmentSafetyRouteMaskKey(
+          it->first, it->second, safety_margin_nm, check_depth,
+          minimum_depth_m);
+      if (!LookupSegmentSafetyRouteMaskTile(mask_key, NULL)) {
+        StoreSegmentSafetyRouteMaskTile(
+            mask_key, BuildPersistentCertifiedSafeRouteMaskTile(
+                          it->first, it->second, safety_margin_nm,
+                          check_depth, minimum_depth_m, certified_coarse));
+      }
+      ++fine_tiles_avoided_by_certified_safe;
+      ++base_reused_tiles;
+      ++mask_reused_tiles;
+      ++stats.fine_tiles_avoided;
+      continue;
+    }
+
     std::string base_key = SegmentSafetyGridTileKeyForIndices(it->first,
                                                               it->second);
     if (LookupSegmentSafetyGridTile(base_key, NULL)) {
@@ -4697,6 +5525,36 @@ bool PlugIn_PrewarmSegmentSafetyRouteMaskForSegment(
     }
   }
 
+  std::set<std::pair<long, long> > coarse_cells;
+  for (std::set<std::pair<long, long> >::const_iterator it = tiles.begin();
+       it != tiles.end(); ++it) {
+    long coarse_lat =
+        (long)floor((double)it->first / kSegmentSafetyCoarseRouteMaskFactor);
+    long coarse_lon =
+        (long)floor((double)it->second / kSegmentSafetyCoarseRouteMaskFactor);
+    coarse_cells.insert(std::make_pair(coarse_lat, coarse_lon));
+  }
+  for (std::set<std::pair<long, long> >::const_iterator it =
+           coarse_cells.begin();
+       it != coarse_cells.end(); ++it) {
+    ++coarse_requested_cells;
+    std::string coarse_key = SegmentSafetyCoarseRouteMaskKey(
+        it->first, it->second, safety_margin_nm, check_depth, minimum_depth_m);
+    CachedSegmentSafetyCoarseRouteMaskCell coarse;
+    if (LookupSegmentSafetyCoarseRouteMaskCell(coarse_key, &coarse)) {
+      ++coarse_reused_cells;
+    } else if (EnsureSegmentSafetyCoarseRouteMaskCell(
+                   it->first, it->second, safety_margin_nm, check_depth,
+                   minimum_depth_m, &coarse, &stats)) {
+      ++coarse_built_cells;
+    } else {
+      ++coarse_missing_cells;
+      continue;
+    }
+    if (coarse.state == SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE)
+      ++coarse_certified_safe_cells;
+  }
+
   if (result) {
     SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_SAFE);
     SetSegmentSafetySource(result, PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART);
@@ -4712,12 +5570,18 @@ bool PlugIn_PrewarmSegmentSafetyRouteMaskForSegment(
       "WR_ROUTE_MASK_PREWARM_SEGMENT start=(%.6f,%.6f) end=(%.6f,%.6f) "
       "corridor_margin_nm=%.3f margin_nm=%.3f samples=%d "
       "requested_tiles=%lu base_built=%ld "
-      "base_reused=%ld masks_built=%ld masks_reused=%ld capped=%d "
-      "depth_check=%d min_depth_m=%.2f ",
+      "base_reused=%ld masks_built=%ld masks_reused=%ld "
+      "fine_tiles_avoided=%ld capped=%d "
+      "depth_check=%d min_depth_m=%.2f coarse_requested=%ld "
+      "coarse_built=%ld coarse_reused=%ld coarse_certified_safe=%ld "
+      "coarse_missing=%ld ",
       lat1, lon1, lat2, lon2, corridor_margin_nm, safety_margin_nm, samples,
       static_cast<unsigned long>(tiles.size()), base_built_tiles,
-      base_reused_tiles, mask_built_tiles, mask_reused_tiles, capped ? 1 : 0,
-      check_depth ? 1 : 0, minimum_depth_m);
+      base_reused_tiles, mask_built_tiles, mask_reused_tiles,
+      fine_tiles_avoided_by_certified_safe, capped ? 1 : 0,
+      check_depth ? 1 : 0, minimum_depth_m, coarse_requested_cells,
+      coarse_built_cells, coarse_reused_cells, coarse_certified_safe_cells,
+      coarse_missing_cells);
   message += wxString::Format(
       "build_ms=%d cells=%d land=%d water=%d drying=%d unknown=%d "
       "point_cache_hits=%d point_cache_misses=%d grid_cache_size=%lu "
@@ -4729,8 +5593,66 @@ bool PlugIn_PrewarmSegmentSafetyRouteMaskForSegment(
       (unsigned long)SegmentSafetyGridCacheSize(),
       s_segment_safety_grid_cache_evictions);
   wxLogMessage("%s", message.c_str());
+  wxLogMessage(
+      "WR_COARSE_SAFETY_BUILD scope=segment requested=%ld built=%ld reused=%ld "
+      "certified_safe=%ld missing=%ld certification_method=fine-mask-all-clear "
+      "coarse_build_time_ms=%d fine_tiles_built=%ld fine_tiles_reused=%ld",
+      coarse_requested_cells, coarse_built_cells, coarse_reused_cells,
+      coarse_certified_safe_cells, coarse_missing_cells, stats.coarse_build_ms,
+      mask_built_tiles, mask_reused_tiles);
+  SegmentSafetyPersistentCacheSave();
 
   return true;
+}
+
+bool PlugIn_SetSegmentSafetyPersistentCacheEnabled(int enabled) {
+  s_segment_safety_persistent_cache_enabled = enabled != 0;
+  if (s_segment_safety_persistent_cache_enabled) {
+    SegmentSafetyRefreshPersistentChartIdentity();
+    SegmentSafetyPersistentCacheEnsureLoaded();
+  } else {
+    SegmentSafetyPersistentCacheSave();
+  }
+  wxLogMessage(
+      "WR_CERT_SAFE_CACHE enabled=%d entries_loaded=%ld entries_used=%ld "
+      "entries_ignored=%ld stale_entries_ignored=%ld cache_file_path=\"%s\"",
+      s_segment_safety_persistent_cache_enabled ? 1 : 0,
+      s_segment_safety_persistent_entries_loaded,
+      s_segment_safety_persistent_entries_used,
+      s_segment_safety_persistent_entries_ignored,
+      s_segment_safety_persistent_stale_ignored,
+      SegmentSafetyPersistentCachePath());
+  return true;
+}
+
+int PlugIn_GetSegmentSafetyPersistentCacheEnabled() {
+  return s_segment_safety_persistent_cache_enabled ? 1 : 0;
+}
+
+bool PlugIn_SaveSegmentSafetyPersistentCache() {
+  return SegmentSafetyPersistentCacheSave();
+}
+
+bool PlugIn_ClearSegmentSafetyPersistentCache() {
+  wxString path = SegmentSafetyPersistentCachePath();
+  bool removed = true;
+  {
+    wxMutexLocker lock(s_segment_safety_cache_mutex);
+    s_segment_safety_persistent_certified_safe_cache.clear();
+    s_segment_safety_persistent_cache_dirty = false;
+    s_segment_safety_persistent_entries_loaded = 0;
+    s_segment_safety_persistent_entries_saved = 0;
+    s_segment_safety_persistent_entries_used = 0;
+    s_segment_safety_persistent_entries_ignored = 0;
+    s_segment_safety_persistent_stale_ignored = 0;
+    s_segment_safety_persistent_malformed_ignored = 0;
+    s_segment_safety_persistent_entries_stored = 0;
+    s_segment_safety_persistent_cache_loaded = true;
+  }
+  if (wxFileExists(path)) removed = wxRemoveFile(path);
+  wxLogMessage("WR_CERT_SAFE_CACHE clear success=%d cache_file_path=\"%s\"",
+               removed ? 1 : 0, path);
+  return removed;
 }
 
 void PlugInPlaySound(wxString& sound_file) {
