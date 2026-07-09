@@ -3523,6 +3523,7 @@ struct PlugInSegmentSafetyOptions {
   int allow_gshhs_fallback;
   int check_depth;
   double minimum_depth_m;
+  int force_authoritative_fine_validation;
 };
 
 struct PlugInSegmentSafetyResult {
@@ -3614,6 +3615,15 @@ extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyRouteMaskForSegment(
     double corridor_margin_nm,
     const PlugInSegmentSafetyOptions *options,
     PlugInSegmentSafetyResult *result);
+
+extern "C" DECL_EXP bool PlugIn_SetSegmentSafetyPersistentCacheEnabled(
+    int enabled);
+
+extern "C" DECL_EXP int PlugIn_GetSegmentSafetyPersistentCacheEnabled();
+
+extern "C" DECL_EXP bool PlugIn_SaveSegmentSafetyPersistentCache();
+
+extern "C" DECL_EXP bool PlugIn_ClearSegmentSafetyPersistentCache();
 /**
  * Plays a sound file asynchronously.
  *
