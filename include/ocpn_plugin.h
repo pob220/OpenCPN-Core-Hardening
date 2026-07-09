@@ -3603,6 +3603,17 @@ extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyGrid(
 extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyGridForSegment(
     double lat1, double lon1, double lat2, double lon2,
     double safety_margin_nm, PlugInSegmentSafetyResult *result);
+
+extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyRouteMask(
+    double min_lat, double min_lon, double max_lat, double max_lon,
+    const PlugInSegmentSafetyOptions *options,
+    PlugInSegmentSafetyResult *result);
+
+extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyRouteMaskForSegment(
+    double lat1, double lon1, double lat2, double lon2,
+    double corridor_margin_nm,
+    const PlugInSegmentSafetyOptions *options,
+    PlugInSegmentSafetyResult *result);
 /**
  * Plays a sound file asynchronously.
  *
