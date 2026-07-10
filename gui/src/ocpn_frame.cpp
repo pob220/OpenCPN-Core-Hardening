@@ -4790,18 +4790,16 @@ void RunSegmentSafetyDiagnostics() {
     int expected_status;
   };
   const SegmentSafetyDepthDiagnosticCase depth_cases[] = {
-      // This offshore segment is clear for a 1 m requirement in the current
-      // chart set.  Nearby point probes may report DEPARE depth metadata, but
-      // the authoritative route-mask traversal for this segment is safe.
+      // CM93 reports this offshore area as DEPARE DRVAL1=0.  Treat the chart's
+      // minimum depth conservatively for a 1 m requirement.
       {"Portpatrick offshore low-depth requirement",
        54.825000, -5.210000, 54.875000, -5.210000, 1.0,
-       PI_SEGMENT_SAFETY_SAFE},
-      // CM93 reports this nearshore area as DEPARE DRVAL1=0, so depth-aware
-      // routing treats it as known too-shallow water where this segment hits
-      // water.  The chart route-mask result is TOO_SHALLOW, not UNKNOWN_DEPTH.
-      {"Mull nearshore shallow-depth requirement",
-       54.680000, -4.870000, 54.700000, -4.570000, 1.0,
        PI_SEGMENT_SAFETY_TOO_SHALLOW},
+      // The highest-resolution local CM93 coverage classifies the start point
+      // as LNDARE.  Land takes precedence over the segment's depth requirement.
+      {"Mull land-start depth requirement",
+       54.680000, -4.870000, 54.700000, -4.570000, 1.0,
+       PI_SEGMENT_SAFETY_CROSSES_LAND},
       {"Portpatrick offshore deliberately too-deep requirement",
        54.825000, -5.210000, 54.875000, -5.210000, 250.0,
        PI_SEGMENT_SAFETY_TOO_SHALLOW},
