@@ -5064,17 +5064,12 @@ bool PlugIn_PrewarmSegmentSafetyGrid(double min_lat, double min_lon,
   long lon_count = max_lon_tile - min_lon_tile + 1;
   long requested_tiles =
       lat_count > 0 && lon_count > 0 ? lat_count * lon_count : 0;
-  const long max_prewarm_tiles = 1024;
-
   SegmentSafetyCoreStats stats;
   long built_tiles = 0;
   long reused_tiles = 0;
-  bool capped = requested_tiles > max_prewarm_tiles;
 
   for (long lat_tile = min_lat_tile; lat_tile <= max_lat_tile; ++lat_tile) {
     for (long lon_tile = min_lon_tile; lon_tile <= max_lon_tile; ++lon_tile) {
-      if (built_tiles + reused_tiles >= max_prewarm_tiles) goto done;
-
       std::string key = SegmentSafetyGridTileKeyForIndices(lat_tile, lon_tile);
       if (LookupSegmentSafetyGridTile(key, NULL)) {
         ++stats.grid_cache_hits;
@@ -5088,23 +5083,20 @@ bool PlugIn_PrewarmSegmentSafetyGrid(double min_lat, double min_lon,
     }
   }
 
-done:
   if (result) {
     SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_SAFE);
     SetSegmentSafetySource(result, PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART);
     SetSegmentSafetyDiagnosticReason(
         result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR);
-    SetSegmentSafetyMessage(
-        result, capped ? "segment safety grid prewarm capped"
-                       : "segment safety grid prewarmed");
+    SetSegmentSafetyMessage(result, "segment safety grid prewarmed");
     ApplySegmentSafetyStats(result, stats);
   }
 
   wxString message = wxString::Format(
       "SEGMENT_SAFETY_GRID prewarm bbox=[lat %.6f..%.6f lon %.6f..%.6f] "
-      "requested_tiles=%ld built_tiles=%ld reused_tiles=%ld capped=%d ",
+      "requested_tiles=%ld built_tiles=%ld reused_tiles=%ld ",
       min_lat, max_lat, min_lon, max_lon, requested_tiles, built_tiles,
-      reused_tiles, capped ? 1 : 0);
+      reused_tiles);
   message += wxString::Format(
       "build_ms=%d cells=%d land=%d water=%d drying=%d unknown=%d "
       "point_cache_hits=%d point_cache_misses=%d grid_cache_size=%lu "
@@ -5171,16 +5163,12 @@ bool PlugIn_PrewarmSegmentSafetyGridForSegment(
     }
   }
 
-  const long max_prewarm_tiles = 1024;
   SegmentSafetyCoreStats stats;
   long built_tiles = 0;
   long reused_tiles = 0;
-  bool capped = (long)tiles.size() > max_prewarm_tiles;
 
-  long visited = 0;
   for (std::set<std::pair<long, long> >::const_iterator it = tiles.begin();
        it != tiles.end(); ++it) {
-    if (visited++ >= max_prewarm_tiles) break;
     std::string key = SegmentSafetyGridTileKeyForIndices(it->first, it->second);
     if (LookupSegmentSafetyGridTile(key, NULL)) {
       ++stats.grid_cache_hits;
@@ -5197,19 +5185,16 @@ bool PlugIn_PrewarmSegmentSafetyGridForSegment(
     SetSegmentSafetySource(result, PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART);
     SetSegmentSafetyDiagnosticReason(
         result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR);
-    SetSegmentSafetyMessage(
-        result, capped ? "segment safety corridor prewarm capped"
-                       : "segment safety corridor prewarmed");
+    SetSegmentSafetyMessage(result, "segment safety corridor prewarmed");
     ApplySegmentSafetyStats(result, stats);
   }
 
   wxString message = wxString::Format(
       "SEGMENT_SAFETY_GRID prewarm_segment start=(%.6f,%.6f) "
       "end=(%.6f,%.6f) margin_nm=%.3f samples=%d requested_tiles=%lu "
-      "built_tiles=%ld reused_tiles=%ld capped=%d ",
+      "built_tiles=%ld reused_tiles=%ld ",
       lat1, lon1, lat2, lon2, safety_margin_nm, samples,
-      static_cast<unsigned long>(tiles.size()), built_tiles, reused_tiles,
-      capped ? 1 : 0);
+      static_cast<unsigned long>(tiles.size()), built_tiles, reused_tiles);
   message += wxString::Format(
       "build_ms=%d cells=%d land=%d water=%d drying=%d unknown=%d "
       "point_cache_hits=%d point_cache_misses=%d grid_cache_size=%lu "
@@ -5268,7 +5253,6 @@ bool PlugIn_PrewarmSegmentSafetyRouteMask(
   long coarse_reused_cells = 0;
   long coarse_certified_safe_cells = 0;
   long coarse_missing_cells = 0;
-  bool capped = false;
 
   for (long lat_tile = min_lat_tile; lat_tile <= max_lat_tile; ++lat_tile) {
     for (long lon_tile = min_lon_tile; lon_tile <= max_lon_tile; ++lon_tile) {
@@ -5355,9 +5339,7 @@ bool PlugIn_PrewarmSegmentSafetyRouteMask(
     SetSegmentSafetySource(result, PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART);
     SetSegmentSafetyDiagnosticReason(
         result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR);
-    SetSegmentSafetyMessage(
-        result, capped ? "segment safety route mask prewarm capped"
-                       : "segment safety route mask prewarmed");
+    SetSegmentSafetyMessage(result, "segment safety route mask prewarmed");
     ApplySegmentSafetyStats(result, stats);
   }
 
@@ -5365,15 +5347,14 @@ bool PlugIn_PrewarmSegmentSafetyRouteMask(
       "WR_ROUTE_MASK_PREWARM bbox=[lat %.6f..%.6f lon %.6f..%.6f] "
       "requested_tiles=%ld base_built=%ld base_reused=%ld "
       "masks_built=%ld masks_reused=%ld fine_tiles_avoided=%ld "
-      "capped=%d margin_nm=%.3f "
-      "depth_check=%d min_depth_m=%.2f coarse_requested=%ld "
+      "margin_nm=%.3f depth_check=%d min_depth_m=%.2f coarse_requested=%ld "
       "coarse_built=%ld coarse_reused=%ld coarse_certified_safe=%ld "
       "coarse_missing=%ld ",
       min_lat, max_lat, min_lon, max_lon, requested_tiles, base_built_tiles,
       base_reused_tiles, mask_built_tiles, mask_reused_tiles,
-      fine_tiles_avoided_by_certified_safe, capped ? 1 : 0, safety_margin_nm,
-      check_depth ? 1 : 0, minimum_depth_m,
-      coarse_requested_cells, coarse_built_cells, coarse_reused_cells,
+      fine_tiles_avoided_by_certified_safe, safety_margin_nm,
+      check_depth ? 1 : 0, minimum_depth_m, coarse_requested_cells,
+      coarse_built_cells, coarse_reused_cells,
       coarse_certified_safe_cells, coarse_missing_cells);
   message += wxString::Format(
       "build_ms=%d cells=%d land=%d water=%d drying=%d unknown=%d "
@@ -5472,7 +5453,6 @@ bool PlugIn_PrewarmSegmentSafetyRouteMaskForSegment(
   long coarse_reused_cells = 0;
   long coarse_certified_safe_cells = 0;
   long coarse_missing_cells = 0;
-  bool capped = false;
 
   for (std::set<std::pair<long, long> >::const_iterator it = tiles.begin();
        it != tiles.end(); ++it) {
@@ -5560,9 +5540,7 @@ bool PlugIn_PrewarmSegmentSafetyRouteMaskForSegment(
     SetSegmentSafetySource(result, PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART);
     SetSegmentSafetyDiagnosticReason(
         result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR);
-    SetSegmentSafetyMessage(
-        result, capped ? "segment safety route mask corridor prewarm capped"
-                       : "segment safety route mask corridor prewarmed");
+    SetSegmentSafetyMessage(result, "segment safety route mask corridor prewarmed");
     ApplySegmentSafetyStats(result, stats);
   }
 
@@ -5571,15 +5549,15 @@ bool PlugIn_PrewarmSegmentSafetyRouteMaskForSegment(
       "corridor_margin_nm=%.3f margin_nm=%.3f samples=%d "
       "requested_tiles=%lu base_built=%ld "
       "base_reused=%ld masks_built=%ld masks_reused=%ld "
-      "fine_tiles_avoided=%ld capped=%d "
-      "depth_check=%d min_depth_m=%.2f coarse_requested=%ld "
+      "fine_tiles_avoided=%ld depth_check=%d min_depth_m=%.2f "
+      "coarse_requested=%ld "
       "coarse_built=%ld coarse_reused=%ld coarse_certified_safe=%ld "
       "coarse_missing=%ld ",
       lat1, lon1, lat2, lon2, corridor_margin_nm, safety_margin_nm, samples,
       static_cast<unsigned long>(tiles.size()), base_built_tiles,
       base_reused_tiles, mask_built_tiles, mask_reused_tiles,
-      fine_tiles_avoided_by_certified_safe, capped ? 1 : 0,
-      check_depth ? 1 : 0, minimum_depth_m, coarse_requested_cells,
+      fine_tiles_avoided_by_certified_safe, check_depth ? 1 : 0,
+      minimum_depth_m, coarse_requested_cells,
       coarse_built_cells, coarse_reused_cells, coarse_certified_safe_cells,
       coarse_missing_cells);
   message += wxString::Format(
