@@ -4669,11 +4669,25 @@ bool SegmentSafetyStatusMatchesExpected(int status, int expected_status) {
 }
 
 void RunSegmentSafetyDiagnostics() {
+  const char* persistent_cache =
+      getenv("WR_HEADLESS_PERSISTENT_CERT_SAFE_CACHE");
+  if (persistent_cache)
+    PlugIn_SetSegmentSafetyPersistentCacheEnabled(
+        !strcmp(persistent_cache, "1") ||
+                !strcmp(persistent_cache, "true")
+            ? 1
+            : 0);
+  const char* clear_cache = getenv("WR_HEADLESS_CLEAR_CERT_SAFE_CACHE");
+  if (clear_cache && !strcmp(clear_cache, "1"))
+    PlugIn_ClearSegmentSafetyPersistentCache();
   wxLogMessage("SEGMENT_SAFETY_TEST begin chart_only=1 fallback=0");
+  int failures = 0;
 
   const PointSafetyDiagnosticCase point_cases[] = {
       {"Portpatrick/Killantringan land probe", 54.842500, -5.090000},
       {"Portpatrick offshore water probe", 54.842500, -5.155000},
+      {"Portpatrick depth fixture south", 54.825000, -5.210000},
+      {"Portpatrick depth fixture north", 54.875000, -5.210000},
       {"Strangford Lough drying/nearshore probe", 54.385000, -5.560000},
       {"Holyhead offshore water probe", 53.325000, -4.705000},
       {"Menai Strait channel probe", 53.215000, -4.185000},
@@ -4715,6 +4729,52 @@ void RunSegmentSafetyDiagnostics() {
         prewarm.point_cache_hits, prewarm.point_cache_misses);
   }
 
+  const double route_shape_lats[] = {
+      53.325000, 53.650000, 54.000000,
+      53.325000, 53.650000, 54.000000,
+  };
+  const double route_shape_lons[] = {
+      -4.705000, -4.760000, -4.835000,
+      -4.705000, -4.760000, -4.835000,
+  };
+  const int route_shape_counts[] = {3, 3};
+  PlugInSegmentSafetyOptions route_shape_options = {};
+  route_shape_options.struct_size = sizeof(route_shape_options);
+  route_shape_options.check_land = 1;
+  route_shape_options.allow_gshhs_fallback = 0;
+  int route_shape_requested_tiles = -1;
+  for (int pass_index = 1; pass_index <= 2; ++pass_index) {
+    PlugInSegmentSafetyResult route_shape_result = {};
+    route_shape_result.struct_size = sizeof(route_shape_result);
+    bool ok = PlugIn_PrewarmSegmentSafetyRouteMaskForPolylines(
+        route_shape_lats, route_shape_lons, route_shape_counts,
+        WXSIZEOF(route_shape_counts), 4.0, &route_shape_options,
+        &route_shape_result);
+    bool pass =
+        ok && route_shape_result.status == PI_SEGMENT_SAFETY_SAFE &&
+        route_shape_result.prewarm_requested_tiles > 0 &&
+        (route_shape_requested_tiles < 0 ||
+         route_shape_result.prewarm_requested_tiles ==
+             route_shape_requested_tiles) &&
+        route_shape_result.unexpected_tile_builds == 0;
+    route_shape_requested_tiles = route_shape_result.prewarm_requested_tiles;
+    if (!pass) ++failures;
+    wxLogMessage(
+        "SEGMENT_SAFETY_ROUTE_SHAPE_TEST pass_index=%d pass=%d "
+        "polylines=2 repeated_geometry=1 status=%s requested_tiles=%d "
+        "base_built=%d base_reused=%d masks_built=%d masks_reused=%d "
+        "build_ms=%d unexpected_tile_builds=%d",
+        pass_index, pass ? 1 : 0,
+        SegmentSafetyStatusName(route_shape_result.status),
+        route_shape_result.prewarm_requested_tiles,
+        route_shape_result.prewarm_base_tiles_built,
+        route_shape_result.prewarm_base_tiles_reused,
+        route_shape_result.prewarm_masks_built,
+        route_shape_result.prewarm_masks_reused,
+        route_shape_result.grid_build_ms,
+        route_shape_result.unexpected_tile_builds);
+  }
+
   const SegmentSafetyDiagnosticCase cases[] = {
       {"Holyhead outside TSS to South of Calf of Man",
        53.325000, -4.705000, 54.000000, -4.835000, 0.0,
@@ -4745,7 +4805,6 @@ void RunSegmentSafetyDiagnostics() {
        PI_SEGMENT_SAFETY_SAFE},
   };
 
-  int failures = 0;
   for (size_t i = 0; i < WXSIZEOF(cases); ++i) {
     const SegmentSafetyDiagnosticCase& tc = cases[i];
     PlugInSegmentSafetyOptions options = {};
@@ -4822,11 +4881,12 @@ void RunSegmentSafetyDiagnostics() {
     int expected_status;
   };
   const SegmentSafetyDepthDiagnosticCase depth_cases[] = {
-      // CM93 reports this offshore area as DEPARE DRVAL1=0.  Treat the chart's
-      // minimum depth conservatively for a 1 m requirement.
+      // Highest-detail local CM93 coverage is 1:50,000 and reports DEPARE
+      // DRVAL1=100 m at the south endpoint and 50 m at the north endpoint.
+      // The older 1:1,000,000 composite view reported DRVAL1=0 here.
       {"Portpatrick offshore low-depth requirement",
        54.825000, -5.210000, 54.875000, -5.210000, 1.0,
-       PI_SEGMENT_SAFETY_TOO_SHALLOW},
+       PI_SEGMENT_SAFETY_SAFE},
       // The highest-resolution local CM93 coverage classifies the start point
       // as LNDARE.  Land takes precedence over the segment's depth requirement.
       {"Mull land-start depth requirement",
