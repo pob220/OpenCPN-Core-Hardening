@@ -93,6 +93,7 @@
 #include "model/multiplexer.h"
 #include "model/navutil_base.h"
 #include "model/own_ship.h"
+#include "model/renderer_config.h"
 #include "model/routeman.h"
 #include "model/ser_ports.h"
 #include "model/svg_utils.h"
@@ -1646,6 +1647,9 @@ void options::Init() {
   m_pageConnections = -1;
 
   pEnableTenHertz = nullptr;
+  pRendererBackend = nullptr;
+  pRendererAdapter = nullptr;
+  pRendererStatus = nullptr;
 
   auto loader = PluginLoader::GetInstance();
   b_haveWMM = loader && loader->IsPlugInAvailable("WMM");
@@ -2957,29 +2961,39 @@ void options::CreatePanel_Advanced(size_t parent, int border_size,
     itemBoxSizerUI->Add(0, border_size * 3);
     itemBoxSizerUI->Add(0, border_size * 3);
 
-    // OpenGL Options
+    wxBoxSizer* rendererSizer = new wxBoxSizer(wxVERTICAL);
+    itemBoxSizerUI->Add(rendererSizer, 0, wxEXPAND, 0);
+    rendererSizer->Add(new wxStaticText(m_ChartDisplayPage, wxID_ANY,
+                                        _("Graphics Renderer")),
+                       inputFlags);
+    pRendererBackend = new wxChoice(m_ChartDisplayPage, ID_OPENGLBOX);
+    pRendererBackend->Append(_("Software renderer"));
+    pRendererBackend->Append(_("OpenGL renderer (legacy)"));
+    pRendererBackend->Append(_("Vulkan presentation (experimental)"));
+    rendererSizer->Add(pRendererBackend, inputFlags);
+    pRendererBackend->Bind(wxEVT_CHOICE, &options::OnRendererChanged, this);
+
+    pRendererAdapter = new wxChoice(m_ChartDisplayPage, wxID_ANY);
+    pRendererAdapter->Append(_("Intel integrated GPU (recommended)"));
+    pRendererAdapter->Append(_("CPU Vulkan renderer"));
+    pRendererAdapter->Append(_("NVIDIA discrete GPU (experimental, opt-in)"));
+    rendererSizer->Add(pRendererAdapter, inputFlags);
+    pRendererStatus = new wxStaticText(m_ChartDisplayPage, wxID_ANY, "");
+    pRendererStatus->Wrap(-1);
+    rendererSizer->Add(pRendererStatus, inputFlags);
+
 #ifdef ocpnUSE_GL
-    wxBoxSizer* OpenGLSizer = new wxBoxSizer(wxVERTICAL);
-    itemBoxSizerUI->Add(OpenGLSizer, 0, 0, 0);
-
-    pOpenGL = new wxCheckBox(m_ChartDisplayPage, ID_OPENGLBOX,
-                             _("Use Accelerated Graphics (OpenGL)"));
-    OpenGLSizer->Add(pOpenGL, inputFlags);
-    pOpenGL->Enable(!g_bdisable_opengl && g_Platform->IsGLCapable());
-
-    auto* bOpenGL = new wxButton(m_ChartDisplayPage, ID_OPENGLOPTIONS,
-                                 _("OpenGL Options") + "...");
-    OpenGLSizer->Add(bOpenGL, inputFlags);
-
-    pOpenGL->Connect(wxEVT_COMMAND_CHECKBOX_CLICKED,
-                     wxCommandEventHandler(options::OnGLClicked), NULL, this);
-#ifdef __ANDROID__
+    pOpenGL = new wxCheckBox(m_ChartDisplayPage, wxID_ANY, "");
     pOpenGL->Hide();
+    auto* bOpenGL = new wxButton(m_ChartDisplayPage, ID_OPENGLOPTIONS,
+                                 _("Legacy OpenGL Options") + "...");
+    rendererSizer->Add(bOpenGL, inputFlags);
+#ifdef __ANDROID__
     bOpenGL->Hide();
+#endif
 #endif
     itemBoxSizerUI->Add(0, border_size * 3);
     itemBoxSizerUI->Add(0, border_size * 3);
-#endif  // ocpnUSE_GL
 
     //  Course Up display update period
     wxStaticText* crat = new wxStaticText(m_ChartDisplayPage, wxID_ANY,
@@ -3285,36 +3299,43 @@ With a higher value, the same zoom level shows a more detailed chart."));
     itemBoxSizerUI->Add(0, border_size * 3);
     itemBoxSizerUI->Add(0, border_size * 3);
 
-#ifdef ocpnUSE_GL
-
-    // OpenGL Options
     itemBoxSizerUI->Add(
-        new wxStaticText(m_ChartDisplayPage, wxID_ANY, _("Graphics")),
+        new wxStaticText(m_ChartDisplayPage, wxID_ANY, _("Graphics Renderer")),
         labelFlags);
-    wxBoxSizer* OpenGLSizer = new wxBoxSizer(wxHORIZONTAL);
-    itemBoxSizerUI->Add(OpenGLSizer, 0, 0, 0);
+    wxBoxSizer* rendererSizer = new wxBoxSizer(wxVERTICAL);
+    itemBoxSizerUI->Add(rendererSizer, 0, wxEXPAND, 0);
+    pRendererBackend = new wxChoice(m_ChartDisplayPage, ID_OPENGLBOX);
+    pRendererBackend->Append(_("Software renderer"));
+    pRendererBackend->Append(_("OpenGL renderer (legacy)"));
+    pRendererBackend->Append(_("Vulkan presentation (experimental)"));
+    rendererSizer->Add(pRendererBackend, inputFlags);
+    pRendererBackend->Bind(wxEVT_CHOICE, &options::OnRendererChanged, this);
 
-    pOpenGL = new wxCheckBox(m_ChartDisplayPage, ID_OPENGLBOX,
-                             _("Use Accelerated Graphics (OpenGL)"));
-    OpenGLSizer->Add(pOpenGL, inputFlags);
-    pOpenGL->Enable(!g_bdisable_opengl && g_Platform->IsGLCapable());
-
-    pOpenGL->Connect(wxEVT_COMMAND_CHECKBOX_CLICKED,
-                     wxCommandEventHandler(options::OnGLClicked), NULL, this);
+    pRendererAdapter = new wxChoice(m_ChartDisplayPage, wxID_ANY);
+    pRendererAdapter->Append(_("Intel integrated GPU (recommended)"));
+    pRendererAdapter->Append(_("CPU Vulkan renderer"));
+    pRendererAdapter->Append(_("NVIDIA discrete GPU (experimental, opt-in)"));
+    rendererSizer->Add(pRendererAdapter, inputFlags);
+    pRendererStatus = new wxStaticText(m_ChartDisplayPage, wxID_ANY, "");
+    pRendererStatus->Wrap(-1);
+    rendererSizer->Add(pRendererStatus, inputFlags);
 
 #ifdef __ANDROID__
-    pOpenGL->Disable();
+    pRendererBackend->Disable();
+    pRendererAdapter->Disable();
 #endif
 
+#ifdef ocpnUSE_GL
+    pOpenGL = new wxCheckBox(m_ChartDisplayPage, wxID_ANY, "");
+    pOpenGL->Hide();
     auto* bOpenGL = new wxButton(m_ChartDisplayPage, ID_OPENGLOPTIONS,
-                                 _("Options") + "...");
-    OpenGLSizer->Add(bOpenGL, inputFlags);
+                                 _("Legacy OpenGL Options") + "...");
+    rendererSizer->Add(bOpenGL, inputFlags);
+#endif
 
     // spacer
     itemBoxSizerUI->Add(0, border_size * 3);
     itemBoxSizerUI->Add(0, border_size * 3);
-
-#endif
 
     // ChartBar Options
     itemBoxSizerUI->Add(
@@ -6299,11 +6320,38 @@ void options::SetInitialSettings() {
   // pOverzoomEmphasis->SetValue(!g_fog_overzoom);
   // pOZScaleVector->SetValue(!g_oz_vector_scale);
   pInlandEcdis->SetValue(g_bInlandEcdis);
-#ifdef ocpnUSE_GL
-  pOpenGL->SetValue(g_bopengl);
-  if (auto* w = wxWindow::FindWindowById(ID_OPENGLOPTIONS))
-    w->Enable(pOpenGL->IsChecked());
-#endif
+  if (pRendererBackend) {
+    int selection = 0;
+    if (g_renderer_config.backend == RendererBackend::OpenGLLegacy)
+      selection = 1;
+    else if (g_renderer_config.backend ==
+             RendererBackend::VulkanExperimental)
+      selection = 2;
+    pRendererBackend->SetSelection(selection);
+  }
+  if (pRendererAdapter) {
+    int selection = static_cast<int>(g_renderer_config.adapter_policy);
+    pRendererAdapter->SetSelection(selection);
+  }
+  if (pRendererStatus) {
+    wxString status;
+    status.Printf(_("Active: %s\nDevice: %s\nVendor/device: 0x%04x/0x%04x "
+                    "(%s)\nDriver: %s\nHealth: %s%s\n"
+                    "Renderer changes take effect after restarting OpenCPN."),
+                  RendererBackendName(g_renderer_runtime_info.active_backend),
+                  g_renderer_runtime_info.adapter_name.c_str(),
+                  g_renderer_runtime_info.vendor_id,
+                  g_renderer_runtime_info.device_id,
+                  g_renderer_runtime_info.device_type.c_str(),
+                  g_renderer_runtime_info.driver.c_str(),
+                  g_renderer_runtime_info.health.c_str(),
+                  g_renderer_runtime_info.fallback_active
+                      ? _(" (safe fallback active)")
+                      : "");
+    pRendererStatus->SetLabel(status);
+  }
+  wxCommandEvent renderer_event;
+  OnRendererChanged(renderer_event);
   if (pSmoothPanZoom) pSmoothPanZoom->SetValue(g_bsmoothpanzoom);
   pCBTrueShow->SetValue(g_bShowTrue);
   pCBMagShow->SetValue(g_bShowMag);
@@ -6911,10 +6959,16 @@ void options::OnWaypointRangeRingSelect(wxCommandEvent& event) {
 }
 
 void options::OnGLClicked(wxCommandEvent& event) {
-  //   if (!g_bTransparentToolbarInOpenGLOK)
-  //     pTransparentToolbar->Enable(!pOpenGL->GetValue());
+  OnRendererChanged(event);
+}
+
+void options::OnRendererChanged(wxCommandEvent& event) {
+  if (!pRendererBackend) return;
+  const bool legacy_gl = pRendererBackend->GetSelection() == 1;
+  const bool vulkan = pRendererBackend->GetSelection() == 2;
   if (auto* w = wxWindow::FindWindowById(ID_OPENGLOPTIONS))
-    w->Enable(pOpenGL->IsChecked());
+    w->Enable(legacy_gl && !g_bdisable_opengl);
+  if (pRendererAdapter) pRendererAdapter->Enable(vulkan);
 }
 
 void options::OnOpenGLOptions(wxCommandEvent& event) {
@@ -7582,10 +7636,18 @@ void options::ApplyChanges(wxCommandEvent& event) {
   // g_NMEAAPBPrecision = m_choicePrecision->GetCurrentSelection();
   // g_TalkerIdText = m_TalkerIdText->GetValue().MakeUpper();
 
-#ifdef ocpnUSE_GL
-  if (g_bopengl != pOpenGL->GetValue()) m_returnChanges |= GL_CHANGED;
-  g_bopengl = pOpenGL->GetValue();
-#endif
+  if (pRendererBackend) {
+    RendererBackend selected = RendererBackend::Software;
+    if (pRendererBackend->GetSelection() == 1)
+      selected = RendererBackend::OpenGLLegacy;
+    else if (pRendererBackend->GetSelection() == 2)
+      selected = RendererBackend::VulkanExperimental;
+    if (g_renderer_config.backend != selected) m_returnChanges |= GL_CHANGED;
+    g_renderer_config.backend = selected;
+  }
+  if (pRendererAdapter && pRendererAdapter->GetSelection() != wxNOT_FOUND)
+    g_renderer_config.adapter_policy = static_cast<RendererAdapterPolicy>(
+        pRendererAdapter->GetSelection());
 
   g_bChartBarEx = pChartBarEX->GetValue();
 

@@ -37,6 +37,9 @@ extern bool g_bportable;
 extern bool g_config_wizard;
 extern bool g_bdisable_opengl;
 extern bool g_segment_safety_test;
+extern bool g_disable_experimental_renderer;
+extern bool g_reset_renderer_config;
+extern std::string g_renderer_override;
 extern std::string g_configdir;
 extern std::vector<std::string> g_params;
 

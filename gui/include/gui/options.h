@@ -342,6 +342,7 @@ public:
   void OnChooseFontColor(wxCommandEvent &event);
 #endif
   void OnGLClicked(wxCommandEvent &event);
+  void OnRendererChanged(wxCommandEvent &event);
   void OnOpenGLOptions(wxCommandEvent &event);
   void OnDisplayCategoryRadioButton(wxCommandEvent &event);
   void OnButtonClearClick(wxCommandEvent &event);
@@ -426,6 +427,8 @@ public:
   wxCheckBox *pPrintShowIcon, *pCDOOutlines, *pSDepthUnits, *pSDisplayGrid;
   wxCheckBox *pAutoAnchorMark, *pCDOQuilting, *pCBRaster, *pCBVector;
   wxCheckBox *pCBCM93, *pCBLookAhead, *pSkewComp, *pOpenGL, *pSmoothPanZoom;
+  wxChoice *pRendererBackend, *pRendererAdapter;
+  wxStaticText *pRendererStatus;
   wxCheckBox *pFullScreenQuilt, *pMobile, *pResponsive, *pOverzoomEmphasis;
   wxCheckBox *pOZScaleVector, *pToolbarAutoHideCB, *pInlandEcdis, *pRollover;
   wxCheckBox *pZoomButtons, *pChartBarEX;

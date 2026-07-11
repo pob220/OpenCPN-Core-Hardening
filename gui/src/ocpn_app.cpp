@@ -101,6 +101,7 @@
 #include "model/ais_state_vars.h"
 #include "model/certificates.h"
 #include "model/cmdline.h"
+#include "model/renderer_config.h"
 #include "model/comm_bridge.h"
 #include "model/comm_drv_factory.h"
 #include "model/comm_n0183_output.h"
@@ -205,7 +206,8 @@ using namespace std::literals::chrono_literals;
 const char *const kUsage =
     R"(Usage:
   opencpn -h | --help
-  opencpn [-p] [-f] [-G] [-g] [-P] [-l <str>] [-u <num>] [-U] [-s] [GPX file ...]
+  opencpn [-p] [-f] [-G] [-g] [-P] [-l <str>] [-u <num>] [-U] [-s]
+          [--renderer=<software|opengl-legacy|vulkan-experimental>] [GPX file ...]
   opencpn --remote [-R] | -q] | -e] |-o <str>]
 
 Options for starting opencpn
@@ -215,6 +217,10 @@ Options for starting opencpn
   -f, --fullscreen             	Switch to full screen mode on start.
   -G, --no_opengl              	Disable OpenGL video acceleration. This setting will
                                 be remembered.
+  --renderer=<backend>          Override the renderer for this launch.
+  --disable-experimental-renderer
+                                Disable the experimental renderer for this launch.
+  --reset-renderer              Reset renderer configuration to safe software mode.
   -g, --rebuild_gl_raster_cache	Rebuild OpenGL raster cache on start.
   -D, --rebuild_chart_db        Rescan chart directories and rebuild the chart database
   -P, --parse_all_enc          	Convert all S-57 charts to OpenCPN's internal format on start.
@@ -554,6 +560,9 @@ void MyApp::OnInitCmdLine(wxCmdLineParser &parser) {
                    wxCMD_LINE_PARAM_OPTIONAL);
   parser.AddSwitch("f", "fullscreen");
   parser.AddSwitch("G", "no_opengl");
+  parser.AddOption("", "renderer", "", wxCMD_LINE_VAL_STRING);
+  parser.AddSwitch("", "disable-experimental-renderer");
+  parser.AddSwitch("", "reset-renderer");
   parser.AddSwitch("W", "config_wizard");
   parser.AddSwitch("g", "rebuild_gl_raster_cache");
   parser.AddSwitch("D", "rebuild_chart_db");
@@ -613,6 +622,12 @@ bool MyApp::OnCmdLineParsed(wxCmdLineParser &parser) {
   g_bportable = parser.Found("p");
   g_start_fullscreen = parser.Found("fullscreen");
   g_bdisable_opengl = parser.Found("no_opengl");
+  g_disable_experimental_renderer =
+      parser.Found("disable-experimental-renderer");
+  g_reset_renderer_config = parser.Found("reset-renderer");
+  wxString renderer_override;
+  if (parser.Found("renderer", &renderer_override))
+    g_renderer_override = renderer_override.ToStdString();
   g_rebuild_gl_cache = parser.Found("rebuild_gl_raster_cache");
   g_NeedDBUpdate = parser.Found("rebuild_chart_db") ? 2 : 0;
   g_parse_all_enc = parser.Found("parse_all_enc");
@@ -1170,6 +1185,76 @@ bool MyApp::OnInit() {
 #endif
 
   if (g_bdisable_opengl) g_bopengl = false;
+
+  if (g_reset_renderer_config) {
+    g_renderer_config = RendererConfig();
+    const wxString reset_marker =
+        g_Platform->GetPrivateDataDir() + wxFileName::GetPathSeparator() +
+        "renderer-startup.pending";
+    if (wxFileExists(reset_marker)) wxRemoveFile(reset_marker);
+    wxLogMessage("Renderer: configuration reset to software mode");
+  }
+
+  RendererBackend requested_backend = g_renderer_config.backend;
+  if (!g_renderer_override.empty()) {
+    auto parsed = ParseRendererBackend(g_renderer_override);
+    if (parsed) {
+      requested_backend = *parsed;
+      wxLogMessage("Renderer: command-line override backend=%s",
+                   RendererBackendName(requested_backend));
+    } else {
+      wxLogWarning("Renderer: invalid command-line backend '%s'; using software",
+                   g_renderer_override);
+      requested_backend = RendererBackend::Software;
+    }
+  }
+  if (g_disable_experimental_renderer &&
+      requested_backend == RendererBackend::VulkanExperimental) {
+    requested_backend = RendererBackend::Software;
+    wxLogWarning("Renderer: experimental backend disabled for this launch");
+  }
+  const wxString renderer_marker =
+      g_Platform->GetPrivateDataDir() + wxFileName::GetPathSeparator() +
+      "renderer-startup.pending";
+  if (requested_backend == RendererBackend::VulkanExperimental &&
+      g_renderer_override.empty() && wxFileExists(renderer_marker)) {
+    requested_backend = RendererBackend::Software;
+    g_renderer_runtime_info.fallback_active = true;
+    g_renderer_runtime_info.health =
+        "Safe fallback after an unclean experimental renderer shutdown";
+    wxLogWarning(
+        "Renderer: previous Vulkan startup did not present successfully; "
+        "starting in software mode. Use --renderer=vulkan-experimental to "
+        "retry explicitly or --reset-renderer to reset settings.");
+  }
+  if (safe_mode::get_mode()) requested_backend = RendererBackend::Software;
+#ifndef ocpnUSE_GL
+  if (requested_backend == RendererBackend::OpenGLLegacy)
+    requested_backend = RendererBackend::Software;
+#endif
+  g_renderer_runtime_backend = requested_backend;
+  g_bopengl = requested_backend == RendererBackend::OpenGLLegacy;
+  g_renderer_runtime_info.active_backend = requested_backend;
+  if (requested_backend == RendererBackend::Software) {
+    g_renderer_runtime_info.adapter_name = "Software renderer";
+    g_renderer_runtime_info.device_type = "CPU";
+    g_renderer_runtime_info.driver = "wxWidgets software rendering";
+    g_renderer_runtime_info.presentation_mode = "software blit";
+  } else if (requested_backend == RendererBackend::OpenGLLegacy) {
+    g_renderer_runtime_info.adapter_name = "Selected by legacy OpenGL stack";
+    g_renderer_runtime_info.device_type = "Legacy OpenGL device";
+    g_renderer_runtime_info.driver = "OpenGL vendor dispatch";
+    g_renderer_runtime_info.presentation_mode = "OpenGL";
+  }
+  wxLogMessage(
+      "Renderer: requested_backend=%s adapter_policy=%s fallback=%s "
+      "texture_cache_mb=%u max_upload_mb=%u frames_in_flight=%u",
+      RendererBackendName(requested_backend),
+      RendererAdapterPolicyName(g_renderer_config.adapter_policy),
+      RendererBackendName(g_renderer_config.fallback_backend),
+      g_renderer_config.limits.texture_cache_mb,
+      g_renderer_config.limits.max_upload_mb_per_frame,
+      g_renderer_config.limits.max_frames_in_flight);
 
 #if defined(__linux__) && !defined(__ANDROID__)
   if (g_bSoftwareGL) {

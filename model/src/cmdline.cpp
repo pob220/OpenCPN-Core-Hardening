@@ -33,5 +33,8 @@ bool g_bportable = false;
 bool g_bdisable_opengl = false;
 bool g_config_wizard = false;
 bool g_segment_safety_test = false;
+bool g_disable_experimental_renderer = false;
+bool g_reset_renderer_config = false;
+std::string g_renderer_override;
 std::string g_configdir;
 std::vector<std::string> g_params;

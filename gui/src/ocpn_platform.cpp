@@ -62,6 +62,7 @@
 #include "model/base_platform.h"
 #include "model/cmdline.h"
 #include "model/config_vars.h"
+#include "model/renderer_config.h"
 #include "model/conn_params.h"
 #include "model/cutil.h"
 #include "model/gui_vars.h"
@@ -524,7 +525,12 @@ void OCPNPlatform::Initialize_2() {
 //  Called from MyApp()::OnInit() just after gFrame is created, so gFrame is
 //  available
 void OCPNPlatform::Initialize_3() {
-  bool bcapable = IsGLCapable();
+  // GL capability probing initializes the platform OpenGL stack.  Do not do
+  // this for software or Vulkan presentation: on multi-GPU systems merely
+  // probing vendor dispatch can activate an unsafe driver path.
+  const bool legacy_gl_requested =
+      g_renderer_runtime_backend == RendererBackend::OpenGLLegacy;
+  bool bcapable = legacy_gl_requested && IsGLCapable();
 
 #ifdef ocpnARM  // Boot arm* platforms (meaning rPI) without OpenGL on first run
   // bcapable = false;
@@ -547,7 +553,8 @@ void OCPNPlatform::Initialize_3() {
   // or fresh install
 
 #ifdef ocpnUSE_GL
-  if ((g_bFirstRun || g_bUpgradeInProcess || bAndroid) && bcapable) {
+  if ((g_bFirstRun || g_bUpgradeInProcess || bAndroid) && bcapable &&
+      legacy_gl_requested) {
     g_bopengl = true;
 
     // Set up visually nice options

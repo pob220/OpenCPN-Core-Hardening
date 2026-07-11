@@ -64,6 +64,7 @@
 #include "model/ais_state_vars.h"
 #include "model/cmdline.h"
 #include "model/config_vars.h"
+#include "model/renderer_config.h"
 #include "model/conn_params.h"
 #include "model/cutil.h"
 #include "model/geodesic.h"
@@ -542,6 +543,50 @@ int MyConfig::LoadMyConfigRaw(bool bAsTemplate) {
   Read("MbtilesMaxLayers", &g_mbtilesMaxLayers);
 
   Read("ShowTrackPointTime", &g_bShowTrackPointTime, true);
+
+  if (!bAsTemplate) {
+    RendererConfig stored_renderer = g_renderer_config;
+    const bool renderer_key_present = HasEntry("RendererBackend");
+    bool legacy_opengl_enabled = false;
+    Read("OpenGL", &legacy_opengl_enabled, false);
+    wxString renderer_backend;
+    wxString adapter_policy;
+    wxString fallback_backend;
+    Read("RendererBackend", &renderer_backend, "software");
+    Read("RendererAdapterPolicy", &adapter_policy, "intel-integrated");
+    Read("RendererFallbackBackend", &fallback_backend, "software");
+    Read("RendererAutomaticRestart", &stored_renderer.automatic_restart,
+         false);
+    Read("RendererDiagnostics", &stored_renderer.diagnostics, false);
+    int texture_cache_mb = 256;
+    int max_upload_mb = 32;
+    int max_frames = 1;
+    int max_geometry_mb = 16;
+    Read("RendererTextureCacheMB", &texture_cache_mb, 256);
+    Read("RendererMaxUploadMBPerFrame", &max_upload_mb, 32);
+    Read("RendererMaxFramesInFlight", &max_frames, 1);
+    Read("RendererMaxGeometryBatchMB", &max_geometry_mb, 16);
+    stored_renderer.limits.texture_cache_mb =
+        static_cast<uint32_t>(std::max(texture_cache_mb, 0));
+    stored_renderer.limits.max_upload_mb_per_frame =
+        static_cast<uint32_t>(std::max(max_upload_mb, 0));
+    stored_renderer.limits.max_frames_in_flight =
+        static_cast<uint32_t>(std::max(max_frames, 0));
+    stored_renderer.limits.max_geometry_batch_mb =
+        static_cast<uint32_t>(std::max(max_geometry_mb, 0));
+    if (auto parsed = ParseRendererBackend(renderer_backend.ToStdString()))
+      stored_renderer.backend = *parsed;
+    if (auto parsed =
+            ParseRendererAdapterPolicy(adapter_policy.ToStdString()))
+      stored_renderer.adapter_policy = *parsed;
+    if (auto parsed = ParseRendererBackend(fallback_backend.ToStdString()))
+      stored_renderer.fallback_backend = *parsed;
+    stored_renderer.limits =
+        ClampRendererResourceLimits(stored_renderer.limits);
+    g_renderer_config = MigrateRendererConfig(
+        legacy_opengl_enabled, renderer_key_present, stored_renderer);
+  }
+
   /* opengl options */
 #ifdef ocpnUSE_GL
   if (!bAsTemplate) {
@@ -1935,9 +1980,25 @@ void MyConfig::UpdateSettings() {
   Write("ShowCM93DetailSlider", g_bShowDetailSlider);
 
   Write("SkewToNorthUp", g_bskew_comp);
+  Write("RendererBackend", RendererBackendName(g_renderer_config.backend));
+  Write("RendererAdapterPolicy",
+        RendererAdapterPolicyName(g_renderer_config.adapter_policy));
+  Write("RendererFallbackBackend",
+        RendererBackendName(g_renderer_config.fallback_backend));
+  Write("RendererAutomaticRestart", g_renderer_config.automatic_restart);
+  Write("RendererDiagnostics", g_renderer_config.diagnostics);
+  Write("RendererTextureCacheMB",
+        static_cast<int>(g_renderer_config.limits.texture_cache_mb));
+  Write("RendererMaxUploadMBPerFrame",
+        static_cast<int>(g_renderer_config.limits.max_upload_mb_per_frame));
+  Write("RendererMaxFramesInFlight",
+        static_cast<int>(g_renderer_config.limits.max_frames_in_flight));
+  Write("RendererMaxGeometryBatchMB",
+        static_cast<int>(g_renderer_config.limits.max_geometry_batch_mb));
   if (!g_bdisable_opengl) {  // Only modify the saved value if OpenGL is not
                              // force-disabled from the command line
-    Write("OpenGL", g_bopengl);
+    Write("OpenGL",
+          g_renderer_config.backend == RendererBackend::OpenGLLegacy);
   }
   Write("SoftwareGL", g_bSoftwareGL);
 
