@@ -3590,6 +3590,12 @@ struct PlugInSegmentSafetyResult {
   int has_drying;
   char depth_source_object[128];
   char depth_source_attribute[32];
+  int prewarm_requested_tiles;
+  int prewarm_base_tiles_built;
+  int prewarm_base_tiles_reused;
+  int prewarm_masks_built;
+  int prewarm_masks_reused;
+  int prewarm_fine_tiles_avoided;
 };
 
 extern "C" DECL_EXP bool PlugIn_CheckSegmentSafety(
@@ -3615,6 +3621,29 @@ extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyRouteMaskForSegment(
     double corridor_margin_nm,
     const PlugInSegmentSafetyOptions *options,
     PlugInSegmentSafetyResult *result);
+
+/**
+ * Prewarms one deduplicated route-mask tile set around multiple polylines.
+ *
+ * The latitude and longitude arrays contain all points consecutively while
+ * point_counts identifies the number of points in each independent polyline.
+ * No segment is created between adjacent polylines.  The call must run on the
+ * main thread; worker threads may subsequently read the published masks.
+ */
+extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyRouteMaskForPolylines(
+    const double *latitudes, const double *longitudes,
+    const int *point_counts, int polyline_count, double corridor_margin_nm,
+    const PlugInSegmentSafetyOptions *options,
+    PlugInSegmentSafetyResult *result);
+
+/**
+ * Releases route-mask tiles pinned by chart-safety prewarm calls.
+ *
+ * Prewarm pins keep the complete active routing envelope resident even when it
+ * is larger than the normal inactive cache target.  Call this after all route
+ * workers and authoritative final validations using the envelope have ended.
+ */
+extern "C" DECL_EXP void PlugIn_ReleaseSegmentSafetyRouteMaskPins();
 
 extern "C" DECL_EXP bool PlugIn_SetSegmentSafetyPersistentCacheEnabled(
     int enabled);
