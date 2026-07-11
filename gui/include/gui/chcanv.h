@@ -27,6 +27,8 @@
 
 #include "gl_headers.h"  // Must go before wx/glcanvas
 
+#include <memory>
+
 #include <wx/datetime.h>
 #include <wx/grid.h>
 #include <wx/treectrl.h>
@@ -89,6 +91,7 @@ class NotificationButton;  // circular
 class Quilt;               // circular
 class TCWin;               // circular
 class Undo;                // circular
+class VulkanPresenter;     // circular
 
 class ChartCanvas;                      // forward
 extern ChartCanvas *g_overlayCanvas;    ///< Global instance
@@ -926,6 +929,7 @@ private:
   bool m_inLongPress;
 
   wxBitmap *pscratch_bm;
+  std::unique_ptr<VulkanPresenter> m_vulkan_presenter;
   ViewPort VPoint;
   void PositionConsole(void);
   wxWindow *m_nmea_log;

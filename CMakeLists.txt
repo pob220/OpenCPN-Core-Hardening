@@ -132,6 +132,8 @@ set(OCPN_PACKAGE_RELEASE
 )
 
 option(OCPN_USE_GL "Enable OpenGL support" ON)
+option(OCPN_USE_VULKAN_PRESENTER
+       "Enable experimental Vulkan software-frame presentation" ON)
 option(OCPN_USE_GLES_SHIM "Enable GLESv1 Shim library" OFF)
 option(OCPN_USE_UDEV_PORTS "Use udev to enumerate serial ports" ON)
 option(OCPN_USE_SYSFS_PORTS "Use sysfs to enumerate serial ports" OFF)
@@ -1045,6 +1047,7 @@ set(GUI_SRC
     ${GUI_SRC_DIR}/user_colors_dlg.cpp
     ${GUI_SRC_DIR}/user_colors.cpp
     ${GUI_SRC_DIR}/viewport.cpp
+    ${GUI_SRC_DIR}/vulkan_presenter.cpp
     ${GUI_SRC_DIR}/waypointman_gui.cpp
 
 )
@@ -2809,6 +2812,23 @@ endif ()
 
 add_subdirectory(model)
 target_link_libraries(${PACKAGE_NAME} PUBLIC ocpn::model-src ocpn::model)
+
+if (OCPN_USE_VULKAN_PRESENTER AND UNIX AND NOT APPLE AND NOT QT_ANDROID)
+  find_package(Vulkan QUIET)
+  pkg_check_modules(GTK3 QUIET gtk+-3.0)
+  if (Vulkan_FOUND AND GTK3_FOUND)
+    target_compile_definitions(${PACKAGE_NAME} PRIVATE ocpnUSE_VULKAN)
+    target_include_directories(${PACKAGE_NAME} PRIVATE ${GTK3_INCLUDE_DIRS})
+    target_link_directories(${PACKAGE_NAME} PRIVATE ${GTK3_LIBRARY_DIRS})
+    target_link_libraries(${PACKAGE_NAME} PRIVATE Vulkan::Vulkan
+                                                  ${GTK3_LIBRARIES})
+    message(STATUS "Experimental Vulkan presenter: enabled")
+  else ()
+    message(STATUS "Experimental Vulkan presenter: disabled (Vulkan/GTK3 missing)")
+  endif ()
+else ()
+  message(STATUS "Experimental Vulkan presenter: disabled")
+endif ()
 
 if ("${ENABLE_SANITIZER}" STREQUAL "none")
   if (MSVC)

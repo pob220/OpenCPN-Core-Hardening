@@ -59,6 +59,7 @@
 #include "model/plugin_comm.h"
 #include "model/route.h"
 #include "model/routeman.h"
+#include "model/renderer_config.h"
 #include "model/select.h"
 #include "model/select_item.h"
 #include "model/track.h"
@@ -116,6 +117,7 @@
 #include "tide_time.h"
 #include "timers.h"
 #include "toolbar.h"
+#include "vulkan_presenter.h"
 #include "top_frame.h"
 #include "track_gui.h"
 #include "track_prop_dlg.h"
@@ -853,8 +855,8 @@ void ChartCanvas::CanvasApplyLocale() {
 void ChartCanvas::SetupGlCanvas() {
 #ifndef __ANDROID__
 #ifdef ocpnUSE_GL
-  if (!g_bdisable_opengl) {
-    if (g_bopengl) {
+  if (g_renderer_runtime_backend == RendererBackend::OpenGLLegacy) {
+    if (!g_bdisable_opengl && g_bopengl) {
       wxLogMessage("Creating glChartCanvas");
       m_glcc = new glChartCanvas(this);
 
@@ -12498,20 +12500,70 @@ void ChartCanvas::OnPaint(wxPaintEvent &event) {
   ocpnDC scratch_dc(mscratch_dc);
   DrawOverlayObjects(scratch_dc, ru);
 
-  //    And finally, blit the scratch dc onto the physical dc
-  wxRegionIterator upd_final(rgn_blit);
-  while (upd_final) {
-    wxRect rect = upd_final.GetRect();
-    dc.Blit(rect.x, rect.y, rect.width, rect.height, &mscratch_dc, rect.x,
-            rect.y);
-    upd_final++;
+  // Present the complete software-rendered chart frame.  The experimental
+  // Vulkan path deliberately starts here: chart parsing, S52 rendering and
+  // all navigation overlays remain in the mature software renderer.
+  bool scratch_selected = true;
+  bool presented = false;
+  if (g_renderer_runtime_backend ==
+      RendererBackend::VulkanExperimental) {
+    mscratch_dc.SelectObject(wxNullBitmap);
+    scratch_selected = false;
+    if (!m_vulkan_presenter) {
+      m_vulkan_presenter = std::make_unique<VulkanPresenter>(
+          this, g_renderer_config,
+          g_Platform->GetPrivateDataDir().ToStdString());
+    }
+    if (m_vulkan_presenter->IsReady()) {
+      const RendererPresentResult result =
+          m_vulkan_presenter->Present(*pscratch_bm);
+      presented = result.status == RendererPresentStatus::Presented;
+      if (result.status == RendererPresentStatus::PermanentFailure) {
+        wxLogError("Renderer: Vulkan presentation failed: %s; falling back "
+                   "to software without selecting another GPU",
+                   result.message);
+        g_renderer_runtime_backend = RendererBackend::Software;
+        g_renderer_runtime_info.active_backend = RendererBackend::Software;
+        g_renderer_runtime_info.adapter_name = "Software renderer";
+        g_renderer_runtime_info.driver = "wxWidgets software rendering";
+        g_renderer_runtime_info.health = result.message;
+        g_renderer_runtime_info.fallback_active = true;
+        m_vulkan_presenter.reset();
+      }
+    } else {
+      wxLogError("Renderer: Vulkan initialization failed; falling back to "
+                 "software without selecting another GPU");
+      g_renderer_runtime_backend = RendererBackend::Software;
+      g_renderer_runtime_info.active_backend = RendererBackend::Software;
+      g_renderer_runtime_info.adapter_name = "Software renderer";
+      g_renderer_runtime_info.driver = "wxWidgets software rendering";
+      g_renderer_runtime_info.health = "Vulkan initialization failed";
+      g_renderer_runtime_info.fallback_active = true;
+      m_vulkan_presenter.reset();
+    }
+  }
+
+  if (!presented) {
+    wxMemoryDC fallback_dc;
+    wxMemoryDC* source = &mscratch_dc;
+    if (!scratch_selected) {
+      fallback_dc.SelectObject(*pscratch_bm);
+      source = &fallback_dc;
+    }
+    wxRegionIterator upd_final(rgn_blit);
+    while (upd_final) {
+      wxRect rect = upd_final.GetRect();
+      dc.Blit(rect.x, rect.y, rect.width, rect.height, source, rect.x, rect.y);
+      upd_final++;
+    }
+    if (!scratch_selected) fallback_dc.SelectObject(wxNullBitmap);
   }
 
   //    Deselect the chart bitmap from the temp_dc, so that it will not be
   //    destroyed in the temp_dc dtor
   temp_dc.SelectObject(wxNullBitmap);
   //    And for the scratch bitmap
-  mscratch_dc.SelectObject(wxNullBitmap);
+  if (scratch_selected) mscratch_dc.SelectObject(wxNullBitmap);
 
   dc.DestroyClippingRegion();
 
