@@ -28,6 +28,9 @@
 
 #include "pi_gl.h"
 
+#include <cstdlib>
+#include <limits>
+
 #include <wx/glcanvas.h>
 #include <wx/graphics.h>
 #include <wx/progdlg.h>
@@ -890,18 +893,33 @@ wxImage GRIBOverlayFactory::CreateGribImage(int settings, GribRecord *pGR,
                                             PlugIn_ViewPort *vp,
                                             int grib_pixel_size,
                                             const wxPoint &porg) {
+  constexpr int blur_radius = 4;
+  const auto invalid_coordinate = [](const wxPoint &point) {
+    return point.x == std::numeric_limits<int>::min() ||
+           point.y == std::numeric_limits<int>::min();
+  };
+
   wxPoint pmin;
   GetCanvasPixLL(vp, &pmin, pGR->getLatMin(), pGR->getLonMin());
   wxPoint pmax;
   GetCanvasPixLL(vp, &pmax, pGR->getLatMax(), pGR->getLonMax());
 
-  int width = abs(pmax.x - pmin.x);
-  int height = abs(pmax.y - pmin.y);
+  if (invalid_coordinate(pmin) || invalid_coordinate(pmax) ||
+      invalid_coordinate(porg))
+    return wxNullImage;
+
+  const auto width64 = std::llabs(static_cast<long long>(pmax.x) - pmin.x);
+  const auto height64 = std::llabs(static_cast<long long>(pmax.y) - pmin.y);
 
   //    Dont try to create enormous GRIB bitmaps ( no more than the screen size
   //    )
-  if (width > m_ParentSize.GetWidth() || height > m_ParentSize.GetHeight())
+  if (width64 == 0 || height64 == 0 ||
+      width64 > m_ParentSize.GetWidth() ||
+      height64 > m_ParentSize.GetHeight())
     return wxNullImage;
+
+  const int width = static_cast<int>(width64);
+  const int height = static_cast<int>(height64);
 
   //    This could take a while....
   wxImage gr_image(width, height);
@@ -943,7 +961,9 @@ wxImage GRIBOverlayFactory::CreateGribImage(int settings, GribRecord *pGR,
     }
   }
 
-  return gr_image.Blur(4);
+  if (width <= 2 * blur_radius || height <= 2 * blur_radius)
+    return gr_image;
+  return gr_image.Blur(blur_radius);
 }
 
 struct ColorMap {
