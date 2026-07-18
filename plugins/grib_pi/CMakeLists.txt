@@ -267,6 +267,26 @@ target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::wxjson)
 target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::manual)
 target_link_libraries(${PACKAGE_NAME} PRIVATE ocpn::opencpn)
 
+# Native environmental GRIB generator.  The catalogue build will provide this
+# from the pinned generator source and bundle its private runtime dependencies.
+# This path also supports the adjacent development checkout used by source
+# builds without making it a mandatory OpenCPN build dependency.
+set(
+  ENVIRONMENTAL_GRIB_HELPER
+  "${CMAKE_SOURCE_DIR}/../environmental-grib-generator/build/environmental-grib"
+  CACHE FILEPATH "Path to the native environmental-grib helper executable"
+)
+if (EXISTS "${ENVIRONMENTAL_GRIB_HELPER}")
+  add_custom_command(
+    TARGET ${PACKAGE_NAME}
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${ENVIRONMENTAL_GRIB_HELPER}"
+            "${CMAKE_BINARY_DIR}/environmental-grib"
+    COMMENT "Copying native environmental GRIB helper"
+  )
+endif ()
+
 if (NOT WIN32)
   target_link_libraries(${PACKAGE_NAME} PRIVATE "-lz")
 endif ()
@@ -349,6 +369,13 @@ if (UNIX AND NOT APPLE)
     RUNTIME
     LIBRARY DESTINATION ${PREFIX_PLUGINS}
   )
+
+  if (EXISTS "${ENVIRONMENTAL_GRIB_HELPER}")
+    install(
+      PROGRAMS "${ENVIRONMENTAL_GRIB_HELPER}"
+      DESTINATION "${PREFIX_DATA}/${PARENT}/plugins/environmental_grib_pi/bin"
+    )
+  endif ()
 
   if (EXISTS ${PROJECT_SOURCE_DIR}/data)
     set(PREFIX_PARENTDATA ${PREFIX_DATA}/${PARENT})

@@ -2,6 +2,7 @@
 
 #include <wx/config.h>
 #include <wx/datetime.h>
+#include <wx/dir.h>
 #include <wx/filedlg.h>
 #include <wx/filename.h>
 #include <wx/msgdlg.h>
@@ -11,6 +12,10 @@
 #include <wx/stream.h>
 #include <wx/utils.h>
 #include <wx/file.h>
+
+#include "jsonval.h"
+#include "jsonreader.h"
+#include "jsonwriter.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -48,24 +53,8 @@ wxString DefaultStartUtc() {
   return now.FormatISOCombined('T') + "Z";
 }
 
-bool IsCopernicusProvider(const wxString& provider) {
-  return provider == "Auto" || provider.Contains("Copernicus Marine North-West Shelf") ||
-         provider.Contains("Copernicus Marine Global");
-}
-
 bool IsMarineIeProvider(const wxString& provider) {
   return provider.Contains("Marine Institute Ireland");
-}
-
-wxString CopernicusProviderId(const wxString& provider) {
-  if (provider.Contains("Copernicus Marine North-West Shelf")) return "copernicus_nws";
-  if (provider.Contains("Copernicus Marine Global")) return "copernicus_global";
-  return "auto";
-}
-
-wxString RemoteProviderId(const wxString& provider) {
-  if (IsMarineIeProvider(provider)) return "marine_ie_irish_sea";
-  return CopernicusProviderId(provider);
 }
 
 wxString MarineIeOutputFilename() {
@@ -93,6 +82,21 @@ wxString DefaultTpxoCacheFile() {
   path.SetFullName(TimestampedFilename("tpxo10_astronomical_tide_current_cache"));
   path.SetExt("tpxocache");
   return path.GetFullPath();
+}
+
+wxString ResolveTpxoAtlasDirectory(const wxString& selected) {
+  const auto isAtlas = [](const wxString& directory) {
+    wxFileName grid(directory, "grid_tpxo10atlas_v2.nc");
+    wxDir model(directory);
+    wxString constituent;
+    return grid.FileExists() && model.IsOpened() &&
+           model.GetFirst(&constituent, "u_*_tpxo10_atlas_30_v2.nc",
+                          wxDIR_FILES);
+  };
+  if (isAtlas(selected)) return selected;
+  wxFileName nested(selected, "");
+  nested.AppendDir("TPXO10_atlas_v2");
+  return isAtlas(nested.GetPath()) ? nested.GetPath() : wxString{};
 }
 
 wxString JsonEscape(const wxString& value) {
@@ -215,10 +219,13 @@ EnvironmentalGribDialog::EnvironmentalGribDialog(wxWindow* parent)
     : wxDialog(parent, wxID_ANY, "Environmental GRIB Generator", wxDefaultPosition,
                wxSize(880, 760), wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER) {
   auto* top = new wxBoxSizer(wxVERTICAL);
-  auto* scrolled = new wxScrolledWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                                       wxVSCROLL | wxTAB_TRAVERSAL);
-  scrolled->SetScrollRate(8, 8);
-  scrolled->SetMinSize(wxSize(760, 330));
+  m_scrolled = new wxScrolledWindow(
+      this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+      wxVSCROLL | wxALWAYS_SHOW_SB | wxTAB_TRAVERSAL);
+  m_scrolled->SetScrollRate(0, 12);
+  m_scrolled->ShowScrollbars(wxSHOW_SB_NEVER, wxSHOW_SB_ALWAYS);
+  m_scrolled->SetMinSize(wxSize(760, 330));
+  auto* scrolled = m_scrolled;
   auto* form = new wxBoxSizer(wxVERTICAL);
   auto* grid = new wxFlexGridSizer(2, 8, 8);
   grid->AddGrowableCol(1, 1);
@@ -382,6 +389,7 @@ EnvironmentalGribDialog::EnvironmentalGribDialog(wxWindow* parent)
   form->Add(m_rememberUsername, 0, wxLEFT | wxRIGHT | wxBOTTOM, 12);
   form->Add(m_openAfter, 0, wxLEFT | wxRIGHT | wxBOTTOM, 12);
   scrolled->SetSizer(form);
+  scrolled->SetVirtualSize(form->GetMinSize());
   top->Add(scrolled, 1, wxEXPAND);
 
   m_log = new wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxSize(-1, 220),
@@ -449,20 +457,28 @@ void EnvironmentalGribDialog::SetCurrentViewPort(const PlugIn_ViewPort& vp) {
 }
 
 void EnvironmentalGribDialog::OnCheckDependencies(wxCommandEvent&) {
-  wxString command = ShellQuote(m_generatorPath->GetValue()) + " check-dependencies --output-directory " +
-                     ShellQuote(m_outputDir->GetPath());
-  AppendLog("Running dependency check...");
+  wxString command = ShellQuote(m_generatorPath->GetValue()) + " capabilities";
+  AppendLog("Checking native generator capabilities...");
   StartCommand(command, "", false);
 }
 
 void EnvironmentalGribDialog::OnCheckTpxoModel(wxCommandEvent&) {
-  wxString command = ShellQuote(m_generatorPath->GetValue()) +
-                     " inspect-source --source tpxo --model-dir " +
-                     ShellQuote(m_tpxoModelDir->GetPath()) + " --model-name " +
-                     ShellQuote(m_tpxoModelName->GetValue());
   AppendLog("Checking TPXO model...");
   AppendLog("Source: TPXO10 astronomical tide model");
-  StartCommand(command, "", false);
+  const wxString atlas = ResolveTpxoAtlasDirectory(m_tpxoModelDir->GetPath());
+  if (!atlas.empty()) {
+    AppendLog("TPXO10 model is available: " + atlas);
+    wxMessageBox("The TPXO10 model grid and constituent files are available.",
+                 "TPXO model available", wxOK | wxICON_INFORMATION, this);
+  } else {
+    const wxString message =
+        "TPXO10 model files were not found. Select either the model parent "
+        "directory or the TPXO10_atlas_v2 directory: " +
+        m_tpxoModelDir->GetPath();
+    AppendLog(message);
+    wxMessageBox(message, "TPXO model unavailable", wxOK | wxICON_WARNING,
+                 this);
+  }
 }
 
 void EnvironmentalGribDialog::OnPrepareTpxoCache(wxCommandEvent&) {
@@ -481,9 +497,8 @@ void EnvironmentalGribDialog::OnPrepareTpxoCache(wxCommandEvent&) {
                      ShellQuote(m_east->GetValue()) + " " + ShellQuote(m_north->GetValue()) +
                      " --grid-spacing-deg " + ShellQuote(m_tpxoGridSpacing->GetValue()) +
                      " --model-dir " + ShellQuote(m_tpxoModelDir->GetPath()) +
-                     " --model-name " + ShellQuote(m_tpxoModelName->GetValue()) +
                      " --output " + ShellQuote(cachePath.GetFullPath()) +
-                     " --metadata-summary --verbose";
+                     " --overwrite --verbose";
   AppendLog("Preparing TPXO cache...");
   AppendLog("Source: TPXO10 astronomical tide model");
   AppendLog("TPXO cache files are derived from local licensed TPXO model files. Do not redistribute unless your TPXO licence permits it.");
@@ -516,8 +531,10 @@ void EnvironmentalGribDialog::OnGenerate(wxCommandEvent&) {
       cachePath = DefaultTpxoCacheFile();
       m_tpxoCacheFile->SetPath(cachePath);
     }
-    if (m_tpxoModelDir->GetPath().empty() || m_tpxoModelName->GetValue().empty()) {
-      wxString message = "Select a TPXO model directory and model name before TPXO cache generation.";
+    if (ResolveTpxoAtlasDirectory(m_tpxoModelDir->GetPath()).empty()) {
+      wxString message =
+          "Select a valid TPXO model parent or TPXO10_atlas_v2 directory "
+          "before TPXO cache generation.";
       AppendLog(message);
       wxMessageBox(message, "Missing TPXO model", wxOK | wxICON_WARNING, this);
       return;
@@ -534,8 +551,10 @@ void EnvironmentalGribDialog::OnGenerate(wxCommandEvent&) {
     }
   }
   if (m_generateCurrents->GetValue() && currentSource.Contains("TPXO direct") &&
-      (m_tpxoModelDir->GetPath().empty() || m_tpxoModelName->GetValue().empty())) {
-    wxString message = "Select a TPXO model directory and model name before direct TPXO generation.";
+      ResolveTpxoAtlasDirectory(m_tpxoModelDir->GetPath()).empty()) {
+    wxString message =
+        "Select a valid TPXO model parent or TPXO10_atlas_v2 directory "
+        "before direct TPXO generation.";
     AppendLog(message);
     wxMessageBox(message, "Missing TPXO model", wxOK | wxICON_WARNING, this);
     return;
@@ -552,6 +571,10 @@ void EnvironmentalGribDialog::OnGenerate(wxCommandEvent&) {
     return;
   }
   if (m_generateWeather->GetValue() && weatherProvider.Contains("Met Office UKV") && !ValidateUkvRequest()) {
+    AppendLog("Generation cancelled before launch.");
+    return;
+  }
+  if (m_generateWeather->GetValue() && weatherProvider.Contains("ECMWF") && !ValidateEcmwfRequest()) {
     AppendLog("Generation cancelled before launch.");
     return;
   }
@@ -585,7 +608,6 @@ void EnvironmentalGribDialog::OnGenerate(wxCommandEvent&) {
   if (m_generateWeather->GetValue() && weatherProvider.Contains("AIFS")) {
     AppendLog("ECMWF AIFS Open Data files may be large if the helper cannot spatially crop the request.");
   }
-  wxString command = BuildGenerateCommand();
   wxFileName output(OutputPath());
   if (!output.DirExists()) {
     output.Mkdir(wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
@@ -597,6 +619,11 @@ void EnvironmentalGribDialog::OnGenerate(wxCommandEvent&) {
     if (!downloadDir.DirExists()) {
       downloadDir.Mkdir(wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
     }
+  }
+  wxString command = BuildGenerateCommand();
+  if (command.empty()) {
+    AppendLog("Generation cancelled: native generator job could not be created.");
+    return;
   }
   SaveSettings();
   AppendLog("Starting environmental GRIB generation...");
@@ -855,14 +882,17 @@ void EnvironmentalGribDialog::UpdateProviderUi() {
   } else if (weatherAifs) {
     wxString note =
         "Source: ECMWF AIFS Open Data forecast. Global AI forecast, no account. "
-        "Experimental in this build; live retrieval still needs validation. Files may be large if not cropped.";
+        "Experimental in this build; live retrieval still needs validation. Files may be large if not cropped. "
+        "Forecast steps are 6-hourly or coarser.";
     if (waveCopernicus) {
       note += "\nWave source: Copernicus Marine Global Waves forecast. Account required; global 3-hourly wave fields.";
     }
     if (!currentNote.empty()) note += "\n" + currentNote;
     m_providerNote->SetLabel(note);
   } else if (weatherEnabled && m_weatherProvider->GetStringSelection().Contains("ECMWF")) {
-    wxString note = "Source: ECMWF IFS Open Data forecast. Warning: this provider is not spatially cropped yet, so files may be large.";
+    wxString note =
+        "Source: ECMWF IFS Open Data forecast. ECMWF IFS Open Data is global/medium-range and currently not "
+        "spatially cropped; files may be large. Forecast steps are 3-hourly or coarser.";
     if (waveCopernicus) {
       note += "\nWave source: Copernicus Marine Global Waves forecast. Account required; global 3-hourly wave fields.";
     }
@@ -894,9 +924,9 @@ void EnvironmentalGribDialog::UpdateProviderUi() {
   } else {
     m_providerNote->SetLabel("");
   }
-  if (auto* scrolled = dynamic_cast<wxScrolledWindow*>(m_generatorPath->GetParent())) {
-    scrolled->FitInside();
-  }
+  m_scrolled->Layout();
+  m_scrolled->FitInside();
+  m_scrolled->SetVirtualSize(m_scrolled->GetSizer()->GetMinSize());
   Layout();
 }
 
@@ -947,6 +977,36 @@ bool EnvironmentalGribDialog::ValidateUkvRequest() {
   if (m_weatherPreset->GetStringSelection().Contains("Marine")) {
     AppendLog("UKV marine extras are not implemented yet; routing fields will be generated.");
   }
+  return true;
+}
+
+bool EnvironmentalGribDialog::ValidateEcmwfRequest() {
+  wxString weatherProvider = m_weatherProvider->GetStringSelection();
+  int stepHours = m_stepHours->GetValue();
+  bool aifs = weatherProvider.Contains("AIFS");
+  bool valid = aifs ? (stepHours == 6 || stepHours == 12)
+                    : (stepHours == 3 || stepHours == 6 || stepHours == 12);
+  if (valid) {
+    return true;
+  }
+
+  int replacementStepHours = aifs ? 6 : 3;
+  wxString providerName = aifs ? "ECMWF AIFS Open Data" : "ECMWF IFS Open Data";
+  wxString message =
+      providerName + " is available at " +
+      (aifs ? "6-hourly or coarser intervals." : "3-hourly or coarser intervals.") +
+      "\nChange Step hours to " + wxString::Format("%d", replacementStepHours) + " and continue?";
+  AppendLog(message);
+
+  wxMessageDialog dialog(this, message, "Confirm ECMWF forecast step",
+                         wxYES_NO | wxICON_WARNING);
+  dialog.SetYesNoLabels(wxString::Format("Continue with %dh", replacementStepHours), "Cancel");
+  if (dialog.ShowModal() != wxID_YES) {
+    return false;
+  }
+
+  m_stepHours->SetValue(replacementStepHours);
+  AppendLog(wxString::Format("Step hours changed to %d for %s.", replacementStepHours, providerName));
   return true;
 }
 
@@ -1083,7 +1143,7 @@ void EnvironmentalGribDialog::StartCommand(const wxString& command, const wxStri
   SetBusy(true);
   AppendLog("Command: " + Redact(command));
   if (!password.empty()) {
-    AppendLog("Copernicus password will be passed to the helper process through CURRENTGRIB_COPERNICUS_PASSWORD, not on the command line.");
+    AppendLog("Copernicus password will be passed to the native helper through an environment variable, not on the command line or in the job file.");
   }
 
   auto* process = new wxProcess(this);
@@ -1091,7 +1151,7 @@ void EnvironmentalGribDialog::StartCommand(const wxString& command, const wxStri
 
   wxExecuteEnv env;
   if (!password.empty()) {
-    env.env["CURRENTGRIB_COPERNICUS_PASSWORD"] = password;
+    env.env["ENVIRONMENTAL_GRIB_COPERNICUS_PASSWORD"] = password;
   }
 
   long pid = wxExecute(command, wxEXEC_ASYNC | wxEXEC_NODISABLE, process, password.empty() ? nullptr : &env);
@@ -1125,6 +1185,28 @@ void EnvironmentalGribDialog::FinishCommand(long exit_code, bool launched) {
   m_processRunning = false;
   m_processPid = 0;
   SetBusy(false);
+
+  wxString nativeError;
+  if (!m_resultPath.empty() && wxFileName::FileExists(m_resultPath)) {
+    wxFile resultFile(m_resultPath);
+    wxString resultText;
+    if (resultFile.IsOpened() && resultFile.ReadAll(&resultText)) {
+      wxJSONValue resultValue;
+      wxJSONReader reader;
+      if (reader.Parse(resultText, &resultValue) == 0 &&
+          resultValue.HasMember("error") &&
+          resultValue["error"].HasMember("message")) {
+        nativeError = resultValue["error"]["message"].AsString();
+        AppendLog("Native generator error: " + Redact(nativeError));
+      }
+    }
+    wxRemoveFile(m_resultPath);
+    m_resultPath.clear();
+  }
+  if (!m_jobPath.empty()) {
+    wxRemoveFile(m_jobPath);
+    m_jobPath.clear();
+  }
 
   if (!launched) {
     wxMessageBox("The generator process failed to launch. Check the generator executable path.",
@@ -1203,10 +1285,25 @@ void EnvironmentalGribDialog::TryOpenGeneratedGrib() {
   AppendLog("Sent GRIB plugin open request for: " + path);
 }
 
-wxString EnvironmentalGribDialog::BuildGenerateCommand() const {
+bool EnvironmentalGribDialog::WriteGenerateJob(const wxString& job_path,
+                                               wxString* error) const {
+  double west = 0.0;
+  double south = 0.0;
+  double east = 0.0;
+  double north = 0.0;
+  double currentSpacing = 0.0;
+  if (!m_west->GetValue().ToDouble(&west) ||
+      !m_south->GetValue().ToDouble(&south) ||
+      !m_east->GetValue().ToDouble(&east) ||
+      !m_north->GetValue().ToDouble(&north) ||
+      !m_tpxoGridSpacing->GetValue().ToDouble(&currentSpacing)) {
+    if (error) *error = "area coordinates and grid spacing must be numeric";
+    return false;
+  }
+
   wxString weatherProvider = "none";
   if (m_generateWeather->GetValue()) {
-    wxString selected = m_weatherProvider->GetStringSelection();
+    const wxString selected = m_weatherProvider->GetStringSelection();
     if (selected.Contains("NOAA GFS")) weatherProvider = "gfs";
     else if (selected.Contains("HRRR")) weatherProvider = "noaa_hrrr";
     else if (selected.Contains("Met Office UKV")) weatherProvider = "ukmo_ukv";
@@ -1216,123 +1313,101 @@ wxString EnvironmentalGribDialog::BuildGenerateCommand() const {
     else if (selected.Contains("Existing")) weatherProvider = "existing-file";
   }
   wxString weatherPreset = "routing";
-  if (m_weatherPreset->GetStringSelection().Contains("Minimal")) weatherPreset = "minimal";
-  else if (m_weatherPreset->GetStringSelection().Contains("Marine")) weatherPreset = "marine";
+  if (m_weatherPreset->GetStringSelection().Contains("Minimal")) {
+    weatherPreset = "minimal";
+  } else if (m_weatherPreset->GetStringSelection().Contains("Marine")) {
+    weatherPreset = "marine";
+  }
 
   wxString currentSource = "none";
   if (m_generateCurrents->GetValue()) {
-    wxString selectedCurrent = m_currentSource->GetStringSelection();
-    if (selectedCurrent.Contains("TPXO cache")) currentSource = "tpxo-cache";
-    else if (selectedCurrent.Contains("TPXO direct")) currentSource = "tpxo";
-    else if (selectedCurrent.Contains("Existing")) currentSource = "existing-file";
-    else if (selectedCurrent.Contains("Marine.ie")) currentSource = "marine_ie_irish_sea";
-    else if (selectedCurrent.Contains("RTOFS")) currentSource = "noaa_rtofs_global";
-    else if (selectedCurrent.Contains("OFS")) currentSource = "noaa_ofs_s111";
-    else if (selectedCurrent.Contains("NWS")) currentSource = "copernicus_nws";
-    else if (selectedCurrent.Contains("Global")) currentSource = "copernicus_global";
-    else if (selectedCurrent.Contains("Auto")) currentSource = "auto";
+    const wxString selected = m_currentSource->GetStringSelection();
+    if (selected.Contains("TPXO cache")) currentSource = "tpxo-cache";
+    else if (selected.Contains("TPXO direct")) currentSource = "tpxo";
+    else if (selected.Contains("Existing")) currentSource = "existing-file";
+    else if (selected.Contains("Marine.ie")) currentSource = "marine_ie_irish_sea";
+    else if (selected.Contains("RTOFS")) currentSource = "noaa_rtofs_global";
+    else if (selected.Contains("OFS")) currentSource = "noaa_ofs_s111";
+    else if (selected.Contains("NWS")) currentSource = "copernicus_nws";
+    else if (selected.Contains("Global")) currentSource = "copernicus_global";
+    else if (selected.Contains("Auto")) currentSource = "auto";
   }
+  if (m_mode->GetSelection() == 2) currentSource = "netcdf";
+  if (m_mode->GetSelection() == 3) currentSource = "synthetic";
 
-  wxString command = ShellQuote(m_generatorPath->GetValue()) + " generate-environment-grib --bbox " +
-                     ShellQuote(m_west->GetValue()) + " " + ShellQuote(m_south->GetValue()) + " " +
-                     ShellQuote(m_east->GetValue()) + " " + ShellQuote(m_north->GetValue()) +
-                     " --start " + ShellQuote(m_startUtc->GetValue()) +
-                     " --cycle auto --hours " + wxString::Format("%d", m_durationHours->GetValue()) +
-                     " --step-hours " + wxString::Format("%d", m_stepHours->GetValue()) +
-                     " --weather-provider " + weatherProvider +
-                     " --weather-preset " + weatherPreset +
-                     " --weather-grid-spacing-deg 0.025" +
-                     " --current-source " + currentSource +
-                     " --output " + ShellQuote(OutputPath()) +
-                     " --overwrite --metadata-summary --verbose";
-  if (weatherProvider == "existing-file") {
-    command += " --weather-file " + ShellQuote(m_existingWeatherFile->GetPath());
-  }
-  if (m_includeWaves->GetValue() && weatherProvider != "none" && weatherProvider != "existing-file") {
-    wxString waveProvider = m_waveProvider->GetStringSelection().Contains("Copernicus") ?
-        "copernicus_global_waves" : "gfs_wave";
-    command += " --include-waves --wave-provider " + waveProvider + " --wave-step-hours 3";
-  }
-  if (currentSource == "existing-file") {
-    command += " --current-file " + ShellQuote(m_existingCurrentFile->GetPath());
-  } else if (currentSource == "tpxo-cache") {
-    command += " --input-cache " + ShellQuote(m_tpxoCacheFile->GetPath()) +
-               " --auto-prepare-tpxo-cache" +
-               " --model-dir " + ShellQuote(m_tpxoModelDir->GetPath()) +
-               " --model-name " + ShellQuote(m_tpxoModelName->GetValue()) +
-               " --grid-spacing-deg " + ShellQuote(m_tpxoGridSpacing->GetValue());
-  } else if (currentSource == "tpxo") {
-    command += " --model-dir " + ShellQuote(m_tpxoModelDir->GetPath()) +
-               " --model-name " + ShellQuote(m_tpxoModelName->GetValue()) +
-               " --grid-spacing-deg " + ShellQuote(m_tpxoGridSpacing->GetValue());
-  }
+  wxJSONValue root;
+  root["schemaVersion"] = 1;
+  root["operation"] = "generateEnvironment";
+  wxJSONValue& request = root["request"];
+  request["bbox"]["west"] = west;
+  request["bbox"]["south"] = south;
+  request["bbox"]["east"] = east;
+  request["bbox"]["north"] = north;
+  request["start"] = m_startUtc->GetValue();
+  request["hours"] = m_durationHours->GetValue();
+  request["stepHours"] = m_stepHours->GetValue();
+  request["cycle"] = "auto";
+  request["weatherProvider"] = weatherProvider;
+  request["weatherPreset"] = weatherPreset;
+  request["weatherGridSpacingDeg"] = 0.025;
+  request["weatherFile"] = m_existingWeatherFile->GetPath();
+  request["includeWaves"] =
+      m_includeWaves->GetValue() && weatherProvider != "none" &&
+      weatherProvider != "existing-file";
+  request["waveProvider"] =
+      m_waveProvider->GetStringSelection().Contains("Copernicus")
+          ? "copernicus_global_waves"
+          : "gfs_wave";
+  request["waveStepHours"] = 3;
+  request["currentSource"] = currentSource;
+  request["currentFile"] = m_existingCurrentFile->GetPath();
+  request["inputNetcdf"] = m_localNetcdf->GetPath();
+  request["inputCache"] = m_tpxoCacheFile->GetPath();
+  request["tpxoModelDirectory"] = m_tpxoModelDir->GetPath();
+  request["autoPrepareTpxoCache"] = currentSource == "tpxo-cache";
+  request["currentGridSpacingDeg"] = currentSpacing;
+  request["inferMinorTides"] = true;
+  request["output"] = OutputPath();
+  request["overwrite"] = true;
+  request["keepIntermediate"] = false;
+  request["dryRun"] = false;
   if (NeedsCopernicusCredentials()) {
     wxFileName downloadDir;
     downloadDir.AssignDir(m_outputDir->GetPath());
     downloadDir.AppendDir("currentgrib_downloads");
-    command += " --download-directory " + ShellQuote(downloadDir.GetPath()) +
-               " --password-env CURRENTGRIB_COPERNICUS_PASSWORD";
-    if (!m_username->GetValue().empty()) {
-      command += " --username " + ShellQuote(m_username->GetValue());
-    }
+    request["downloadDirectory"] = downloadDir.GetPath();
+    request["copernicusUsername"] = m_username->GetValue();
   }
-  return command;
+  root["credentials"]["copernicusPasswordEnvironment"] =
+      "ENVIRONMENTAL_GRIB_COPERNICUS_PASSWORD";
 
-  int mode = m_mode->GetSelection();
-  wxString provider = m_provider->GetStringSelection();
-  if (mode == 1) {
-    if (m_useTpxoCache->GetValue()) {
-      return ShellQuote(m_generatorPath->GetValue()) + " generate --source tpxo-cache --input-cache " +
-             ShellQuote(m_tpxoCacheFile->GetPath()) +
-             " --start " + ShellQuote(m_startUtc->GetValue()) +
-             " --hours " + wxString::Format("%d", m_durationHours->GetValue()) +
-             " --step-hours " + wxString::Format("%d", m_stepHours->GetValue()) +
-             " --output " + ShellQuote(OutputPath()) + " --metadata-summary --verbose";
-    }
-    return ShellQuote(m_generatorPath->GetValue()) + " generate --bbox " + ShellQuote(m_west->GetValue()) + " " +
-           ShellQuote(m_south->GetValue()) + " " + ShellQuote(m_east->GetValue()) + " " + ShellQuote(m_north->GetValue()) +
-           " --start " + ShellQuote(m_startUtc->GetValue()) +
-           " --hours " + wxString::Format("%d", m_durationHours->GetValue()) +
-           " --step-hours " + wxString::Format("%d", m_stepHours->GetValue()) +
-           " --grid-spacing-deg " + ShellQuote(m_tpxoGridSpacing->GetValue()) +
-           " --source tpxo --model-dir " + ShellQuote(m_tpxoModelDir->GetPath()) +
-           " --model-name " + ShellQuote(m_tpxoModelName->GetValue()) +
-           " --output " + ShellQuote(OutputPath()) + " --metadata-summary --verbose";
+  wxJSONWriter writer;
+  wxString text;
+  writer.Write(root, text);
+  wxFile file(job_path, wxFile::write);
+  if (!file.IsOpened() || !file.Write(text)) {
+    if (error) *error = "cannot write " + job_path;
+    return false;
   }
-  if (mode == 0 && (IsCopernicusProvider(provider) || IsMarineIeProvider(provider))) {
-    wxFileName downloadDir;
-    downloadDir.AssignDir(m_outputDir->GetPath());
-    downloadDir.AppendDir("currentgrib_downloads");
-    wxString command = ShellQuote(m_generatorPath->GetValue()) + " generate-provider --provider " +
-           RemoteProviderId(provider) + " --bbox " +
-           ShellQuote(m_west->GetValue()) + " " + ShellQuote(m_south->GetValue()) + " " +
-           ShellQuote(m_east->GetValue()) + " " + ShellQuote(m_north->GetValue()) +
-           " --start " + ShellQuote(m_startUtc->GetValue()) +
-           " --hours " + wxString::Format("%d", m_durationHours->GetValue()) +
-           " --step-hours " + wxString::Format("%d", m_stepHours->GetValue()) +
-           " --download-directory " + ShellQuote(downloadDir.GetPath()) +
-           " --output " + ShellQuote(OutputPath());
-    if (!m_username->GetValue().empty()) {
-      command += " --username " + ShellQuote(m_username->GetValue());
-    }
-    command += " --overwrite --metadata-summary --verbose";
-    return command;
+  return true;
+}
+
+wxString EnvironmentalGribDialog::BuildGenerateCommand() {
+  const wxString token = wxString::Format("%ld-%s", wxGetProcessId(),
+                                          wxDateTime::Now().Format("%Y%m%d%H%M%S"));
+  wxFileName job(m_outputDir->GetPath(), ".environmental-grib-job-" + token + ".json");
+  wxFileName result(m_outputDir->GetPath(), ".environmental-grib-result-" + token + ".json");
+  m_jobPath = job.GetFullPath();
+  m_resultPath = result.GetFullPath();
+  wxString error;
+  if (!WriteGenerateJob(m_jobPath, &error)) {
+    AppendLog("Cannot create native generator job: " + error);
+    m_jobPath.clear();
+    m_resultPath.clear();
+    return {};
   }
-  wxString source = "synthetic";
-  wxString extra;
-  wxString spacing = "0.03";
-  if (mode == 2) {
-    source = "netcdf";
-    extra = " --input-netcdf " + ShellQuote(m_localNetcdf->GetPath()) +
-            " --clip-bbox-to-source --use-source-grid";
-  }
-  return ShellQuote(m_generatorPath->GetValue()) + " generate --bbox " + ShellQuote(m_west->GetValue()) + " " +
-         ShellQuote(m_south->GetValue()) + " " + ShellQuote(m_east->GetValue()) + " " + ShellQuote(m_north->GetValue()) +
-         " --start " + ShellQuote(m_startUtc->GetValue()) +
-         " --hours " + wxString::Format("%d", m_durationHours->GetValue()) +
-         " --step-hours " + wxString::Format("%d", m_stepHours->GetValue()) +
-         " --grid-spacing-deg " + spacing + " --source " + source + extra +
-         " --output " + ShellQuote(OutputPath()) + " --metadata-summary --verbose";
+  return ShellQuote(m_generatorPath->GetValue()) + " run-job --job " +
+         ShellQuote(m_jobPath) + " --result " + ShellQuote(m_resultPath);
 }
 
 wxString EnvironmentalGribDialog::OutputPath() const {
@@ -1547,12 +1622,26 @@ void EnvironmentalGribDialog::SaveSettings() {
 
 wxString EnvironmentalGribDialog::FindDefaultGenerator() const {
   wxString path;
-  if (wxGetEnv("TIDAL_CURRENT_GRIB", &path) && IsExecutableFile(path)) return path;
-  if (wxFindFileInPath(&path, wxGetenv("PATH"), "tidal-current-grib")) return path;
-  wxString home = wxGetHomeDir();
-  wxString dev = home + "/src/tidal-current-grib-generator/.venv/bin/tidal-current-grib";
-  if (IsExecutableFile(dev)) return dev;
-  return "tidal-current-grib";
+  if (wxGetEnv("ENVIRONMENTAL_GRIB_GENERATOR", &path) &&
+      IsExecutableFile(path)) {
+    return path;
+  }
+
+  wxFileName executable(wxStandardPaths::Get().GetExecutablePath());
+  wxFileName sibling(executable.GetPath(), "environmental-grib");
+  if (IsExecutableFile(sibling.GetFullPath())) return sibling.GetFullPath();
+
+  wxFileName packaged(wxStandardPaths::Get().GetDataDir(), "");
+  packaged.AppendDir("plugins");
+  packaged.AppendDir("environmental_grib_pi");
+  packaged.AppendDir("bin");
+  packaged.SetFullName("environmental-grib");
+  if (IsExecutableFile(packaged.GetFullPath())) return packaged.GetFullPath();
+
+  if (wxFindFileInPath(&path, wxGetenv("PATH"), "environmental-grib")) {
+    return path;
+  }
+  return "environmental-grib";
 }
 
 wxString EnvironmentalGribDialog::Redact(const wxString& text) const {

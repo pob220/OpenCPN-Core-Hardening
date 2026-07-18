@@ -86,6 +86,8 @@ grib_pi::grib_pi(void *ppimgr) : opencpn_plugin_116(ppimgr) {
 
   m_pLastTimelineSet = nullptr;
   m_bShowGrib = false;
+  m_bZoomToCenterAtInit = false;
+  m_bZoomToCenterAtInitExplicit = false;
   m_GUIScaleFactor = -1.;
   g_pi = this;
 }
@@ -299,6 +301,7 @@ void grib_pi::UpdatePrefs(GribPreferencesDialog *Pref) {
   m_bLoadLastOpenFile = Pref->m_rbLoadOptions->GetSelection();
   m_bDrawBarbedArrowHead = Pref->m_cbDrawBarbedArrowHead->GetValue();
   m_bZoomToCenterAtInit = Pref->m_cZoomToCenterAtInit->GetValue();
+  m_bZoomToCenterAtInitExplicit = true;
 #ifdef __WXMSW__
   double val = Pref->m_sIconSizeFactor->GetValue();
   m_GribIconsScaleFactor = 1. + (val / 10);
@@ -775,7 +778,19 @@ bool grib_pi::LoadConfig(void) {
   pConf->Read(_T( "GRIBUseHiDef" ), &m_bGRIBUseHiDef, 0);
   pConf->Read(_T( "GRIBUseGradualColors" ), &m_bGRIBUseGradualColors, 0);
   pConf->Read(_T( "DrawBarbedArrowHead" ), &m_bDrawBarbedArrowHead, 1);
-  pConf->Read(_T( "ZoomToCenterAtInit"), &m_bZoomToCenterAtInit, 1);
+  pConf->Read(_T("ZoomToCenterAtInitExplicit"),
+              &m_bZoomToCenterAtInitExplicit, false);
+  if (m_bZoomToCenterAtInitExplicit)
+    pConf->Read(_T("ZoomToCenterAtInit"), &m_bZoomToCenterAtInit, false);
+  else {
+    bool legacyZoomToCenter = false;
+    pConf->Read(_T("ZoomToCenterAtInit"), &legacyZoomToCenter, false);
+    m_bZoomToCenterAtInit = false;
+    if (legacyZoomToCenter)
+      wxLogMessage(
+          "GRIB: ignoring legacy ZoomToCenterAtInit=1 without explicit "
+          "preference; automatic GRIB centering is disabled.");
+  }
   pConf->Read(_T( "ShowGRIBIcon" ), &m_bGRIBShowIcon, 1);
   pConf->Read(_T( "CopyFirstCumulativeRecord" ), &m_bCopyFirstCumRec, 1);
   pConf->Read(_T( "CopyMissingWaveRecord" ), &m_bCopyMissWaveRec, 1);
@@ -812,7 +827,9 @@ bool grib_pi::SaveConfig(void) {
   pConf->Write(_T ( "CopyFirstCumulativeRecord" ), m_bCopyFirstCumRec);
   pConf->Write(_T ( "CopyMissingWaveRecord" ), m_bCopyMissWaveRec);
   pConf->Write(_T ( "DrawBarbedArrowHead" ), m_bDrawBarbedArrowHead);
-  pConf->Write(_T ( "ZoomToCenterAtInit"), m_bZoomToCenterAtInit);
+  pConf->Write(_T("ZoomToCenterAtInit"), m_bZoomToCenterAtInit);
+  pConf->Write(_T("ZoomToCenterAtInitExplicit"),
+               m_bZoomToCenterAtInitExplicit);
 #ifdef __WXMSW__
   pConf->Write("GribIconsScaleFactor", m_GribIconsScaleFactor);
 #endif

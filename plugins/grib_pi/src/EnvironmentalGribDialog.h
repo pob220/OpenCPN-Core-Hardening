@@ -2,6 +2,7 @@
 
 #include <wx/filepicker.h>
 #include <wx/process.h>
+#include <wx/scrolwin.h>
 #include <wx/spinctrl.h>
 #include <wx/timer.h>
 #include <wx/wx.h>
@@ -41,6 +42,7 @@ private:
   void ApplyPreset(int selection);
   bool ConfirmLargeCopernicusRequest();
   bool ValidateUkvRequest();
+  bool ValidateEcmwfRequest();
   bool AutoWouldUseMarineIe() const;
   bool NeedsCopernicusCredentials() const;
   void UpdateProviderUi();
@@ -48,7 +50,8 @@ private:
   void LoadSettings();
   void SaveSettings();
   void TryOpenGeneratedGrib();
-  wxString BuildGenerateCommand() const;
+  wxString BuildGenerateCommand();
+  bool WriteGenerateJob(const wxString& job_path, wxString* error) const;
   wxString OutputPath() const;
   wxString SourceLabel() const;
   wxString ValidTimeSummary() const;
@@ -58,6 +61,7 @@ private:
   wxString Redact(const wxString& text) const;
 
   wxTextCtrl* m_generatorPath;
+  wxScrolledWindow* m_scrolled;
   wxTextCtrl* m_west;
   wxTextCtrl* m_south;
   wxTextCtrl* m_east;
@@ -121,6 +125,8 @@ private:
   bool m_hasCurrentViewPort{false};
   PlugIn_ViewPort m_currentViewPort{};
   wxString m_currentCommand;
+  wxString m_jobPath;
+  wxString m_resultPath;
   wxString m_stdoutBuffer;
   wxString m_stderrBuffer;
   wxString m_lastAutoOutputFilename;

@@ -1903,6 +1903,18 @@ void GRIBUICtrlBar::OnZoomToCenterClick(wxCommandEvent &event) {
 void GRIBUICtrlBar::DoZoomToCenter() {
   if (!m_pTimelineSet) return;
 
+  double old_clat = 0.0;
+  double old_clon = 0.0;
+  double old_scale = 0.0;
+  bool old_vp_valid = false;
+  if (pPlugIn) {
+    PlugIn_ViewPort old_vp = pPlugIn->GetCurrentViewPort();
+    old_clat = old_vp.clat;
+    old_clon = old_vp.clon;
+    old_scale = old_vp.view_scale_ppm;
+    old_vp_valid = true;
+  }
+
   double latmin, latmax, lonmin, lonmax;
   if (!GetGribZoneLimits(m_pTimelineSet, &latmin, &latmax, &lonmin, &lonmax))
     return;
@@ -1943,6 +1955,17 @@ void GRIBUICtrlBar::DoZoomToCenter() {
 
   ppm = wxMin(ppm, 1.0);
 
+  wxLogMessage(
+      "GRIB zoom-to-center: auto_pref=%d old_center=%s old_scale=%s "
+      "grib_bbox=[lat %.5f..%.5f lon %.5f..%.5f] target_center=%.5f,%.5f "
+      "target_scale=%.8f canvas=%p",
+      pPlugIn ? pPlugIn->m_bZoomToCenterAtInit : 0,
+      old_vp_valid ? wxString::Format(_T("%.5f,%.5f"), old_clat, old_clon)
+                         .c_str()
+                   : _T("N/A"),
+      old_vp_valid ? wxString::Format(_T("%.8f"), old_scale).c_str()
+                   : _T("N/A"),
+      latmin, latmax, lonmin, lonmax, clat, clon, ppm, wx);
   CanvasJumpToPosition(wx, clat, clon, ppm);
 }
 

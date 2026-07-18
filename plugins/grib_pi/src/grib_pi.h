@@ -169,6 +169,7 @@ public:
   wxSize m_coreToolbarSize;
   wxPoint m_coreToolbarPosn;
   bool m_bZoomToCenterAtInit;
+  bool m_bZoomToCenterAtInitExplicit;
   wxString m_local_sources_catalog;
   double m_boat_lat, m_boat_lon;
   double m_boat_cog, m_boat_sog;
