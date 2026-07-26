@@ -768,22 +768,19 @@ void CopySegmentSafetyString(char* dest, size_t dest_size, const char* source) {
 void SetSegmentSafetyMessage(PlugInSegmentSafetyResult* result,
                              const char* message) {
   if (!result) return;
-  if (result->struct_size <
-      (int)(offsetof(PlugInSegmentSafetyResult, message) +
-            sizeof(result->message)))
+  if (result->struct_size < (int)(offsetof(PlugInSegmentSafetyResult, message) +
+                                  sizeof(result->message)))
     return;
   CopySegmentSafetyString(result->message, sizeof(result->message), message);
 }
 
 void InitSegmentSafetyResult(PlugInSegmentSafetyResult* result) {
   if (!result) return;
-  if (result->struct_size >=
-      (int)(offsetof(PlugInSegmentSafetyResult, status) +
-            sizeof(result->status)))
+  if (result->struct_size >= (int)(offsetof(PlugInSegmentSafetyResult, status) +
+                                   sizeof(result->status)))
     result->status = PI_SEGMENT_SAFETY_ERROR;
-  if (result->struct_size >=
-      (int)(offsetof(PlugInSegmentSafetyResult, source) +
-            sizeof(result->source)))
+  if (result->struct_size >= (int)(offsetof(PlugInSegmentSafetyResult, source) +
+                                   sizeof(result->source)))
     result->source = PI_SEGMENT_SAFETY_SOURCE_NONE;
   if (result->struct_size >=
       (int)(offsetof(PlugInSegmentSafetyResult, used_fallback) +
@@ -888,8 +885,7 @@ void InitSegmentSafetyResult(PlugInSegmentSafetyResult* result) {
     result->depth_source_attribute[0] = '\0';
   }
   if (result->struct_size >=
-      (int)(offsetof(PlugInSegmentSafetyResult,
-                     prewarm_fine_tiles_avoided) +
+      (int)(offsetof(PlugInSegmentSafetyResult, prewarm_fine_tiles_avoided) +
             sizeof(result->prewarm_fine_tiles_avoided))) {
     result->prewarm_requested_tiles = 0;
     result->prewarm_base_tiles_built = 0;
@@ -903,18 +899,16 @@ void InitSegmentSafetyResult(PlugInSegmentSafetyResult* result) {
 void SetSegmentSafetyStatus(PlugInSegmentSafetyResult* result,
                             PlugInSegmentSafetyStatus status) {
   if (!result) return;
-  if (result->struct_size >=
-      (int)(offsetof(PlugInSegmentSafetyResult, status) +
-            sizeof(result->status)))
+  if (result->struct_size >= (int)(offsetof(PlugInSegmentSafetyResult, status) +
+                                   sizeof(result->status)))
     result->status = status;
 }
 
 void SetSegmentSafetySource(PlugInSegmentSafetyResult* result,
                             PlugInSegmentSafetySource source) {
   if (!result) return;
-  if (result->struct_size >=
-      (int)(offsetof(PlugInSegmentSafetyResult, source) +
-            sizeof(result->source)))
+  if (result->struct_size >= (int)(offsetof(PlugInSegmentSafetyResult, source) +
+                                   sizeof(result->source)))
     result->source = source;
 }
 
@@ -930,9 +924,8 @@ void SetSegmentSafetyFallback(PlugInSegmentSafetyResult* result,
 PlugInSegmentSafetySource GetSegmentSafetySource(
     const PlugInSegmentSafetyResult* result) {
   if (!result) return PI_SEGMENT_SAFETY_SOURCE_NONE;
-  if (result->struct_size >=
-      (int)(offsetof(PlugInSegmentSafetyResult, source) +
-            sizeof(result->source)))
+  if (result->struct_size >= (int)(offsetof(PlugInSegmentSafetyResult, source) +
+                                   sizeof(result->source)))
     return (PlugInSegmentSafetySource)result->source;
   return PI_SEGMENT_SAFETY_SOURCE_NONE;
 }
@@ -1086,7 +1079,8 @@ bool ChartPointIsLand(s57chart* chart, double lat, double lon, ViewPort& vp) {
   for (ListOfObjRazRules::Node* node = rule_list->GetFirst(); node;
        node = node->GetNext()) {
     ObjRazRules* rule = node->GetData();
-    if (rule && rule->obj && IsSegmentSafetyLandObject(rule->obj->FeatureName)) {
+    if (rule && rule->obj &&
+        IsSegmentSafetyLandObject(rule->obj->FeatureName)) {
       is_land = true;
       break;
     }
@@ -1153,9 +1147,9 @@ wxString SegmentSafetyRuleSummary(ObjRazRules* rule) {
   if (!rule || !rule->obj) return wxString();
 
   S57Obj* obj = rule->obj;
-  wxString summary = wxString::Format("%s/%s", obj->FeatureName,
-                                      SegmentSafetyPrimitiveName(
-                                          obj->Primitive_type));
+  wxString summary =
+      wxString::Format("%s/%s", obj->FeatureName,
+                       SegmentSafetyPrimitiveName(obj->Primitive_type));
   if (rule->LUP) {
     summary += wxString::Format("/TNAM=%d/DPRI=%c/DISC=%c", rule->LUP->TNAM,
                                 rule->LUP->DPRI, rule->LUP->DISC);
@@ -1221,7 +1215,7 @@ s57chart* GetSegmentSafetyChartAtPoint(ChartCanvas* canvas, double lat,
   s57chart* s57 = dynamic_cast<s57chart*>(chart);
   if (s57 && source) {
     *source = IsCm93Chart(chart) ? PI_SEGMENT_SAFETY_SOURCE_CM93
-                                : PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART;
+                                 : PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART;
   }
   return s57;
 }
@@ -1231,10 +1225,9 @@ bool ChartSegmentPointSamplesHitLand(double lat1, double lon1, double lat2,
                                      PlugInSegmentSafetyResult* result,
                                      int* chart_sample_count,
                                      int* total_sample_count) {
-  ChartCanvas* canvas =
-      gFrame && gFrame->GetFocusCanvas() ? gFrame->GetFocusCanvas()
-                                         : (gFrame ? gFrame->GetPrimaryCanvas()
-                                                   : NULL);
+  ChartCanvas* canvas = gFrame && gFrame->GetFocusCanvas()
+                            ? gFrame->GetFocusCanvas()
+                            : (gFrame ? gFrame->GetPrimaryCanvas() : NULL);
   if (!canvas) return false;
 
   ViewPort vp = canvas->GetVP();
@@ -1254,7 +1247,8 @@ bool ChartSegmentPointSamplesHitLand(double lat1, double lon1, double lat2,
       ll_gc_ll(lat1, lon1, bearing, sample_dist, &lat, &lon);
 
     PlugInSegmentSafetySource source = PI_SEGMENT_SAFETY_SOURCE_NONE;
-    s57chart* chart = GetSegmentSafetyChartAtPoint(canvas, lat, lon, vp, &source);
+    s57chart* chart =
+        GetSegmentSafetyChartAtPoint(canvas, lat, lon, vp, &source);
     if (!chart) continue;
 
     if (chart_sample_count) ++*chart_sample_count;
@@ -1279,8 +1273,7 @@ bool ChartSegmentPointSamplesHitLand(double lat1, double lon1, double lat2,
       if (ChartPointIsLand(chart, left_lat, left_lon, vp) ||
           ChartPointIsLand(chart, right_lat, right_lon, vp)) {
         if (result) {
-          SetSegmentSafetyStatus(result,
-                                 PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN);
+          SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN);
           SetSegmentSafetySource(result, source);
           SetSegmentSafetyMessage(result,
                                   "segment is within chart land safety margin");
@@ -1408,7 +1401,7 @@ const double kSegmentSafetyGridTileDegrees = 0.05;
 const double kSegmentSafetyGridResolutionDegrees = 0.00125;
 const int kSegmentSafetyCoarseRouteMaskFactor = 4;
 const int kSegmentSafetyPersistentCacheVersion = 2;
-const int kSegmentSafetyPersistentBaseTileVersion = 1;
+const int kSegmentSafetyPersistentBaseTileVersion = 2;
 const int kSegmentSafetyRouteMaskAlgorithmVersion = 4;
 const size_t kMaxSegmentSafetyGridTiles = 4096;
 // Keep the hot in-memory working set bounded, but retain a larger certified
@@ -1443,6 +1436,7 @@ struct CachedPointSafetyGridTile {
   std::vector<unsigned char> has_drying;
   uint32_t hazard_summary_flags;
   bool persistent_loaded;
+  bool depth_complete;
 
   CachedPointSafetyGridTile()
       : group_index(0),
@@ -1462,7 +1456,8 @@ struct CachedPointSafetyGridTile {
         chart_scale(-1),
         source(PI_SEGMENT_SAFETY_SOURCE_NONE),
         hazard_summary_flags(SEGMENT_SAFETY_HAZARD_NONE),
-        persistent_loaded(false) {
+        persistent_loaded(false),
+        depth_complete(true) {
     chart_path[0] = '\0';
   }
 };
@@ -1647,16 +1642,15 @@ int SegmentSafetyCurrentGroupIndex();
 std::string SegmentSafetyGridTileKeyForIndices(long lat_tile, long lon_tile);
 
 std::string SegmentSafetyRouteMaskKey(long lat_tile, long lon_tile,
-                                      double safety_margin_nm,
-                                      bool check_depth,
+                                      double safety_margin_nm, bool check_depth,
                                       double minimum_depth_m) {
   long margin_mm = lround(wxMax(0.0, safety_margin_nm) * 1000.0);
   long depth_cm = check_depth ? lround(wxMax(0.0, minimum_depth_m) * 100.0) : 0;
   char buf[160];
   snprintf(buf, sizeof(buf), "%d:%ld:%ld:r%.8f:m%ld:d%d:%ld",
            SegmentSafetyCurrentGroupIndex(), lat_tile, lon_tile,
-           kSegmentSafetyGridResolutionDegrees, margin_mm,
-           check_depth ? 1 : 0, depth_cm);
+           kSegmentSafetyGridResolutionDegrees, margin_mm, check_depth ? 1 : 0,
+           depth_cm);
   return std::string(buf);
 }
 
@@ -1670,8 +1664,8 @@ std::string SegmentSafetyCoarseRouteMaskKey(long lat_cell, long lon_cell,
   snprintf(buf, sizeof(buf), "%d:%ld:%ld:cr%.8f:f%d:m%ld:d%d:%ld",
            SegmentSafetyCurrentGroupIndex(), lat_cell, lon_cell,
            kSegmentSafetyGridTileDegrees * kSegmentSafetyCoarseRouteMaskFactor,
-           kSegmentSafetyCoarseRouteMaskFactor, margin_mm,
-           check_depth ? 1 : 0, depth_cm);
+           kSegmentSafetyCoarseRouteMaskFactor, margin_mm, check_depth ? 1 : 0,
+           depth_cm);
   return std::string(buf);
 }
 
@@ -1719,8 +1713,7 @@ struct CachedSegmentSafetyResult {
   }
 };
 
-std::map<std::string, CachedSegmentSafetyResult>
-    s_segment_safety_segment_cache;
+std::map<std::string, CachedSegmentSafetyResult> s_segment_safety_segment_cache;
 
 long s_segment_safety_chart_hit_logs = 0;
 const long kMaxSegmentSafetyChartHitLogs = 20;
@@ -1749,8 +1742,8 @@ void PinSegmentSafetyRouteMaskTiles(
   double max_abs_lat = 0.0;
   for (std::set<std::pair<long, long> >::const_iterator it = tiles.begin();
        it != tiles.end(); ++it) {
-    max_abs_lat = wxMax(max_abs_lat,
-                        fabs(it->first * kSegmentSafetyGridTileDegrees));
+    max_abs_lat =
+        wxMax(max_abs_lat, fabs(it->first * kSegmentSafetyGridTileDegrees));
   }
   int margin_radius =
       SegmentSafetyMarginTileRadius(safety_margin_nm, max_abs_lat);
@@ -1759,24 +1752,24 @@ void PinSegmentSafetyRouteMaskTiles(
   for (std::set<std::pair<long, long> >::const_iterator it = tiles.begin();
        it != tiles.end(); ++it) {
     s_segment_safety_pinned_route_mask_keys.insert(SegmentSafetyRouteMaskKey(
-        it->first, it->second, safety_margin_nm, check_depth,
-        minimum_depth_m));
+        it->first, it->second, safety_margin_nm, check_depth, minimum_depth_m));
     for (int lat_offset = -margin_radius; lat_offset <= margin_radius;
          ++lat_offset) {
       for (int lon_offset = -margin_radius; lon_offset <= margin_radius;
            ++lon_offset) {
         s_segment_safety_pinned_grid_keys.insert(
             SegmentSafetyGridTileKeyForIndices(it->first + lat_offset,
-                                                it->second + lon_offset));
+                                               it->second + lon_offset));
       }
     }
   }
 }
 
-void PinSegmentSafetyRouteMaskEnvelope(
-    long min_lat_tile, long max_lat_tile, long min_lon_tile,
-    long max_lon_tile, double safety_margin_nm, bool check_depth,
-    double minimum_depth_m) {
+void PinSegmentSafetyRouteMaskEnvelope(long min_lat_tile, long max_lat_tile,
+                                       long min_lon_tile, long max_lon_tile,
+                                       double safety_margin_nm,
+                                       bool check_depth,
+                                       double minimum_depth_m) {
   std::set<std::pair<long, long> > tiles;
   for (long lat_tile = min_lat_tile; lat_tile <= max_lat_tile; ++lat_tile)
     for (long lon_tile = min_lon_tile; lon_tile <= max_lon_tile; ++lon_tile)
@@ -1971,10 +1964,9 @@ void ApplySegmentSafetyStats(PlugInSegmentSafetyResult* result,
     wxMutexLocker lock(s_segment_safety_cache_mutex);
     grid_cache_size = s_segment_safety_grid_cache.size();
   }
-  SetSegmentSafetyDiagnosticInt(result,
-                                offsetof(PlugInSegmentSafetyResult,
-                                         grid_cache_size),
-                                (int)grid_cache_size);
+  SetSegmentSafetyDiagnosticInt(
+      result, offsetof(PlugInSegmentSafetyResult, grid_cache_size),
+      (int)grid_cache_size);
   SetSegmentSafetyDiagnosticInt(
       result, offsetof(PlugInSegmentSafetyResult, grid_cache_evictions),
       (int)s_segment_safety_grid_cache_evictions);
@@ -1988,8 +1980,7 @@ void ApplySegmentSafetyStats(PlugInSegmentSafetyResult* result,
       result, offsetof(PlugInSegmentSafetyResult, unexpected_lon_tile),
       stats.unexpected_lon_tile);
   if (SegmentSafetyResultHas(
-          result, offsetof(PlugInSegmentSafetyResult,
-                           unexpected_tile_min_lon),
+          result, offsetof(PlugInSegmentSafetyResult, unexpected_tile_min_lon),
           sizeof(result->unexpected_tile_min_lon))) {
     result->unexpected_tile_min_lat = stats.unexpected_tile_min_lat;
     result->unexpected_tile_min_lon = stats.unexpected_tile_min_lon;
@@ -2038,8 +2029,7 @@ double SegmentSafetyDegToRad(double degrees) {
 
 double SegmentSafetyCross(const wxPoint2DDouble& a, const wxPoint2DDouble& b,
                           const wxPoint2DDouble& c) {
-  return (b.m_x - a.m_x) * (c.m_y - a.m_y) -
-         (b.m_y - a.m_y) * (c.m_x - a.m_x);
+  return (b.m_x - a.m_x) * (c.m_y - a.m_y) - (b.m_y - a.m_y) * (c.m_x - a.m_x);
 }
 
 bool SegmentSafetyBBoxIntersects(const SegmentSafetyBBox& a,
@@ -2094,8 +2084,7 @@ bool SegmentSafetyPointInRing(double lat, double lon,
   return inside;
 }
 
-bool SegmentSafetyOnSegment(const wxPoint2DDouble& a,
-                            const wxPoint2DDouble& b,
+bool SegmentSafetyOnSegment(const wxPoint2DDouble& a, const wxPoint2DDouble& b,
                             const wxPoint2DDouble& p) {
   const double eps = 1e-10;
   return fabs(SegmentSafetyCross(a, b, p)) < eps &&
@@ -2150,11 +2139,10 @@ double SegmentSafetySegmentDistanceNm(const wxPoint2DDouble& a,
                                       const wxPoint2DDouble& d) {
   if (SegmentSafetySegmentsIntersect(a, b, c, d)) return 0.0;
   double mean_lat = (a.m_y + b.m_y + c.m_y + d.m_y) / 4.0;
-  return wxMin(
-      wxMin(SegmentSafetyPointSegmentDistanceNm(a, c, d, mean_lat),
-            SegmentSafetyPointSegmentDistanceNm(b, c, d, mean_lat)),
-      wxMin(SegmentSafetyPointSegmentDistanceNm(c, a, b, mean_lat),
-            SegmentSafetyPointSegmentDistanceNm(d, a, b, mean_lat)));
+  return wxMin(wxMin(SegmentSafetyPointSegmentDistanceNm(a, c, d, mean_lat),
+                     SegmentSafetyPointSegmentDistanceNm(b, c, d, mean_lat)),
+               wxMin(SegmentSafetyPointSegmentDistanceNm(c, a, b, mean_lat),
+                     SegmentSafetyPointSegmentDistanceNm(d, a, b, mean_lat)));
 }
 
 bool SegmentSafetyPointInsideBBox(const wxPoint2DDouble& point,
@@ -2165,14 +2153,12 @@ bool SegmentSafetyPointInsideBBox(const wxPoint2DDouble& point,
 
 bool SegmentSafetyRingContainsBBox(const CachedLandRing& ring,
                                    const SegmentSafetyBBox& box) {
-  const wxPoint2DDouble corners[] = {
-      wxPoint2DDouble(box.min_lon, box.min_lat),
-      wxPoint2DDouble(box.max_lon, box.min_lat),
-      wxPoint2DDouble(box.max_lon, box.max_lat),
-      wxPoint2DDouble(box.min_lon, box.max_lat)};
+  const wxPoint2DDouble corners[] = {wxPoint2DDouble(box.min_lon, box.min_lat),
+                                     wxPoint2DDouble(box.max_lon, box.min_lat),
+                                     wxPoint2DDouble(box.max_lon, box.max_lat),
+                                     wxPoint2DDouble(box.min_lon, box.max_lat)};
   for (size_t i = 0; i < WXSIZEOF(corners); ++i)
-    if (!SegmentSafetyPointInRing(corners[i].m_y, corners[i].m_x,
-                                  ring.points))
+    if (!SegmentSafetyPointInRing(corners[i].m_y, corners[i].m_x, ring.points))
       return false;
 
   // Corners alone are insufficient for a concave coverage polygon.  If its
@@ -2180,8 +2166,7 @@ bool SegmentSafetyRingContainsBBox(const CachedLandRing& ring,
   // certified as covered.
   for (size_t i = 0; i < ring.points.size(); ++i) {
     const wxPoint2DDouble& a = ring.points[i];
-    const wxPoint2DDouble& b =
-        ring.points[(i + 1) % ring.points.size()];
+    const wxPoint2DDouble& b = ring.points[(i + 1) % ring.points.size()];
     if (SegmentSafetyPointInsideBBox(a, box) ||
         SegmentSafetyPointInsideBBox(b, box))
       return false;
@@ -2193,12 +2178,11 @@ bool SegmentSafetyRingContainsBBox(const CachedLandRing& ring,
   return true;
 }
 
-bool SegmentSafetyChartFullyCoversBBox(
-    const SegmentSafetySnapshotChart& chart, const SegmentSafetyBBox& box) {
+bool SegmentSafetyChartFullyCoversBBox(const SegmentSafetySnapshotChart& chart,
+                                       const SegmentSafetyBBox& box) {
   if (!SegmentSafetyBBoxIntersects(chart.bbox, box)) return false;
   bool covered = false;
-  for (std::vector<CachedLandRing>::const_iterator it =
-           chart.coverage.begin();
+  for (std::vector<CachedLandRing>::const_iterator it = chart.coverage.begin();
        it != chart.coverage.end(); ++it) {
     if (SegmentSafetyRingContainsBBox(*it, box)) {
       covered = true;
@@ -2219,13 +2203,11 @@ bool SegmentSafetyChartFullyCoversBBox(
 
 bool SegmentSafetyChartHazardMayAffectBBox(
     const SegmentSafetySnapshotChart& chart, const SegmentSafetyBBox& box) {
-  const wxPoint2DDouble corners[] = {
-      wxPoint2DDouble(box.min_lon, box.min_lat),
-      wxPoint2DDouble(box.max_lon, box.min_lat),
-      wxPoint2DDouble(box.max_lon, box.max_lat),
-      wxPoint2DDouble(box.min_lon, box.max_lat)};
-  for (std::vector<CachedLandRing>::const_iterator it =
-           chart.hazards.begin();
+  const wxPoint2DDouble corners[] = {wxPoint2DDouble(box.min_lon, box.min_lat),
+                                     wxPoint2DDouble(box.max_lon, box.min_lat),
+                                     wxPoint2DDouble(box.max_lon, box.max_lat),
+                                     wxPoint2DDouble(box.min_lon, box.max_lat)};
+  for (std::vector<CachedLandRing>::const_iterator it = chart.hazards.begin();
        it != chart.hazards.end(); ++it) {
     if (!SegmentSafetyBBoxIntersects(it->bbox, box)) continue;
 
@@ -2233,8 +2215,8 @@ bool SegmentSafetyChartHazardMayAffectBBox(
     // Contact and boundary ambiguity both remain hazardous; only a proven
     // disjoint ring permits an open-sea certificate.
     for (size_t corner = 0; corner < WXSIZEOF(corners); ++corner)
-      if (SegmentSafetyPointInRing(corners[corner].m_y,
-                                   corners[corner].m_x, it->points))
+      if (SegmentSafetyPointInRing(corners[corner].m_y, corners[corner].m_x,
+                                   it->points))
         return true;
     for (std::vector<wxPoint2DDouble>::const_iterator point =
              it->points.begin();
@@ -2242,8 +2224,7 @@ bool SegmentSafetyChartHazardMayAffectBBox(
       if (SegmentSafetyPointInsideBBox(*point, box)) return true;
     for (size_t edge = 0; edge < it->points.size(); ++edge) {
       const wxPoint2DDouble& a = it->points[edge];
-      const wxPoint2DDouble& b =
-          it->points[(edge + 1) % it->points.size()];
+      const wxPoint2DDouble& b = it->points[(edge + 1) % it->points.size()];
       for (size_t box_edge = 0; box_edge < WXSIZEOF(corners); ++box_edge)
         if (SegmentSafetySegmentsIntersect(
                 a, b, corners[box_edge],
@@ -2254,13 +2235,10 @@ bool SegmentSafetyChartHazardMayAffectBBox(
   return false;
 }
 
-bool SegmentSafetySnapshotChartPrecedes(
-    const SegmentSafetySnapshotChart& a,
-    const SegmentSafetySnapshotChart& b) {
-  if (a.native_scale != b.native_scale)
-    return a.native_scale < b.native_scale;
-  if (a.edition_date != b.edition_date)
-    return a.edition_date > b.edition_date;
+bool SegmentSafetySnapshotChartPrecedes(const SegmentSafetySnapshotChart& a,
+                                        const SegmentSafetySnapshotChart& b) {
+  if (a.native_scale != b.native_scale) return a.native_scale < b.native_scale;
+  if (a.edition_date != b.edition_date) return a.edition_date > b.edition_date;
   if (a.file_time != b.file_time) return a.file_time > b.file_time;
   if (a.chart_path != b.chart_path) return a.chart_path < b.chart_path;
   return a.db_index < b.db_index;
@@ -2278,8 +2256,7 @@ SegmentSafetySnapshotDecision ClassifySegmentSafetySnapshotBBox(
     covering.push_back(&*it);
     if (!best || SegmentSafetySnapshotChartPrecedes(*it, *best)) best = &*it;
   }
-  if (!best || !best->vector_supported)
-    return SEGMENT_SAFETY_SNAPSHOT_UNKNOWN;
+  if (!best || !best->vector_supported) return SEGMENT_SAFETY_SNAPSHOT_UNKNOWN;
 
   // A hazard on any overlapping supported chart represents disagreement.
   // Do not fast-reject and potentially lose a valid passage; fall back to the
@@ -2324,16 +2301,13 @@ void BuildSegmentSafetySnapshotHierarchy(
       const SegmentSafetyBBox large = {
           lat * kLargeCellDegrees, (lat + 1) * kLargeCellDegrees,
           lon * kLargeCellDegrees, (lon + 1) * kLargeCellDegrees};
-      const bool large_inside =
-          large.min_lat >= snapshot->area.min_lat &&
-          large.max_lat <= snapshot->area.max_lat &&
-          large.min_lon >= snapshot->area.min_lon &&
-          large.max_lon <= snapshot->area.max_lon;
-      if (large_inside &&
-          ClassifySegmentSafetySnapshotBBox(*snapshot, large) ==
-              SEGMENT_SAFETY_SNAPSHOT_SAFE) {
-        snapshot->certified_safe_large_cells.insert(
-            std::make_pair(lat, lon));
+      const bool large_inside = large.min_lat >= snapshot->area.min_lat &&
+                                large.max_lat <= snapshot->area.max_lat &&
+                                large.min_lon >= snapshot->area.min_lon &&
+                                large.max_lon <= snapshot->area.max_lon;
+      if (large_inside && ClassifySegmentSafetySnapshotBBox(*snapshot, large) ==
+                              SEGMENT_SAFETY_SNAPSHOT_SAFE) {
+        snapshot->certified_safe_large_cells.insert(std::make_pair(lat, lon));
         continue;
       }
       // Subdivide only uncertain large cells.  These quarter-degree cells
@@ -2343,18 +2317,15 @@ void BuildSegmentSafetySnapshotHierarchy(
           const long fine_lat = lat * 4 + lat_part;
           const long fine_lon = lon * 4 + lon_part;
           const SegmentSafetyBBox fine = {
-              fine_lat * kFineCellDegrees,
-              (fine_lat + 1) * kFineCellDegrees,
-              fine_lon * kFineCellDegrees,
-              (fine_lon + 1) * kFineCellDegrees};
-          const bool fine_inside =
-              fine.min_lat >= snapshot->area.min_lat &&
-              fine.max_lat <= snapshot->area.max_lat &&
-              fine.min_lon >= snapshot->area.min_lon &&
-              fine.max_lon <= snapshot->area.max_lon;
+              fine_lat * kFineCellDegrees, (fine_lat + 1) * kFineCellDegrees,
+              fine_lon * kFineCellDegrees, (fine_lon + 1) * kFineCellDegrees};
+          const bool fine_inside = fine.min_lat >= snapshot->area.min_lat &&
+                                   fine.max_lat <= snapshot->area.max_lat &&
+                                   fine.min_lon >= snapshot->area.min_lon &&
+                                   fine.max_lon <= snapshot->area.max_lon;
           if (fine_inside &&
               ClassifySegmentSafetySnapshotBBox(*snapshot, fine) ==
-              SEGMENT_SAFETY_SNAPSHOT_SAFE)
+                  SEGMENT_SAFETY_SNAPSHOT_SAFE)
             snapshot->certified_safe_fine_cells.insert(
                 std::make_pair(fine_lat, fine_lon));
         }
@@ -2364,8 +2335,8 @@ void BuildSegmentSafetySnapshotHierarchy(
 }
 
 SegmentSafetySnapshotDecision QuerySegmentSafetyHazardSnapshot(
-    double lat1, double lon1, double lat2, double lon2,
-    double safety_margin_nm, bool check_depth) {
+    double lat1, double lon1, double lat2, double lon2, double safety_margin_nm,
+    bool check_depth) {
   std::shared_ptr<const SegmentSafetyHazardSnapshot> snapshot;
   {
     wxMutexLocker lock(s_segment_safety_cache_mutex);
@@ -2375,8 +2346,8 @@ SegmentSafetySnapshotDecision QuerySegmentSafetyHazardSnapshot(
       lon2 < -180.0 || lon2 > 180.0)
     return SEGMENT_SAFETY_SNAPSHOT_UNKNOWN;
 
-  const SegmentSafetyBBox query = SegmentSafetySegmentBBox(
-      lat1, lon1, lat2, lon2, safety_margin_nm);
+  const SegmentSafetyBBox query =
+      SegmentSafetySegmentBBox(lat1, lon1, lat2, lon2, safety_margin_nm);
   if (query.min_lat < snapshot->area.min_lat ||
       query.max_lat > snapshot->area.max_lat ||
       query.min_lon < snapshot->area.min_lon ||
@@ -2385,33 +2356,29 @@ SegmentSafetySnapshotDecision QuerySegmentSafetyHazardSnapshot(
 
   if (SegmentSafetyBBoxInsideCertifiedCell(
           query, 1.0, snapshot->certified_safe_large_cells) ||
-      SegmentSafetyBBoxInsideCertifiedCell(
-          query, 0.25, snapshot->certified_safe_fine_cells))
+      SegmentSafetyBBoxInsideCertifiedCell(query, 0.25,
+                                           snapshot->certified_safe_fine_cells))
     return SEGMENT_SAFETY_SNAPSHOT_SAFE;
   return ClassifySegmentSafetySnapshotBBox(*snapshot, query);
 }
 
-CachedLandRing SegmentSafetyRingFromFloatTable(const float* points,
-                                               int count) {
+CachedLandRing SegmentSafetyRingFromFloatTable(const float* points, int count) {
   CachedLandRing ring;
   if (!points || count < 3) return ring;
   ring.points.reserve(count);
   for (int i = 0; i < count; ++i)
-    ring.points.push_back(wxPoint2DDouble(points[i * 2 + 1],
-                                          points[i * 2]));
+    ring.points.push_back(wxPoint2DDouble(points[i * 2 + 1], points[i * 2]));
   ring.bbox = SegmentSafetyRingBBox(ring.points);
   return ring;
 }
 
-void SegmentSafetyAppendFeatureRings(
-    s57chart* chart, const char* feature_name,
-    std::vector<CachedLandRing>* destination,
-    std::set<std::string>* seen = NULL) {
+void SegmentSafetyAppendFeatureRings(s57chart* chart, const char* feature_name,
+                                     std::vector<CachedLandRing>* destination,
+                                     std::set<std::string>* seen = NULL) {
   if (!chart || !feature_name || !destination) return;
   std::vector<std::vector<wxPoint2DDouble> > rings;
   chart->CollectFeatureAreaRings(feature_name, rings);
-  for (std::vector<std::vector<wxPoint2DDouble> >::iterator it =
-           rings.begin();
+  for (std::vector<std::vector<wxPoint2DDouble> >::iterator it = rings.begin();
        it != rings.end(); ++it) {
     if (it->size() < 3) continue;
     CachedLandRing ring;
@@ -2432,10 +2399,9 @@ void SegmentSafetyAppendFeatureRings(
 }
 
 int SegmentSafetyCurrentGroupIndex() {
-  ChartCanvas* canvas =
-      gFrame && gFrame->GetFocusCanvas() ? gFrame->GetFocusCanvas()
-                                         : (gFrame ? gFrame->GetPrimaryCanvas()
-                                                   : NULL);
+  ChartCanvas* canvas = gFrame && gFrame->GetFocusCanvas()
+                            ? gFrame->GetFocusCanvas()
+                            : (gFrame ? gFrame->GetPrimaryCanvas() : NULL);
   return canvas ? canvas->m_groupIndex : 0;
 }
 
@@ -2456,8 +2422,10 @@ wxString SegmentSafetyChartIdentity() {
 
   uint64_t hash = 1469598103934665603ULL;
   SegmentSafetyHashAdd(&hash, ChartData->GetDBFileName());
-  SegmentSafetyHashAdd(&hash, wxString::Format("dbv=%d", ChartData->GetVersion()));
-  SegmentSafetyHashAdd(&hash, wxString::Format("group=%d", SegmentSafetyCurrentGroupIndex()));
+  SegmentSafetyHashAdd(&hash,
+                       wxString::Format("dbv=%d", ChartData->GetVersion()));
+  SegmentSafetyHashAdd(
+      &hash, wxString::Format("group=%d", SegmentSafetyCurrentGroupIndex()));
   int entries = ChartData->GetChartTableEntries();
   SegmentSafetyHashAdd(&hash, wxString::Format("entries=%d", entries));
   for (int i = 0; i < entries; ++i) {
@@ -2466,15 +2434,13 @@ wxString SegmentSafetyChartIdentity() {
     SegmentSafetyHashAdd(
         &hash, wxString::Format("t=%ld:e=%ld:scale=%d:type=%d:family=%d",
                                 (long)cte.GetFileTime(),
-                                (long)cte.GetChartEditionDate(),
-                                cte.GetScale(), cte.GetChartType(),
-                                cte.GetChartFamily()));
+                                (long)cte.GetChartEditionDate(), cte.GetScale(),
+                                cte.GetChartType(), cte.GetChartFamily()));
     const std::vector<int>& groups = cte.GetGroupArray();
     for (size_t j = 0; j < groups.size(); ++j)
       SegmentSafetyHashAdd(&hash, wxString::Format("g%d", groups[j]));
   }
-  return wxString::Format("ocpn-chartdb-v1-%016llx",
-                          (unsigned long long)hash);
+  return wxString::Format("ocpn-chartdb-v1-%016llx", (unsigned long long)hash);
 }
 
 void SegmentSafetyRefreshPersistentChartIdentity() {
@@ -2521,9 +2487,10 @@ wxString SegmentSafetyPersistentBaseTileCachePath() {
   return certified.GetPathWithSep() + "chart_safety_base_tiles.bin";
 }
 
-std::string SegmentSafetyPersistentProofKey(
-    long lat_cell, long lon_cell, double safety_margin_nm, bool check_depth,
-    double minimum_depth_m) {
+std::string SegmentSafetyPersistentProofKey(long lat_cell, long lon_cell,
+                                            double safety_margin_nm,
+                                            bool check_depth,
+                                            double minimum_depth_m) {
   wxMutexLocker lock(s_segment_safety_cache_mutex);
   if (s_segment_safety_chart_identity.IsEmpty()) return std::string();
   return (s_segment_safety_chart_identity + ":" +
@@ -2591,19 +2558,21 @@ bool SegmentSafetyPersistentCacheLoadLocked(const wxString& path) {
     cell.lat_cell = entry.Get("lat_cell", 0).AsInt();
     cell.lon_cell = entry.Get("lon_cell", 0).AsInt();
     cell.degrees = entry.Get("coarse_degrees", cell.degrees).AsDouble();
-    cell.min_lat = entry.Get("min_lat", cell.lat_cell * cell.degrees).AsDouble();
-    cell.min_lon = entry.Get("min_lon", cell.lon_cell * cell.degrees).AsDouble();
+    cell.min_lat =
+        entry.Get("min_lat", cell.lat_cell * cell.degrees).AsDouble();
+    cell.min_lon =
+        entry.Get("min_lon", cell.lon_cell * cell.degrees).AsDouble();
     cell.check_depth = entry.Get("check_depth", false).AsBool();
     cell.minimum_depth_m = entry.Get("minimum_depth_m", 0.0).AsDouble();
     cell.safety_margin_nm = entry.Get("safety_margin_nm", 0.0).AsDouble();
     cell.state = SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE;
     cell.block_summary_flags = SEGMENT_SAFETY_ROUTE_CLEAR;
-    cell.fine_tiles_checked =
-        kSegmentSafetyCoarseRouteMaskFactor * kSegmentSafetyCoarseRouteMaskFactor;
+    cell.fine_tiles_checked = kSegmentSafetyCoarseRouteMaskFactor *
+                              kSegmentSafetyCoarseRouteMaskFactor;
     cell.fine_tiles_clear = cell.fine_tiles_checked;
     cell.fine_tiles_mixed = 0;
-    cell.source = (PlugInSegmentSafetySource)entry.Get(
-        "source", (int)PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART)
+    cell.source = (PlugInSegmentSafetySource)entry
+                      .Get("source", (int)PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART)
                       .AsInt();
     wxString key = entry.Get("key", "").AsString();
     if (key.IsEmpty()) {
@@ -2615,7 +2584,8 @@ bool SegmentSafetyPersistentCacheLoadLocked(const wxString& path) {
   }
 
   wxLogMessage(
-      "WR_CERT_SAFE_CACHE load enabled=1 entries_loaded=%ld entries_ignored=%ld "
+      "WR_CERT_SAFE_CACHE load enabled=1 entries_loaded=%ld "
+      "entries_ignored=%ld "
       "cache_malformed_ignored=%ld cache_file_path=\"%s\"",
       s_segment_safety_persistent_entries_loaded,
       s_segment_safety_persistent_entries_ignored,
@@ -2690,8 +2660,7 @@ bool SegmentSafetyPersistentBaseTileCacheLoadLocked(const wxString& path) {
                    SegmentSafetyReadBinaryString(input, &identity);
   const std::string expected_identity =
       s_segment_safety_chart_identity.ToStdString();
-  if (!header_ok ||
-      format_version != kSegmentSafetyPersistentBaseTileVersion ||
+  if (!header_ok || format_version != kSegmentSafetyPersistentBaseTileVersion ||
       algorithm_version != kSegmentSafetyRouteMaskAlgorithmVersion ||
       endian_marker != 0x01020304u ||
       fabs(tile_degrees - kSegmentSafetyGridTileDegrees) > 1e-12 ||
@@ -2709,8 +2678,7 @@ bool SegmentSafetyPersistentBaseTileCacheLoadLocked(const wxString& path) {
 
   const uint16_t valid_hazards =
       SEGMENT_SAFETY_HAZARD_LAND | SEGMENT_SAFETY_HAZARD_DRYING |
-      SEGMENT_SAFETY_HAZARD_NO_CHART |
-      SEGMENT_SAFETY_HAZARD_UNKNOWN_CLASS;
+      SEGMENT_SAFETY_HAZARD_NO_CHART | SEGMENT_SAFETY_HAZARD_UNKNOWN_CLASS;
   for (uint32_t record = 0; record < tile_count; ++record) {
     int32_t group_index = 0;
     int64_t lat_tile = 0;
@@ -2721,33 +2689,34 @@ bool SegmentSafetyPersistentBaseTileCacheLoadLocked(const wxString& path) {
     int32_t chart_scale = -1;
     int32_t source = PI_SEGMENT_SAFETY_SOURCE_NONE;
     uint32_t hazard_summary = 0;
+    uint8_t depth_complete = 0;
     uint32_t cell_count = 0;
     std::string chart_path;
-    bool record_ok =
-        SegmentSafetyReadBinary(input, &group_index) &&
-        SegmentSafetyReadBinary(input, &lat_tile) &&
-        SegmentSafetyReadBinary(input, &lon_tile) &&
-        SegmentSafetyReadBinary(input, &rows) &&
-        SegmentSafetyReadBinary(input, &cols) &&
-        SegmentSafetyReadBinary(input, &chart_db_index) &&
-        SegmentSafetyReadBinary(input, &chart_scale) &&
-        SegmentSafetyReadBinary(input, &source) &&
-        SegmentSafetyReadBinary(input, &hazard_summary) &&
-        SegmentSafetyReadBinaryString(input, &chart_path) &&
-        SegmentSafetyReadBinary(input, &cell_count);
+    bool record_ok = SegmentSafetyReadBinary(input, &group_index) &&
+                     SegmentSafetyReadBinary(input, &lat_tile) &&
+                     SegmentSafetyReadBinary(input, &lon_tile) &&
+                     SegmentSafetyReadBinary(input, &rows) &&
+                     SegmentSafetyReadBinary(input, &cols) &&
+                     SegmentSafetyReadBinary(input, &chart_db_index) &&
+                     SegmentSafetyReadBinary(input, &chart_scale) &&
+                     SegmentSafetyReadBinary(input, &source) &&
+                     SegmentSafetyReadBinary(input, &hazard_summary) &&
+                     SegmentSafetyReadBinary(input, &depth_complete) &&
+                     SegmentSafetyReadBinaryString(input, &chart_path) &&
+                     SegmentSafetyReadBinary(input, &cell_count);
     const bool dimensions_ok =
         rows > 0 && cols > 0 && rows <= 256 && cols <= 256;
-    const uint32_t expected_cells = dimensions_ok
-                                        ? static_cast<uint32_t>(rows) *
-                                              static_cast<uint32_t>(cols)
-                                        : 0;
+    const uint32_t expected_cells =
+        dimensions_ok
+            ? static_cast<uint32_t>(rows) * static_cast<uint32_t>(cols)
+            : 0;
     if (!record_ok || group_index != SegmentSafetyCurrentGroupIndex() ||
         !dimensions_ok || lat_tile < -1800 || lat_tile > 1800 ||
         lon_tile < -7200 || lon_tile > 7200 ||
         source < PI_SEGMENT_SAFETY_SOURCE_NONE ||
         source > PI_SEGMENT_SAFETY_SOURCE_GSHHS_FALLBACK ||
-        expected_cells == 0 ||
-        cell_count != expected_cells || (hazard_summary & ~valid_hazards)) {
+        expected_cells == 0 || cell_count != expected_cells ||
+        depth_complete > 1 || (hazard_summary & ~valid_hazards)) {
       ++s_segment_safety_persistent_base_tiles_ignored;
       wxLogMessage(
           "WR_BASE_TILE_CACHE load cache_malformed_ignored=1 record=%u "
@@ -2770,6 +2739,7 @@ bool SegmentSafetyPersistentBaseTileCacheLoadLocked(const wxString& path) {
     tile.chart_scale = chart_scale;
     tile.source = static_cast<PlugInSegmentSafetySource>(source);
     tile.hazard_summary_flags = hazard_summary;
+    tile.depth_complete = depth_complete != 0;
     strncpy(tile.chart_path, chart_path.c_str(), sizeof(tile.chart_path) - 1);
     tile.chart_path[sizeof(tile.chart_path) - 1] = '\0';
     tile.hazard_flags.resize(cell_count);
@@ -2813,13 +2783,12 @@ bool SegmentSafetyPersistentBaseTileCacheLoadLocked(const wxString& path) {
         tile.classes[i] = SEGMENT_SAFETY_POINT_WATER;
         ++tile.water_count;
       }
-      tile.has_drying[i] =
-          (hazards & SEGMENT_SAFETY_HAZARD_DRYING) ? 1 : 0;
+      tile.has_drying[i] = (hazards & SEGMENT_SAFETY_HAZARD_DRYING) ? 1 : 0;
     }
     tile.built = true;
     tile.persistent_loaded = true;
-    const std::string key = SegmentSafetyGridTileKeyForIndices(
-        tile.lat_tile, tile.lon_tile);
+    const std::string key =
+        SegmentSafetyGridTileKeyForIndices(tile.lat_tile, tile.lon_tile);
     s_segment_safety_persistent_base_tile_cache[key] = tile;
     ++s_segment_safety_persistent_base_tiles_loaded_count;
   }
@@ -2859,8 +2828,9 @@ bool SegmentSafetyPersistentCertifiedCacheSave() {
   root["updated_utc"] = wxDateTime::UNow().ToUTC().FormatISOCombined('T');
   wxJSONValue entries;
   long saved = 0;
-  for (std::map<std::string, CachedSegmentSafetyCoarseRouteMaskCell>::const_iterator
-           it = s_segment_safety_persistent_certified_safe_cache.begin();
+  for (std::map<std::string,
+                CachedSegmentSafetyCoarseRouteMaskCell>::const_iterator it =
+           s_segment_safety_persistent_certified_safe_cache.begin();
        it != s_segment_safety_persistent_certified_safe_cache.end(); ++it) {
     const CachedSegmentSafetyCoarseRouteMaskCell& cell = it->second;
     if (cell.state != SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE) continue;
@@ -2915,7 +2885,8 @@ bool SegmentSafetyPersistentCertifiedCacheSave() {
   s_segment_safety_persistent_entries_saved = saved;
   s_segment_safety_persistent_cache_dirty = false;
   wxLogMessage(
-      "WR_CERT_SAFE_CACHE save enabled=1 entries_saved=%ld cache_file_path=\"%s\" "
+      "WR_CERT_SAFE_CACHE save enabled=1 entries_saved=%ld "
+      "cache_file_path=\"%s\" "
       "cache_file_size=%llu",
       saved, path, (unsigned long long)wxFileName(path).GetSize().GetValue());
   return true;
@@ -2953,16 +2924,15 @@ bool SegmentSafetyPersistentBaseTileCacheSave() {
   const uint32_t algorithm_version = kSegmentSafetyRouteMaskAlgorithmVersion;
   const uint32_t endian_marker = 0x01020304u;
   const uint32_t tile_count = static_cast<uint32_t>(tiles.size());
-  bool ok = output.good() &&
-            SegmentSafetyWriteBinary(output, format_version) &&
-            SegmentSafetyWriteBinary(output, algorithm_version) &&
-            SegmentSafetyWriteBinary(output, endian_marker) &&
-            SegmentSafetyWriteBinary(output, kSegmentSafetyGridTileDegrees) &&
-            SegmentSafetyWriteBinary(output,
-                                     kSegmentSafetyGridResolutionDegrees) &&
-            SegmentSafetyWriteBinary(output, tile_count) &&
-            SegmentSafetyWriteBinaryString(
-                output, s_segment_safety_chart_identity.ToStdString());
+  bool ok =
+      output.good() && SegmentSafetyWriteBinary(output, format_version) &&
+      SegmentSafetyWriteBinary(output, algorithm_version) &&
+      SegmentSafetyWriteBinary(output, endian_marker) &&
+      SegmentSafetyWriteBinary(output, kSegmentSafetyGridTileDegrees) &&
+      SegmentSafetyWriteBinary(output, kSegmentSafetyGridResolutionDegrees) &&
+      SegmentSafetyWriteBinary(output, tile_count) &&
+      SegmentSafetyWriteBinaryString(
+          output, s_segment_safety_chart_identity.ToStdString());
   long saved = 0;
   for (std::map<std::string, CachedPointSafetyGridTile>::const_iterator it =
            tiles.begin();
@@ -2984,6 +2954,7 @@ bool SegmentSafetyPersistentBaseTileCacheSave() {
     const int32_t chart_scale = tile.chart_scale;
     const int32_t source = tile.source;
     const uint32_t hazard_summary = tile.hazard_summary_flags;
+    const uint8_t depth_complete = tile.depth_complete ? 1 : 0;
     const uint32_t cell_count = static_cast<uint32_t>(cells);
     ok = SegmentSafetyWriteBinary(output, group_index) &&
          SegmentSafetyWriteBinary(output, lat_tile) &&
@@ -2994,6 +2965,7 @@ bool SegmentSafetyPersistentBaseTileCacheSave() {
          SegmentSafetyWriteBinary(output, chart_scale) &&
          SegmentSafetyWriteBinary(output, source) &&
          SegmentSafetyWriteBinary(output, hazard_summary) &&
+         SegmentSafetyWriteBinary(output, depth_complete) &&
          SegmentSafetyWriteBinaryString(output, tile.chart_path) &&
          SegmentSafetyWriteBinary(output, cell_count);
     if (!ok) break;
@@ -3060,7 +3032,8 @@ bool SegmentSafetyPersistentLookupCertifiedSafe(
       "WR_CERT_SAFE_CACHE use cache_used_as_proof=1 cache_key_match=1 "
       "lat_cell=%ld lon_cell=%ld entries_used=%ld fine_tiles_avoided=%d",
       lat_cell, lon_cell, s_segment_safety_persistent_entries_used,
-      kSegmentSafetyCoarseRouteMaskFactor * kSegmentSafetyCoarseRouteMaskFactor);
+      kSegmentSafetyCoarseRouteMaskFactor *
+          kSegmentSafetyCoarseRouteMaskFactor);
   return true;
 }
 
@@ -3088,9 +3061,8 @@ std::string SegmentSafetyPointCacheKey(double lat, double lon) {
       .ToStdString();
 }
 
-std::string SegmentSafetySegmentCacheKey(double lat1, double lon1,
-                                         double lat2, double lon2,
-                                         double safety_margin_nm,
+std::string SegmentSafetySegmentCacheKey(double lat1, double lon1, double lat2,
+                                         double lon2, double safety_margin_nm,
                                          bool check_depth = false,
                                          double minimum_depth_m = 0.0) {
   long a_lat = lround(lat1 / kSegmentSafetyGridResolutionDegrees);
@@ -3102,9 +3074,10 @@ std::string SegmentSafetySegmentCacheKey(double lat1, double lon1,
     std::swap(a_lon, b_lon);
   }
   double mid_lat = (lat1 + lat2) / 2.0;
-  double cell_nm = wxMin(kSegmentSafetyGridResolutionDegrees * 60.0,
-                         kSegmentSafetyGridResolutionDegrees * 60.0 *
-                             wxMax(0.1, fabs(cos(SegmentSafetyDegToRad(mid_lat)))));
+  double cell_nm =
+      wxMin(kSegmentSafetyGridResolutionDegrees * 60.0,
+            kSegmentSafetyGridResolutionDegrees * 60.0 *
+                wxMax(0.1, fabs(cos(SegmentSafetyDegToRad(mid_lat)))));
   long margin_bucket = lround(safety_margin_nm / wxMax(0.01, cell_nm));
   long depth_bucket = lround(minimum_depth_m * 100.0);
   return wxString::Format("%d:%.6f:%ld:%d:%ld:%ld:%ld:%ld:%ld",
@@ -3115,9 +3088,9 @@ std::string SegmentSafetySegmentCacheKey(double lat1, double lon1,
       .ToStdString();
 }
 
-void StoreSegmentSafetySegmentCache(
-    const std::string& key, const CachedSegmentSafetyResult& value,
-    SegmentSafetyCoreStats* stats) {
+void StoreSegmentSafetySegmentCache(const std::string& key,
+                                    const CachedSegmentSafetyResult& value,
+                                    SegmentSafetyCoreStats* stats) {
   wxMutexLocker lock(s_segment_safety_cache_mutex);
   if (s_segment_safety_segment_cache.size() >=
       kMaxSegmentSafetySegmentCacheEntries) {
@@ -3224,8 +3197,8 @@ void StoreSegmentSafetyPointCache(
   s_segment_safety_point_cache[key] = value;
 }
 
-bool LookupSegmentSafetyPointCache(
-    const std::string& key, CachedPointSafetyClassification* value) {
+bool LookupSegmentSafetyPointCache(const std::string& key,
+                                   CachedPointSafetyClassification* value) {
   wxMutexLocker lock(s_segment_safety_cache_mutex);
   std::map<std::string, CachedPointSafetyClassification>::const_iterator it =
       s_segment_safety_point_cache.find(key);
@@ -3269,9 +3242,8 @@ void CopySegmentSafetyPointCacheToResult(
 CachedPointSafetyClassification MakeSegmentSafetyPointCacheEntry(
     SegmentSafetyPointClass point_class, PlugInSegmentSafetySource source,
     int chart_db_index, int chart_scale, const char* chart_path,
-    const char* hit_object, bool has_depth = false,
-    double min_depth_m = 0.0, bool has_drying = false,
-    const char* depth_source_object = NULL,
+    const char* hit_object, bool has_depth = false, double min_depth_m = 0.0,
+    bool has_drying = false, const char* depth_source_object = NULL,
     const char* depth_source_attribute = NULL) {
   CachedPointSafetyClassification cached;
   cached.point_class = point_class;
@@ -3326,15 +3298,14 @@ SegmentSafetyPointClass ChartPointSafetyClassAtRaw(
     SegmentSafetyCoreStats* stats, PlugInSegmentSafetyResult* result = NULL);
 CachedPointSafetyGridTile BuildSegmentSafetyGridTile(
     double lat, double lon, long lat_tile, long lon_tile,
-    SegmentSafetyCoreStats* stats);
+    SegmentSafetyCoreStats* stats, bool require_depth);
 
 void StoreSegmentSafetyGridTile(const std::string& key,
                                 const CachedPointSafetyGridTile& tile) {
   wxMutexLocker lock(s_segment_safety_cache_mutex);
   if (s_segment_safety_grid_cache.find(key) ==
       s_segment_safety_grid_cache.end()) {
-    while (s_segment_safety_grid_cache.size() >=
-           kMaxSegmentSafetyGridTiles) {
+    while (s_segment_safety_grid_cache.size() >= kMaxSegmentSafetyGridTiles) {
       std::map<std::string, CachedPointSafetyGridTile>::iterator victim =
           s_segment_safety_grid_cache.end();
       for (std::map<std::string, CachedPointSafetyGridTile>::iterator it =
@@ -3386,12 +3357,21 @@ void RecordUnexpectedSegmentSafetyTileBuild(SegmentSafetyCoreStats* stats,
 
 bool EnsureSegmentSafetyGridTile(long lat_tile, long lon_tile,
                                  SegmentSafetyCoreStats* stats,
-                                 bool* built = NULL) {
+                                 bool* built = NULL,
+                                 bool require_depth = false) {
   if (built) *built = false;
   std::string key = SegmentSafetyGridTileKeyForIndices(lat_tile, lon_tile);
-  if (LookupSegmentSafetyGridTile(key, NULL)) {
+  CachedPointSafetyGridTile active_tile;
+  if (LookupSegmentSafetyGridTile(key, &active_tile) &&
+      (!require_depth || active_tile.depth_complete)) {
     if (stats) ++stats->grid_cache_hits;
     return true;
+  }
+  if (require_depth && active_tile.built && !active_tile.depth_complete) {
+    wxMutexLocker lock(s_segment_safety_cache_mutex);
+    s_segment_safety_grid_cache.erase(key);
+    s_segment_safety_persistent_base_tile_cache.erase(key);
+    s_segment_safety_persistent_base_tiles_dirty = true;
   }
 
   if (stats) ++stats->grid_cache_misses;
@@ -3428,9 +3408,9 @@ bool EnsureSegmentSafetyGridTile(long lat_tile, long lon_tile,
           s_segment_safety_persistent_base_tile_cache.find(key);
       if (it != s_segment_safety_persistent_base_tile_cache.end()) {
         persistent_tile = it->second;
-        found_persistent = persistent_tile.built;
-        if (found_persistent)
-          ++s_segment_safety_persistent_base_tiles_used;
+        found_persistent = persistent_tile.built &&
+                           (!require_depth || persistent_tile.depth_complete);
+        if (found_persistent) ++s_segment_safety_persistent_base_tiles_used;
       }
     }
     if (found_persistent) {
@@ -3440,9 +3420,10 @@ bool EnsureSegmentSafetyGridTile(long lat_tile, long lon_tile,
     }
   }
 
-  CachedPointSafetyGridTile tile = BuildSegmentSafetyGridTile(
-      lat_tile * kSegmentSafetyGridTileDegrees,
-      lon_tile * kSegmentSafetyGridTileDegrees, lat_tile, lon_tile, stats);
+  CachedPointSafetyGridTile tile =
+      BuildSegmentSafetyGridTile(lat_tile * kSegmentSafetyGridTileDegrees,
+                                 lon_tile * kSegmentSafetyGridTileDegrees,
+                                 lat_tile, lon_tile, stats, require_depth);
   StoreSegmentSafetyGridTile(key, tile);
   if (built) *built = true;
   return LookupSegmentSafetyGridTile(key, NULL);
@@ -3457,8 +3438,8 @@ void StoreSegmentSafetyRouteMaskTile(
            kMaxSegmentSafetyGridTiles) {
       std::map<std::string, CachedSegmentSafetyRouteMaskTile>::iterator victim =
           s_segment_safety_route_mask_cache.end();
-      for (std::map<std::string, CachedSegmentSafetyRouteMaskTile>::iterator it =
-               s_segment_safety_route_mask_cache.begin();
+      for (std::map<std::string, CachedSegmentSafetyRouteMaskTile>::iterator
+               it = s_segment_safety_route_mask_cache.begin();
            it != s_segment_safety_route_mask_cache.end(); ++it) {
         if (s_segment_safety_pinned_route_mask_keys.find(it->first) ==
             s_segment_safety_pinned_route_mask_keys.end()) {
@@ -3473,8 +3454,8 @@ void StoreSegmentSafetyRouteMaskTile(
   s_segment_safety_route_mask_cache[key] = tile;
 }
 
-bool LookupSegmentSafetyRouteMaskTile(
-    const std::string& key, CachedSegmentSafetyRouteMaskTile* tile) {
+bool LookupSegmentSafetyRouteMaskTile(const std::string& key,
+                                      CachedSegmentSafetyRouteMaskTile* tile) {
   wxMutexLocker lock(s_segment_safety_cache_mutex);
   std::map<std::string, CachedSegmentSafetyRouteMaskTile>::const_iterator it =
       s_segment_safety_route_mask_cache.find(key);
@@ -3565,8 +3546,7 @@ bool BuildSegmentSafetyCoarseRouteMaskCellFromFine(
 
   if (all_clear) {
     coarse.state = SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE;
-  } else if (coarse.block_summary_flags &
-             SEGMENT_SAFETY_ROUTE_BLOCK_NO_CHART) {
+  } else if (coarse.block_summary_flags & SEGMENT_SAFETY_ROUTE_BLOCK_NO_CHART) {
     coarse.state = SEGMENT_SAFETY_COARSE_NO_CHART;
   } else if (coarse.block_summary_flags &
              SEGMENT_SAFETY_ROUTE_BLOCK_UNKNOWN_DEPTH) {
@@ -3640,8 +3620,7 @@ bool LookupCertifiedSegmentSafetyCoarseRouteMaskCellForFineTile(
   return false;
 }
 
-CachedSegmentSafetyRouteMaskTile
-BuildPersistentCertifiedSafeRouteMaskTile(
+CachedSegmentSafetyRouteMaskTile BuildPersistentCertifiedSafeRouteMaskTile(
     long lat_tile, long lon_tile, double safety_margin_nm, bool check_depth,
     double minimum_depth_m,
     const CachedSegmentSafetyCoarseRouteMaskCell& coarse) {
@@ -3668,8 +3647,7 @@ BuildPersistentCertifiedSafeRouteMaskTile(
   mask.chart_scale = -1;
   snprintf(mask.chart_path, sizeof(mask.chart_path),
            "persistent certified safe coarse cell");
-  mask.block_flags.assign(mask.rows * mask.cols,
-                          SEGMENT_SAFETY_ROUTE_CLEAR);
+  mask.block_flags.assign(mask.rows * mask.cols, SEGMENT_SAFETY_ROUTE_CLEAR);
   mask.block_summary_flags = SEGMENT_SAFETY_ROUTE_CLEAR;
   mask.clear_count = mask.rows * mask.cols;
   mask.authoritative_fine = false;
@@ -3717,8 +3695,8 @@ uint16_t SegmentSafetyRouteMaskFlagsForBaseCell(
 // persistent cache without consulting chart objects.  Coarse certification
 // uses this first so that a proof cannot accidentally make sparse route
 // footprints more expensive than their fine-mask fallback.
-bool LoadSegmentSafetyGridTileWithoutBuilding(
-    long lat_tile, long lon_tile, CachedPointSafetyGridTile* tile) {
+bool LoadSegmentSafetyGridTileWithoutBuilding(long lat_tile, long lon_tile,
+                                              CachedPointSafetyGridTile* tile) {
   const std::string key =
       SegmentSafetyGridTileKeyForIndices(lat_tile, lon_tile);
   if (LookupSegmentSafetyGridTile(key, tile)) return true;
@@ -3749,8 +3727,7 @@ bool SegmentSafetyBaseTileHasClearTargetCells(
     double minimum_depth_m, uint32_t* summary_flags) {
   bool clear = tile.built && !tile.classes.empty();
   if (!clear) {
-    if (summary_flags)
-      *summary_flags |= SEGMENT_SAFETY_ROUTE_NEEDS_TILE;
+    if (summary_flags) *summary_flags |= SEGMENT_SAFETY_ROUTE_NEEDS_TILE;
     return false;
   }
 
@@ -3773,8 +3750,8 @@ bool SegmentSafetyBaseTileCanContributeMargin(
   if (!check_depth) return false;
 
   for (int i = 0; i < tile.rows * tile.cols; ++i) {
-    const uint16_t flags = SegmentSafetyRouteMaskFlagsForBaseCell(
-        tile, i, true, minimum_depth_m);
+    const uint16_t flags =
+        SegmentSafetyRouteMaskFlagsForBaseCell(tile, i, true, minimum_depth_m);
     if (flags & SEGMENT_SAFETY_ROUTE_BLOCK_TOO_SHALLOW) return true;
   }
   return false;
@@ -3787,8 +3764,8 @@ bool SegmentSafetyBaseTileCanContributeMargin(
 bool BuildSegmentSafetyCoarseRouteMaskCellFromBase(
     long coarse_lat_cell, long coarse_lon_cell, double safety_margin_nm,
     bool check_depth, double minimum_depth_m, bool allow_chart_builds,
-    CachedSegmentSafetyCoarseRouteMaskCell* cell,
-    SegmentSafetyCoreStats* stats, long* base_tiles_built) {
+    CachedSegmentSafetyCoarseRouteMaskCell* cell, SegmentSafetyCoreStats* stats,
+    long* base_tiles_built) {
   if (!cell || !wxThread::IsMain()) return false;
 
   wxStopWatch timer;
@@ -3807,14 +3784,12 @@ bool BuildSegmentSafetyCoarseRouteMaskCellFromBase(
       coarse_lat_cell * kSegmentSafetyCoarseRouteMaskFactor;
   const long start_lon_tile =
       coarse_lon_cell * kSegmentSafetyCoarseRouteMaskFactor;
-  const double min_cell_lat =
-      start_lat_tile * kSegmentSafetyGridTileDegrees;
+  const double min_cell_lat = start_lat_tile * kSegmentSafetyGridTileDegrees;
   const double max_cell_lat =
       (start_lat_tile + kSegmentSafetyCoarseRouteMaskFactor) *
       kSegmentSafetyGridTileDegrees;
   const int margin_radius = SegmentSafetyMarginTileRadius(
-      safety_margin_nm,
-      wxMax(fabs(min_cell_lat), fabs(max_cell_lat)));
+      safety_margin_nm, wxMax(fabs(min_cell_lat), fabs(max_cell_lat)));
 
   bool all_targets_clear = true;
   bool margin_hit = false;
@@ -3829,11 +3804,11 @@ bool BuildSegmentSafetyCoarseRouteMaskCellFromBase(
           LoadSegmentSafetyGridTileWithoutBuilding(lat_tile, lon_tile, &base);
       if (!available && allow_chart_builds) {
         bool built = false;
-        available = EnsureSegmentSafetyGridTile(lat_tile, lon_tile, stats,
-                                                &built) &&
-                    LookupSegmentSafetyGridTile(
-                        SegmentSafetyGridTileKeyForIndices(lat_tile, lon_tile),
-                        &base);
+        available =
+            EnsureSegmentSafetyGridTile(lat_tile, lon_tile, stats, &built,
+                                        check_depth) &&
+            LookupSegmentSafetyGridTile(
+                SegmentSafetyGridTileKeyForIndices(lat_tile, lon_tile), &base);
         if (built && base_tiles_built) ++*base_tiles_built;
       }
       if (!available) return false;
@@ -3855,9 +3830,8 @@ bool BuildSegmentSafetyCoarseRouteMaskCellFromBase(
         }
       }
 
-      if (margin_radius > 0 &&
-          SegmentSafetyBaseTileCanContributeMargin(
-              base, check_depth, minimum_depth_m))
+      if (margin_radius > 0 && SegmentSafetyBaseTileCanContributeMargin(
+                                   base, check_depth, minimum_depth_m))
         margin_hit = true;
     }
   }
@@ -3869,8 +3843,7 @@ bool BuildSegmentSafetyCoarseRouteMaskCellFromBase(
 
   if (all_targets_clear) {
     coarse.state = SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE;
-  } else if (coarse.block_summary_flags &
-             SEGMENT_SAFETY_ROUTE_BLOCK_NO_CHART) {
+  } else if (coarse.block_summary_flags & SEGMENT_SAFETY_ROUTE_BLOCK_NO_CHART) {
     coarse.state = SEGMENT_SAFETY_COARSE_NO_CHART;
   } else if (coarse.block_summary_flags &
              SEGMENT_SAFETY_ROUTE_BLOCK_UNKNOWN_DEPTH) {
@@ -3884,9 +3857,8 @@ bool BuildSegmentSafetyCoarseRouteMaskCellFromBase(
   return true;
 }
 
-void AddSegmentSafetyTileHalo(
-    long lat_tile, long lon_tile, int radius,
-    std::set<std::pair<long, long> >* tiles) {
+void AddSegmentSafetyTileHalo(long lat_tile, long lon_tile, int radius,
+                              std::set<std::pair<long, long> >* tiles) {
   if (!tiles) return;
   for (int dlat = -radius; dlat <= radius; ++dlat) {
     for (int dlon = -radius; dlon <= radius; ++dlon)
@@ -3917,21 +3889,18 @@ bool SegmentSafetyCoarseProofDoesNotExpandBaseBuildSet(
       coarse_lat_cell * kSegmentSafetyCoarseRouteMaskFactor;
   const long start_lon_tile =
       coarse_lon_cell * kSegmentSafetyCoarseRouteMaskFactor;
-  const double min_cell_lat =
-      start_lat_tile * kSegmentSafetyGridTileDegrees;
+  const double min_cell_lat = start_lat_tile * kSegmentSafetyGridTileDegrees;
   const double max_cell_lat =
       (start_lat_tile + kSegmentSafetyCoarseRouteMaskFactor) *
       kSegmentSafetyGridTileDegrees;
   const int coarse_radius = SegmentSafetyMarginTileRadius(
-      safety_margin_nm,
-      wxMax(fabs(min_cell_lat), fabs(max_cell_lat)));
+      safety_margin_nm, wxMax(fabs(min_cell_lat), fabs(max_cell_lat)));
 
   std::set<std::pair<long, long> > coarse_required;
   for (int dlat = 0; dlat < kSegmentSafetyCoarseRouteMaskFactor; ++dlat) {
     for (int dlon = 0; dlon < kSegmentSafetyCoarseRouteMaskFactor; ++dlon) {
-      AddSegmentSafetyTileHalo(start_lat_tile + dlat,
-                               start_lon_tile + dlon, coarse_radius,
-                               &coarse_required);
+      AddSegmentSafetyTileHalo(start_lat_tile + dlat, start_lon_tile + dlon,
+                               coarse_radius, &coarse_required);
     }
   }
 
@@ -3939,8 +3908,7 @@ bool SegmentSafetyCoarseProofDoesNotExpandBaseBuildSet(
   for (std::set<std::pair<long, long> >::const_iterator it =
            occupied_tiles.begin();
        it != occupied_tiles.end(); ++it) {
-    const double tile_min_lat =
-        it->first * kSegmentSafetyGridTileDegrees;
+    const double tile_min_lat = it->first * kSegmentSafetyGridTileDegrees;
     const int fine_radius = SegmentSafetyMarginTileRadius(
         safety_margin_nm,
         wxMax(fabs(tile_min_lat),
@@ -3967,9 +3935,11 @@ bool SegmentSafetyBaseCellFlagsAt(long lat_cell, long lon_cell,
   std::string key = SegmentSafetyGridTileKey(lat, lon, &lat_tile, &lon_tile);
   if (!LookupSegmentSafetyGridTile(key, NULL)) {
     bool built = false;
-    if (!EnsureSegmentSafetyGridTile(lat_tile, lon_tile, stats, &built))
+    if (!EnsureSegmentSafetyGridTile(lat_tile, lon_tile, stats, &built,
+                                     check_depth))
       return false;
-    if (built) RecordUnexpectedSegmentSafetyTileBuild(stats, lat_tile, lon_tile);
+    if (built)
+      RecordUnexpectedSegmentSafetyTileBuild(stats, lat_tile, lon_tile);
   } else if (stats) {
     ++stats->grid_cache_hits;
   }
@@ -3980,8 +3950,7 @@ bool SegmentSafetyBaseCellFlagsAt(long lat_cell, long lon_cell,
 
   int row = (int)lround((lat - tile.min_lat) / tile.resolution);
   int col = (int)lround((lon - tile.min_lon) / tile.resolution);
-  if (row < 0 || row >= tile.rows || col < 0 || col >= tile.cols)
-    return false;
+  if (row < 0 || row >= tile.rows || col < 0 || col >= tile.cols) return false;
 
   int cell_index = row * tile.cols + col;
   if (flags)
@@ -4007,8 +3976,10 @@ CachedSegmentSafetyRouteMaskTile BuildSegmentSafetyRouteMaskTile(
   CachedPointSafetyGridTile base_tile;
   std::string base_key = SegmentSafetyGridTileKeyForIndices(lat_tile, lon_tile);
   bool base_built = false;
-  if (!LookupSegmentSafetyGridTile(base_key, &base_tile)) {
-    if (!EnsureSegmentSafetyGridTile(lat_tile, lon_tile, stats, &base_built))
+  if (!LookupSegmentSafetyGridTile(base_key, &base_tile) ||
+      (check_depth && !base_tile.depth_complete)) {
+    if (!EnsureSegmentSafetyGridTile(lat_tile, lon_tile, stats, &base_built,
+                                     check_depth))
       return mask;
     LookupSegmentSafetyGridTile(base_key, &base_tile);
   }
@@ -4037,9 +4008,10 @@ CachedSegmentSafetyRouteMaskTile BuildSegmentSafetyRouteMaskTile(
                           SEGMENT_SAFETY_ROUTE_NEEDS_TILE);
 
   double mid_lat = mask.min_lat + kSegmentSafetyGridTileDegrees / 2.0;
-  double cell_nm = wxMin(mask.resolution * 60.0,
-                         mask.resolution * 60.0 *
-                             wxMax(0.1, fabs(cos(SegmentSafetyDegToRad(mid_lat)))));
+  double cell_nm =
+      wxMin(mask.resolution * 60.0,
+            mask.resolution * 60.0 *
+                wxMax(0.1, fabs(cos(SegmentSafetyDegToRad(mid_lat)))));
   mask.margin_cells = safety_margin_nm > 0.0
                           ? (int)ceil(safety_margin_nm / wxMax(0.01, cell_nm))
                           : 0;
@@ -4047,12 +4019,10 @@ CachedSegmentSafetyRouteMaskTile BuildSegmentSafetyRouteMaskTile(
 
   auto CountRouteMaskFlags = [&mask](uint16_t flags) {
     mask.block_summary_flags |= flags;
-    if (flags == SEGMENT_SAFETY_ROUTE_CLEAR)
-      ++mask.clear_count;
+    if (flags == SEGMENT_SAFETY_ROUTE_CLEAR) ++mask.clear_count;
     if (flags & SEGMENT_SAFETY_ROUTE_BLOCK_LAND) ++mask.land_count;
     if (flags & SEGMENT_SAFETY_ROUTE_BLOCK_DRYING) ++mask.drying_count;
-    if (flags & SEGMENT_SAFETY_ROUTE_BLOCK_TOO_SHALLOW)
-      ++mask.shallow_count;
+    if (flags & SEGMENT_SAFETY_ROUTE_BLOCK_TOO_SHALLOW) ++mask.shallow_count;
     if (flags & SEGMENT_SAFETY_ROUTE_BLOCK_UNKNOWN_DEPTH)
       ++mask.unknown_depth_count;
     if (flags & SEGMENT_SAFETY_ROUTE_BLOCK_NO_CHART) ++mask.no_chart_count;
@@ -4063,16 +4033,17 @@ CachedSegmentSafetyRouteMaskTile BuildSegmentSafetyRouteMaskTile(
   // hazards and no adjacent land/drying tile can contribute margin, publish an
   // all-clear derived mask without scanning every neighbouring cell.
   bool used_clear_tile_shortcut = false;
-  bool can_mark_tile_clear =
-      !check_depth &&
-      base_tile.hazard_summary_flags == SEGMENT_SAFETY_HAZARD_NONE;
+  int prefix_verify_cells = 0;
+  int prefix_verify_mismatches = 0;
+  bool can_mark_tile_clear = !check_depth && base_tile.hazard_summary_flags ==
+                                                 SEGMENT_SAFETY_HAZARD_NONE;
   if (can_mark_tile_clear && mask.margin_cells > 0) {
     int lat_tile_radius =
         wxMax(1, (int)ceil((double)mask.margin_cells / wxMax(1, mask.rows)));
     int lon_tile_radius =
         wxMax(1, (int)ceil((double)mask.margin_cells / wxMax(1, mask.cols)));
-    for (int dlat = -lat_tile_radius; dlat <= lat_tile_radius &&
-                                      can_mark_tile_clear; ++dlat) {
+    for (int dlat = -lat_tile_radius;
+         dlat <= lat_tile_radius && can_mark_tile_clear; ++dlat) {
       for (int dlon = -lon_tile_radius; dlon <= lon_tile_radius; ++dlon) {
         long neighbor_lat_tile = lat_tile + dlat;
         long neighbor_lon_tile = lon_tile + dlon;
@@ -4080,10 +4051,11 @@ CachedSegmentSafetyRouteMaskTile BuildSegmentSafetyRouteMaskTile(
             neighbor_lat_tile, neighbor_lon_tile);
         CachedPointSafetyGridTile neighbor_tile;
         bool neighbor_built = false;
-        if (!LookupSegmentSafetyGridTile(neighbor_key, &neighbor_tile)) {
-          if (!EnsureSegmentSafetyGridTile(neighbor_lat_tile,
-                                           neighbor_lon_tile, stats,
-                                           &neighbor_built) ||
+        if (!LookupSegmentSafetyGridTile(neighbor_key, &neighbor_tile) ||
+            (check_depth && !neighbor_tile.depth_complete)) {
+          if (!EnsureSegmentSafetyGridTile(neighbor_lat_tile, neighbor_lon_tile,
+                                           stats, &neighbor_built,
+                                           check_depth) ||
               !LookupSegmentSafetyGridTile(neighbor_key, &neighbor_tile)) {
             can_mark_tile_clear = false;
             break;
@@ -4110,47 +4082,199 @@ CachedSegmentSafetyRouteMaskTile BuildSegmentSafetyRouteMaskTile(
   }
 
   if (!used_clear_tile_shortcut) {
-    for (int r = 0; r < mask.rows; ++r) {
-      for (int c = 0; c < mask.cols; ++c) {
-        int cell_index = r * mask.cols + c;
-        uint16_t flags = SegmentSafetyRouteMaskFlagsForBaseCell(
-            base_tile, cell_index, check_depth, minimum_depth_m);
+    if (mask.margin_cells == 0) {
+      for (int r = 0; r < mask.rows; ++r) {
+        for (int c = 0; c < mask.cols; ++c) {
+          const int cell_index = r * mask.cols + c;
+          const uint16_t flags = SegmentSafetyRouteMaskFlagsForBaseCell(
+              base_tile, cell_index, check_depth, minimum_depth_m);
+          mask.block_flags[cell_index] = flags;
+          CountRouteMaskFlags(flags);
+        }
+      }
+    } else {
+      // Materialize the complete halo once, then use summed-area tables for
+      // conservative square-margin dilation.  The previous implementation did
+      // a cache lookup (and mutex acquisition) for every neighbour of every
+      // target cell: about 600,000 lookups per tile at a 0.4 NM margin.  This
+      // is exactly the same square-neighbourhood safety rule in O(cells + halo)
+      // time, with missing evidence still failing closed.
+      const int halo = mask.margin_cells;
+      const int extended_rows = mask.rows + 2 * halo;
+      const int extended_cols = mask.cols + 2 * halo;
+      const int cells_per_tile = (int)lround(
+          kSegmentSafetyGridTileDegrees / kSegmentSafetyGridResolutionDegrees);
+      const long first_lat_cell =
+          lround(mask.min_lat / kSegmentSafetyGridResolutionDegrees) - halo;
+      const long first_lon_cell =
+          lround(mask.min_lon / kSegmentSafetyGridResolutionDegrees) - halo;
+      std::vector<uint16_t> extended_flags(
+          static_cast<size_t>(extended_rows) * extended_cols,
+          SEGMENT_SAFETY_ROUTE_NEEDS_TILE);
+      std::map<std::pair<long, long>, CachedPointSafetyGridTile> local_tiles;
 
-        if (mask.margin_cells > 0) {
-          long lat_cell = lround((mask.min_lat + r * mask.resolution) /
-                                 kSegmentSafetyGridResolutionDegrees);
-          long lon_cell = lround((mask.min_lon + c * mask.resolution) /
-                                 kSegmentSafetyGridResolutionDegrees);
-          bool margin_hit = false;
-          for (int dlat = -mask.margin_cells; dlat <= mask.margin_cells &&
-                                             !margin_hit; ++dlat) {
-            for (int dlon = -mask.margin_cells; dlon <= mask.margin_cells;
-                 ++dlon) {
-              if (dlat == 0 && dlon == 0) continue;
-              uint16_t neighbor_flags = SEGMENT_SAFETY_ROUTE_NEEDS_TILE;
-              if (!SegmentSafetyBaseCellFlagsAt(lat_cell + dlat,
-                                                lon_cell + dlon, check_depth,
-                                                minimum_depth_m, stats,
-                                                &neighbor_flags, NULL, NULL,
-                                                NULL, NULL)) {
-                flags |= SEGMENT_SAFETY_ROUTE_NEEDS_TILE;
-                margin_hit = true;
-                break;
-              }
-              if (neighbor_flags & (SEGMENT_SAFETY_ROUTE_BLOCK_LAND |
-                                    SEGMENT_SAFETY_ROUTE_BLOCK_DRYING |
-                                    SEGMENT_SAFETY_ROUTE_BLOCK_TOO_SHALLOW)) {
-                margin_hit = true;
-                break;
+      const auto FloorTileIndex = [cells_per_tile](long cell) {
+        return (long)floor((double)cell / cells_per_tile);
+      };
+      for (int r = 0; r < extended_rows; ++r) {
+        const long global_lat_cell = first_lat_cell + r;
+        const long source_lat_tile = FloorTileIndex(global_lat_cell);
+        const int source_row =
+            (int)(global_lat_cell - source_lat_tile * cells_per_tile);
+        for (int c = 0; c < extended_cols; ++c) {
+          const long global_lon_cell = first_lon_cell + c;
+          const long source_lon_tile = FloorTileIndex(global_lon_cell);
+          const int source_col =
+              (int)(global_lon_cell - source_lon_tile * cells_per_tile);
+          const std::pair<long, long> tile_id(source_lat_tile, source_lon_tile);
+          std::map<std::pair<long, long>, CachedPointSafetyGridTile>::iterator
+              local = local_tiles.find(tile_id);
+          if (local == local_tiles.end()) {
+            const std::string source_key = SegmentSafetyGridTileKeyForIndices(
+                source_lat_tile, source_lon_tile);
+            CachedPointSafetyGridTile source_tile;
+            bool source_built = false;
+            if ((!LookupSegmentSafetyGridTile(source_key, &source_tile) ||
+                 (check_depth && !source_tile.depth_complete)) &&
+                EnsureSegmentSafetyGridTile(source_lat_tile, source_lon_tile,
+                                            stats, &source_built, check_depth))
+              LookupSegmentSafetyGridTile(source_key, &source_tile);
+            if (source_built)
+              RecordUnexpectedSegmentSafetyTileBuild(stats, source_lat_tile,
+                                                     source_lon_tile);
+            local =
+                local_tiles.insert(std::make_pair(tile_id, source_tile)).first;
+          }
+
+          const CachedPointSafetyGridTile& source_tile = local->second;
+          if (!source_tile.built || source_tile.classes.empty() ||
+              source_row < 0 || source_row >= source_tile.rows ||
+              source_col < 0 || source_col >= source_tile.cols)
+            continue;
+          const int source_index = source_row * source_tile.cols + source_col;
+          extended_flags[static_cast<size_t>(r) * extended_cols + c] =
+              SegmentSafetyRouteMaskFlagsForBaseCell(
+                  source_tile, source_index, check_depth, minimum_depth_m);
+        }
+      }
+
+      const int prefix_stride = extended_cols + 1;
+      std::vector<int> hazard_prefix(
+          static_cast<size_t>(extended_rows + 1) * prefix_stride, 0);
+      std::vector<int> missing_prefix(
+          static_cast<size_t>(extended_rows + 1) * prefix_stride, 0);
+      for (int r = 0; r < extended_rows; ++r) {
+        int hazard_row_sum = 0;
+        int missing_row_sum = 0;
+        for (int c = 0; c < extended_cols; ++c) {
+          const uint16_t flags =
+              extended_flags[static_cast<size_t>(r) * extended_cols + c];
+          hazard_row_sum += (flags & (SEGMENT_SAFETY_ROUTE_BLOCK_LAND |
+                                      SEGMENT_SAFETY_ROUTE_BLOCK_DRYING |
+                                      SEGMENT_SAFETY_ROUTE_BLOCK_TOO_SHALLOW))
+                                ? 1
+                                : 0;
+          missing_row_sum += (flags & SEGMENT_SAFETY_ROUTE_NEEDS_TILE) ? 1 : 0;
+          const size_t prefix_index =
+              static_cast<size_t>(r + 1) * prefix_stride + c + 1;
+          hazard_prefix[prefix_index] =
+              hazard_prefix[static_cast<size_t>(r) * prefix_stride + c + 1] +
+              hazard_row_sum;
+          missing_prefix[prefix_index] =
+              missing_prefix[static_cast<size_t>(r) * prefix_stride + c + 1] +
+              missing_row_sum;
+        }
+      }
+      const auto RectangleSum = [prefix_stride](const std::vector<int>& prefix,
+                                                int min_row, int min_col,
+                                                int max_row, int max_col) {
+        const size_t a = static_cast<size_t>(min_row) * prefix_stride + min_col;
+        const size_t b =
+            static_cast<size_t>(min_row) * prefix_stride + max_col + 1;
+        const size_t c =
+            static_cast<size_t>(max_row + 1) * prefix_stride + min_col;
+        const size_t d =
+            static_cast<size_t>(max_row + 1) * prefix_stride + max_col + 1;
+        return prefix[d] - prefix[b] - prefix[c] + prefix[a];
+      };
+
+      for (int r = 0; r < mask.rows; ++r) {
+        for (int c = 0; c < mask.cols; ++c) {
+          const int extended_row = r + halo;
+          const int extended_col = c + halo;
+          const int cell_index = r * mask.cols + c;
+          uint16_t flags = SegmentSafetyRouteMaskFlagsForBaseCell(
+              base_tile, cell_index, check_depth, minimum_depth_m);
+          const int min_row = extended_row - halo;
+          const int min_col = extended_col - halo;
+          const int max_row = extended_row + halo;
+          const int max_col = extended_col + halo;
+          const uint16_t global_centre_flags =
+              extended_flags[static_cast<size_t>(extended_row) * extended_cols +
+                             extended_col];
+          const int neighbour_missing =
+              RectangleSum(missing_prefix, min_row, min_col, max_row, max_col) -
+              ((global_centre_flags & SEGMENT_SAFETY_ROUTE_NEEDS_TILE) ? 1 : 0);
+          if (neighbour_missing > 0) {
+            flags |= SEGMENT_SAFETY_ROUTE_NEEDS_TILE;
+          } else {
+            const int neighbour_hazards =
+                RectangleSum(hazard_prefix, min_row, min_col, max_row,
+                             max_col) -
+                ((global_centre_flags &
+                  (SEGMENT_SAFETY_ROUTE_BLOCK_LAND |
+                   SEGMENT_SAFETY_ROUTE_BLOCK_DRYING |
+                   SEGMENT_SAFETY_ROUTE_BLOCK_TOO_SHALLOW))
+                     ? 1
+                     : 0);
+            if (neighbour_hazards > 0)
+              flags |= SEGMENT_SAFETY_ROUTE_BLOCK_MARGIN;
+          }
+
+          mask.block_flags[cell_index] = flags;
+          CountRouteMaskFlags(flags);
+        }
+      }
+
+      const char* verify_prefix =
+          getenv("WR_SEGMENT_SAFETY_VERIFY_MASK_PREFIX");
+      if (verify_prefix && !strcmp(verify_prefix, "1")) {
+        for (int r = 0; r < mask.rows; ++r) {
+          for (int c = 0; c < mask.cols; ++c) {
+            const int cell_index = r * mask.cols + c;
+            uint16_t reference_flags = SegmentSafetyRouteMaskFlagsForBaseCell(
+                base_tile, cell_index, check_depth, minimum_depth_m);
+            bool margin_hit = false;
+            for (int dlat = -halo; dlat <= halo && !margin_hit; ++dlat) {
+              for (int dlon = -halo; dlon <= halo; ++dlon) {
+                if (dlat == 0 && dlon == 0) continue;
+                const uint16_t neighbour_flags =
+                    extended_flags[static_cast<size_t>(r + halo + dlat) *
+                                       extended_cols +
+                                   c + halo + dlon];
+                if (neighbour_flags & SEGMENT_SAFETY_ROUTE_NEEDS_TILE) {
+                  reference_flags |= SEGMENT_SAFETY_ROUTE_NEEDS_TILE;
+                  margin_hit = true;
+                  break;
+                }
+                if (neighbour_flags &
+                    (SEGMENT_SAFETY_ROUTE_BLOCK_LAND |
+                     SEGMENT_SAFETY_ROUTE_BLOCK_DRYING |
+                     SEGMENT_SAFETY_ROUTE_BLOCK_TOO_SHALLOW)) {
+                  margin_hit = true;
+                  break;
+                }
               }
             }
+            if (margin_hit &&
+                !(reference_flags & SEGMENT_SAFETY_ROUTE_NEEDS_TILE))
+              reference_flags |= SEGMENT_SAFETY_ROUTE_BLOCK_MARGIN;
+            ++prefix_verify_cells;
+            if (reference_flags != mask.block_flags[cell_index])
+              ++prefix_verify_mismatches;
           }
-          if (margin_hit && !(flags & SEGMENT_SAFETY_ROUTE_NEEDS_TILE))
-            flags |= SEGMENT_SAFETY_ROUTE_BLOCK_MARGIN;
         }
-
-        mask.block_flags[cell_index] = flags;
-        CountRouteMaskFlags(flags);
+        if (prefix_verify_mismatches > 0) mask.built = false;
       }
     }
   } else {
@@ -4162,13 +4286,15 @@ CachedSegmentSafetyRouteMaskTile BuildSegmentSafetyRouteMaskTile(
       "WR_ROUTE_MASK_BUILD key=%ld:%ld group=%d margin_nm=%.3f "
       "depth_check=%d min_depth_m=%.2f cells=%d clear=%d land=%d drying=%d "
       "shallow=%d unknown_depth=%d no_chart=%d margin=%d summary_flags=%u "
-      "base_built=%d clear_shortcut=%d build_ms=%d",
+      "base_built=%d clear_shortcut=%d prefix_verify_cells=%d "
+      "prefix_verify_mismatches=%d build_ms=%d",
       lat_tile, lon_tile, mask.group_index, safety_margin_nm,
       check_depth ? 1 : 0, minimum_depth_m, mask.rows * mask.cols,
-      mask.clear_count, mask.land_count, mask.drying_count,
-      mask.shallow_count, mask.unknown_depth_count, mask.no_chart_count,
-      mask.margin_count, mask.block_summary_flags, base_built ? 1 : 0,
-      used_clear_tile_shortcut ? 1 : 0, timer.Time());
+      mask.clear_count, mask.land_count, mask.drying_count, mask.shallow_count,
+      mask.unknown_depth_count, mask.no_chart_count, mask.margin_count,
+      mask.block_summary_flags, base_built ? 1 : 0,
+      used_clear_tile_shortcut ? 1 : 0, prefix_verify_cells,
+      prefix_verify_mismatches, timer.Time());
   return mask;
 }
 
@@ -4178,8 +4304,8 @@ void QueueSegmentSafetyRouteMaskRequest(long lat_tile, long lon_tile,
                                         double minimum_depth_m,
                                         bool force_authoritative_fine) {
   SegmentSafetyRouteMaskRequest request;
-  request.key = SegmentSafetyRouteMaskKey(
-      lat_tile, lon_tile, safety_margin_nm, check_depth, minimum_depth_m);
+  request.key = SegmentSafetyRouteMaskKey(lat_tile, lon_tile, safety_margin_nm,
+                                          check_depth, minimum_depth_m);
   request.group_index = SegmentSafetyCurrentGroupIndex();
   request.lat_tile = lat_tile;
   request.lon_tile = lon_tile;
@@ -4194,8 +4320,7 @@ void QueueSegmentSafetyRouteMaskRequest(long lat_tile, long lon_tile,
 }
 
 bool EnsureSegmentSafetyRouteMaskTile(long lat_tile, long lon_tile,
-                                      double safety_margin_nm,
-                                      bool check_depth,
+                                      double safety_margin_nm, bool check_depth,
                                       double minimum_depth_m,
                                       SegmentSafetyCoreStats* stats,
                                       bool* built = NULL,
@@ -4213,15 +4338,15 @@ bool EnsureSegmentSafetyRouteMaskTile(long lat_tile, long lon_tile,
   if (stats) ++stats->grid_cache_misses;
   if (!wxThread::IsMain()) {
     RecordUnexpectedSegmentSafetyTileBuild(stats, lat_tile, lon_tile);
-    QueueSegmentSafetyRouteMaskRequest(
-        lat_tile, lon_tile, safety_margin_nm, check_depth, minimum_depth_m,
-        force_authoritative_fine);
+    QueueSegmentSafetyRouteMaskRequest(lat_tile, lon_tile, safety_margin_nm,
+                                       check_depth, minimum_depth_m,
+                                       force_authoritative_fine);
     return false;
   }
 
-  CachedSegmentSafetyRouteMaskTile mask = BuildSegmentSafetyRouteMaskTile(
-      lat_tile, lon_tile, safety_margin_nm, check_depth, minimum_depth_m,
-      stats);
+  CachedSegmentSafetyRouteMaskTile mask =
+      BuildSegmentSafetyRouteMaskTile(lat_tile, lon_tile, safety_margin_nm,
+                                      check_depth, minimum_depth_m, stats);
   if (!mask.built) return false;
   StoreSegmentSafetyRouteMaskTile(key, mask);
   if (built) *built = true;
@@ -4235,10 +4360,8 @@ void RecordUnexpectedSegmentSafetyTileBuild(SegmentSafetyCoreStats* stats,
   if (stats->unexpected_tile_builds == 1) {
     stats->unexpected_lat_tile = lat_tile;
     stats->unexpected_lon_tile = lon_tile;
-    stats->unexpected_tile_min_lat =
-        lat_tile * kSegmentSafetyGridTileDegrees;
-    stats->unexpected_tile_min_lon =
-        lon_tile * kSegmentSafetyGridTileDegrees;
+    stats->unexpected_tile_min_lat = lat_tile * kSegmentSafetyGridTileDegrees;
+    stats->unexpected_tile_min_lon = lon_tile * kSegmentSafetyGridTileDegrees;
   }
 }
 
@@ -4251,7 +4374,8 @@ void SegmentSafetyCandidateChartsAt(double lat, double lon,
   }
 
   ChartStack stack;
-  ChartData->BuildChartStack(&stack, lat, lon, SegmentSafetyCurrentGroupIndex());
+  ChartData->BuildChartStack(&stack, lat, lon,
+                             SegmentSafetyCurrentGroupIndex());
   if (stats) stats->chart_stack_entries += stack.nEntry;
   for (int i = 0; i < stack.nEntry; ++i) {
     int db_index = stack.GetDBIndex(i);
@@ -4259,8 +4383,8 @@ void SegmentSafetyCandidateChartsAt(double lat, double lon,
     ChartFamilyEnum family =
         (ChartFamilyEnum)ChartData->GetCSChartFamily(&stack, i);
     ChartTypeEnum type = (ChartTypeEnum)ChartData->GetCSChartType(&stack, i);
-    if (family == CHART_FAMILY_VECTOR ||
-        type == CHART_TYPE_CM93 || type == CHART_TYPE_CM93COMP) {
+    if (family == CHART_FAMILY_VECTOR || type == CHART_TYPE_CM93 ||
+        type == CHART_TYPE_CM93COMP) {
       chart_indexes.insert(db_index);
     } else if (family == CHART_FAMILY_RASTER) {
       if (stats) ++stats->raster_chart_count;
@@ -4283,10 +4407,8 @@ struct SegmentSafetyChartCandidate {
 
 bool SegmentSafetyChartCandidateLess(const SegmentSafetyChartCandidate& a,
                                      const SegmentSafetyChartCandidate& b) {
-  if (a.native_scale != b.native_scale)
-    return a.native_scale < b.native_scale;
-  if (a.edition_date != b.edition_date)
-    return a.edition_date > b.edition_date;
+  if (a.native_scale != b.native_scale) return a.native_scale < b.native_scale;
+  if (a.edition_date != b.edition_date) return a.edition_date > b.edition_date;
   if (a.file_time != b.file_time) return a.file_time > b.file_time;
   if (a.path != b.path) return a.path < b.path;
   return a.db_index < b.db_index;
@@ -4298,8 +4420,8 @@ std::vector<SegmentSafetyChartCandidate> SegmentSafetySortedChartCandidates(
   ViewPort detail_vp = SegmentSafetyHighestDetailViewPortAt(lat, lon);
   for (std::set<int>::const_iterator it = chart_indexes.begin();
        it != chart_indexes.end(); ++it) {
-    ChartBase* chart = ChartData ? ChartData->OpenChartFromDB(*it, FULL_INIT)
-                                 : NULL;
+    ChartBase* chart =
+        ChartData ? ChartData->OpenChartFromDB(*it, FULL_INIT) : NULL;
     s57chart* s57 = dynamic_cast<s57chart*>(chart);
     if (!s57) continue;
     if (IsCm93Chart(chart)) {
@@ -4357,9 +4479,8 @@ SegmentSafetyPointClass ChartPointSafetyClassAtRaw(
   for (std::vector<SegmentSafetyChartCandidate>::const_iterator it =
            candidates.begin();
        it != candidates.end(); ++it) {
-    ChartBase* chart = ChartData ? ChartData->OpenChartFromDB(it->db_index,
-                                                              FULL_INIT)
-                                 : NULL;
+    ChartBase* chart =
+        ChartData ? ChartData->OpenChartFromDB(it->db_index, FULL_INIT) : NULL;
     s57chart* s57 = dynamic_cast<s57chart*>(chart);
     if (!s57) continue;
     chart_checked = true;
@@ -4367,8 +4488,7 @@ SegmentSafetyPointClass ChartPointSafetyClassAtRaw(
     PlugInSegmentSafetySource chart_source =
         cm93 ? PI_SEGMENT_SAFETY_SOURCE_CM93
              : PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART;
-    if (source)
-      *source = chart_source;
+    if (source) *source = chart_source;
     if (stats) ++stats->s57_chart_count;
 
     ViewPort vp = SegmentSafetyHighestDetailViewPortAt(lat, lon);
@@ -4442,36 +4562,133 @@ SegmentSafetyPointClass ChartPointSafetyClassAtRaw(
             '\0';
         strncpy(result->depth_source_attribute, "DEPARE/DRVAL1",
                 sizeof(result->depth_source_attribute) - 1);
-        result->depth_source_attribute
-            [sizeof(result->depth_source_attribute) - 1] = '\0';
+        result->depth_source_attribute[sizeof(result->depth_source_attribute) -
+                                       1] = '\0';
       }
     }
     StoreSegmentSafetyPointCache(
         point_cache_key,
-        MakeSegmentSafetyPointCacheEntry(point_class, chart_source, it->db_index,
-                                         chart->GetNativeScale(),
-                                         chart_path.mb_str(), "", has_depth,
-                                         min_depth_m, drying,
-                                         depth_object.mb_str(),
-                                         has_depth ? "DEPARE/DRVAL1" : NULL));
+        MakeSegmentSafetyPointCacheEntry(
+            point_class, chart_source, it->db_index, chart->GetNativeScale(),
+            chart_path.mb_str(), "", has_depth, min_depth_m, drying,
+            depth_object.mb_str(), has_depth ? "DEPARE/DRVAL1" : NULL));
     return point_class;
   }
 
   SegmentSafetyPointClass point_class =
       chart_checked ? SEGMENT_SAFETY_POINT_WATER : SEGMENT_SAFETY_POINT_NO_DATA;
   StoreSegmentSafetyPointCache(
-      point_cache_key,
-      MakeSegmentSafetyPointCacheEntry(
-          point_class, chart_checked ? PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART
-                                     : PI_SEGMENT_SAFETY_SOURCE_NONE,
-          -1, -1, "", ""));
+      point_cache_key, MakeSegmentSafetyPointCacheEntry(
+                           point_class,
+                           chart_checked ? PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART
+                                         : PI_SEGMENT_SAFETY_SOURCE_NONE,
+                           -1, -1, "", ""));
   return point_class;
 }
 
-CachedPointSafetyGridTile BuildSegmentSafetyGridTile(double lat, double lon,
-                                                     long lat_tile,
-                                                     long lon_tile,
-                                                     SegmentSafetyCoreStats* stats) {
+SegmentSafetyPointClass ChartPointSafetyClassAtPreparedCm93(
+    cm93chart* chart, int chart_db_index, double lat, double lon,
+    ViewPort* viewport, PlugInSegmentSafetySource* source,
+    SegmentSafetyCoreStats* stats, PlugInSegmentSafetyResult* result) {
+  if (!chart || !viewport) return SEGMENT_SAFETY_POINT_NO_DATA;
+
+  const std::string point_cache_key = SegmentSafetyPointCacheKey(lat, lon);
+  CachedPointSafetyClassification cached_point;
+  if (LookupSegmentSafetyPointCache(point_cache_key, &cached_point)) {
+    if (stats) ++stats->point_cache_hits;
+    if (source) *source = cached_point.source;
+    CopySegmentSafetyPointCacheToResult(cached_point, result);
+    return cached_point.point_class;
+  }
+  if (stats) {
+    ++stats->point_cache_misses;
+    ++stats->s57_chart_count;
+  }
+
+  const PlugInSegmentSafetySource chart_source = PI_SEGMENT_SAFETY_SOURCE_CM93;
+  if (source) *source = chart_source;
+
+  ListOfObjRazRules* rule_list =
+      chart->GetObjRuleListAtLatLon(lat, lon, 0.0, viewport, MASK_AREA);
+  bool drying = false;
+  bool has_depth = false;
+  double min_depth_m = 0.0;
+  wxString depth_object;
+  if (rule_list) {
+    for (ListOfObjRazRules::Node* node = rule_list->GetFirst(); node;
+         node = node->GetNext()) {
+      ObjRazRules* rule = node->GetData();
+      if (!rule || !rule->obj) continue;
+      if (!strncmp(rule->obj->FeatureName, "LNDARE", 6)) {
+        const wxString chart_path = chart->GetFullPath();
+        const wxString object = SegmentSafetyRuleSummary(rule);
+        if (SegmentSafetyResultHas(
+                result, offsetof(PlugInSegmentSafetyResult, hit_object),
+                sizeof(result->hit_object))) {
+          result->chart_db_index = chart_db_index;
+          result->chart_scale = chart->GetNativeScale();
+          strncpy(result->chart_path, chart_path.mb_str(),
+                  sizeof(result->chart_path) - 1);
+          result->chart_path[sizeof(result->chart_path) - 1] = '\0';
+          strncpy(result->hit_object, object.mb_str(),
+                  sizeof(result->hit_object) - 1);
+          result->hit_object[sizeof(result->hit_object) - 1] = '\0';
+        }
+        StoreSegmentSafetyPointCache(
+            point_cache_key,
+            MakeSegmentSafetyPointCacheEntry(
+                SEGMENT_SAFETY_POINT_LAND, chart_source, chart_db_index,
+                chart->GetNativeScale(), chart_path.mb_str(), object.mb_str()));
+        rule_list->Clear();
+        delete rule_list;
+        return SEGMENT_SAFETY_POINT_LAND;
+      }
+      if (SegmentSafetyRuleIsDrying(rule)) drying = true;
+      double rule_depth = 0.0;
+      if (SegmentSafetyRuleDepthMinM(rule, &rule_depth) &&
+          (!has_depth || rule_depth < min_depth_m)) {
+        has_depth = true;
+        min_depth_m = rule_depth;
+        depth_object = SegmentSafetyRuleSummary(rule);
+      }
+    }
+    rule_list->Clear();
+    delete rule_list;
+  }
+
+  const SegmentSafetyPointClass point_class =
+      drying ? SEGMENT_SAFETY_POINT_DRYING : SEGMENT_SAFETY_POINT_WATER;
+  const wxString chart_path = chart->GetFullPath();
+  if (SegmentSafetyResultHas(
+          result, offsetof(PlugInSegmentSafetyResult, depth_source_attribute),
+          sizeof(result->depth_source_attribute))) {
+    result->has_depth = has_depth ? 1 : 0;
+    result->min_depth_m = has_depth ? min_depth_m : 0.0;
+    result->has_drying = drying ? 1 : 0;
+    if (has_depth) {
+      strncpy(result->depth_source_object, depth_object.mb_str(),
+              sizeof(result->depth_source_object) - 1);
+      result->depth_source_object[sizeof(result->depth_source_object) - 1] =
+          '\0';
+      strncpy(result->depth_source_attribute, "DEPARE/DRVAL1",
+              sizeof(result->depth_source_attribute) - 1);
+      result
+          ->depth_source_attribute[sizeof(result->depth_source_attribute) - 1] =
+          '\0';
+    }
+  }
+  StoreSegmentSafetyPointCache(
+      point_cache_key,
+      MakeSegmentSafetyPointCacheEntry(
+          point_class, chart_source, chart_db_index, chart->GetNativeScale(),
+          chart_path.mb_str(), "", has_depth, min_depth_m, drying,
+          depth_object.mb_str(), has_depth ? "DEPARE/DRVAL1" : NULL));
+  return point_class;
+}
+
+CachedPointSafetyGridTile BuildSegmentSafetyGridTile(
+    double lat, double lon, long lat_tile, long lon_tile,
+    SegmentSafetyCoreStats* stats, bool require_depth) {
   if (!wxThread::IsMain()) {
     wxLogMessage(
         "WR_GRID_THREAD_VIOLATION BuildSegmentSafetyGridTile called from "
@@ -4502,19 +4719,108 @@ CachedPointSafetyGridTile BuildSegmentSafetyGridTile(double lat, double lon,
   tile.has_drying.assign(tile.rows * tile.cols, 0);
   tile.hazard_summary_flags = SEGMENT_SAFETY_HAZARD_NONE;
 
+  // A CM93 composite normally selects its scale and reconstructs viewport
+  // state for every queried point.  A 41x41 safety tile therefore used to do
+  // 1,681 full CM93 viewport selections, taking tens of seconds even in
+  // obvious open water.  Prepare every scale over the complete tile once and
+  // select the highest-detail real M_COVR at each point from that immutable
+  // working set.  If another vector chart competes at the tile centre, retain
+  // the general per-point selection path so chart priority is unchanged.
+  cm93compchart* prepared_cm93 = NULL;
+  int prepared_cm93_db_index = -1;
+  ViewPort prepared_cm93_vp;
+  long cm93_prepare_ms = 0;
+  int cm93_batch_cells = 0;
+  int cm93_fallback_cells = 0;
+  bool cm93_clear_shortcut = false;
+  int cm93_hazard_objects = 0;
+  if (ChartData) {
+    const double centre_lat =
+        tile.min_lat + kSegmentSafetyGridTileDegrees / 2.0;
+    const double centre_lon =
+        tile.min_lon + kSegmentSafetyGridTileDegrees / 2.0;
+    std::set<int> centre_chart_indexes;
+    SegmentSafetyCandidateChartsAt(centre_lat, centre_lon, centre_chart_indexes,
+                                   stats);
+    if (centre_chart_indexes.size() == 1) {
+      prepared_cm93_db_index = *centre_chart_indexes.begin();
+      ChartBase* chart =
+          ChartData->OpenChartFromDB(prepared_cm93_db_index, FULL_INIT);
+      prepared_cm93 = dynamic_cast<cm93compchart*>(chart);
+      if (prepared_cm93) {
+        wxStopWatch prepare_timer;
+        prepared_cm93_vp =
+            SegmentSafetyHighestDetailViewPortAt(centre_lat, centre_lon);
+        prepared_cm93_vp.b_quilt = false;
+        prepared_cm93_vp.b_FullScreenQuilt = false;
+        // At 1 pixel/metre an 8192-pixel viewport covers a 0.05-degree
+        // tile at every navigable latitude, including a generous boundary
+        // halo.  CM93 loads every intersecting native cell for each scale.
+        prepared_cm93_vp.pix_width = 8192;
+        prepared_cm93_vp.pix_height = 8192;
+        prepared_cm93_vp.SetBoxes();
+        prepared_cm93->PrepareSafetyTile(prepared_cm93_vp);
+        cm93_prepare_ms = prepare_timer.Time();
+      }
+    }
+  }
+
+  // Most cold-route CM93 work is in 1,681 repeated point-in-object scans per
+  // 0.05-degree tile.  Before doing those scans, prove that no loaded CM93
+  // land/drying object's bounding box can affect this tile and that every
+  // grid point has real M_COVR coverage.  This is a negative-only,
+  // conservative shortcut: coastal/ambiguous tiles retain exact
+  // classification, and depth-enabled routing also retains exact DEPARE
+  // extraction.
+  if (prepared_cm93 && !require_depth &&
+      !prepared_cm93->SafetyAreaHazardMayIntersect(
+          tile.min_lat, tile.min_lat + kSegmentSafetyGridTileDegrees,
+          tile.min_lon, tile.min_lon + kSegmentSafetyGridTileDegrees,
+          &cm93_hazard_objects)) {
+    cm93_clear_shortcut = true;
+    for (int r = 0; r < tile.rows && cm93_clear_shortcut; ++r) {
+      const double cell_lat = tile.min_lat + r * tile.resolution;
+      for (int c = 0; c < tile.cols; ++c) {
+        const double cell_lon = tile.min_lon + c * tile.resolution;
+        if (!prepared_cm93->GetHighestDetailSafetyChartAt(cell_lat, cell_lon)) {
+          cm93_clear_shortcut = false;
+          break;
+        }
+      }
+    }
+  }
+
   int land = 0, water = 0, drying = 0, unknown = 0;
   for (int r = 0; r < tile.rows; ++r) {
     double cell_lat = tile.min_lat + r * tile.resolution;
     for (int c = 0; c < tile.cols; ++c) {
+      const int cell_index = r * tile.cols + c;
+      if (cm93_clear_shortcut) {
+        tile.classes[cell_index] = (unsigned char)SEGMENT_SAFETY_POINT_WATER;
+        tile.hazard_flags[cell_index] = SEGMENT_SAFETY_HAZARD_NONE;
+        ++water;
+        continue;
+      }
       double cell_lon = tile.min_lon + c * tile.resolution;
       PlugInSegmentSafetySource source = PI_SEGMENT_SAFETY_SOURCE_NONE;
       PlugInSegmentSafetyResult cell_result = {};
       cell_result.struct_size = sizeof(cell_result);
       InitSegmentSafetyResult(&cell_result);
-      SegmentSafetyPointClass point_class =
-          ChartPointSafetyClassAtRaw(cell_lat, cell_lon, &source, stats,
-                                     &cell_result);
-      int cell_index = r * tile.cols + c;
+      SegmentSafetyPointClass point_class = SEGMENT_SAFETY_POINT_NO_DATA;
+      cm93chart* prepared_point_chart =
+          prepared_cm93
+              ? prepared_cm93->GetHighestDetailSafetyChartAt(cell_lat, cell_lon)
+              : NULL;
+      if (prepared_point_chart) {
+        point_class = ChartPointSafetyClassAtPreparedCm93(
+            prepared_point_chart, prepared_cm93_db_index, cell_lat, cell_lon,
+            &prepared_cm93_vp, &source, stats, &cell_result);
+        ++cm93_batch_cells;
+      } else {
+        point_class = ChartPointSafetyClassAtRaw(cell_lat, cell_lon, &source,
+                                                 stats, &cell_result);
+        if (prepared_cm93) ++cm93_fallback_cells;
+      }
       tile.classes[cell_index] = (unsigned char)point_class;
       uint16_t cell_hazards = SegmentSafetyPointHazardFlags(point_class);
       tile.hazard_flags[cell_index] = cell_hazards;
@@ -4558,6 +4864,24 @@ CachedPointSafetyGridTile BuildSegmentSafetyGridTile(double lat, double lon,
   tile.water_count = water;
   tile.drying_count = drying;
   tile.unknown_count = unknown;
+  tile.depth_complete = !cm93_clear_shortcut;
+  if (cm93_clear_shortcut) {
+    const double centre_lat =
+        tile.min_lat + kSegmentSafetyGridTileDegrees / 2.0;
+    const double centre_lon =
+        tile.min_lon + kSegmentSafetyGridTileDegrees / 2.0;
+    cm93chart* representative =
+        prepared_cm93->GetHighestDetailSafetyChartAt(centre_lat, centre_lon);
+    tile.source = PI_SEGMENT_SAFETY_SOURCE_CM93;
+    tile.chart_db_index = prepared_cm93_db_index;
+    tile.chart_scale = representative ? representative->GetNativeScale()
+                                      : prepared_cm93->GetNativeScale();
+    snprintf(tile.chart_path, sizeof(tile.chart_path), "%s",
+             (representative ? representative->GetFullPath()
+                             : prepared_cm93->GetFullPath())
+                 .mb_str()
+                 .data());
+  }
   if (stats) {
     stats->grid_build_ms += build_ms;
     stats->grid_cells_total += tile.rows * tile.cols;
@@ -4571,20 +4895,23 @@ CachedPointSafetyGridTile BuildSegmentSafetyGridTile(double lat, double lon,
       "SEGMENT_SAFETY_GRID built key=%ld:%ld group=%d bbox=[lat %.6f..%.6f "
       "lon %.6f..%.6f] resolution_deg=%.6f cells=%d land=%d water=%d "
       "drying=%d unknown=%d build_ms=%d source=%d chart_db_index=%d "
-      "chart_scale=%d chart_path=\"%s\"",
+      "chart_scale=%d chart_path=\"%s\" cm93_prepare_ms=%ld "
+      "cm93_batch_cells=%d cm93_fallback_cells=%d "
+      "cm93_clear_shortcut=%d cm93_hazard_objects=%d depth_complete=%d",
       lat_tile, lon_tile, tile.group_index, tile.min_lat,
       tile.min_lat + kSegmentSafetyGridTileDegrees, tile.min_lon,
       tile.min_lon + kSegmentSafetyGridTileDegrees, tile.resolution,
-      tile.rows * tile.cols, land, water, drying, unknown,
-      build_ms, tile.source, tile.chart_db_index, tile.chart_scale,
-      tile.chart_path);
+      tile.rows * tile.cols, land, water, drying, unknown, build_ms,
+      tile.source, tile.chart_db_index, tile.chart_scale, tile.chart_path,
+      cm93_prepare_ms, cm93_batch_cells, cm93_fallback_cells,
+      cm93_clear_shortcut ? 1 : 0, cm93_hazard_objects,
+      tile.depth_complete ? 1 : 0);
 
   return tile;
 }
 
-bool SegmentSafetyAllTouchedTilesAreWater(double lat1, double lon1,
-                                          double lat2, double lon2,
-                                          double safety_margin_nm,
+bool SegmentSafetyAllTouchedTilesAreWater(double lat1, double lon1, double lat2,
+                                          double lon2, double safety_margin_nm,
                                           double bearing, double dist_nm,
                                           int samples,
                                           SegmentSafetyCoreStats* stats) {
@@ -4675,8 +5002,8 @@ SegmentSafetyPointClass ChartPointSafetyClassAt(
       (SegmentSafetyPointClass)tile.classes[row * tile.cols + col];
   if (source) *source = tile.source;
   int cell_index = row * tile.cols + col;
-  if (SegmentSafetyResultHas(result, offsetof(PlugInSegmentSafetyResult,
-                                              hit_object),
+  if (SegmentSafetyResultHas(result,
+                             offsetof(PlugInSegmentSafetyResult, hit_object),
                              sizeof(result->hit_object))) {
     result->chart_db_index = tile.chart_db_index;
     result->chart_scale = tile.chart_scale;
@@ -4706,15 +5033,15 @@ SegmentSafetyPointClass ChartPointSafetyClassAt(
           '\0';
       strncpy(result->depth_source_attribute, "DEPARE/DRVAL1",
               sizeof(result->depth_source_attribute) - 1);
-      result->depth_source_attribute
-          [sizeof(result->depth_source_attribute) - 1] = '\0';
+      result
+          ->depth_source_attribute[sizeof(result->depth_source_attribute) - 1] =
+          '\0';
     }
   }
   return point_class;
 }
 
-bool SegmentSafetyWaterNeighborhoodAt(double lat, double lon,
-                                      int radius_cells,
+bool SegmentSafetyWaterNeighborhoodAt(double lat, double lon, int radius_cells,
                                       SegmentSafetyCoreStats* stats) {
   for (int dlat = -radius_cells; dlat <= radius_cells; ++dlat) {
     for (int dlon = -radius_cells; dlon <= radius_cells; ++dlon) {
@@ -4736,9 +5063,8 @@ bool SegmentSafetyCoarseSampledCellsAreWater(double lat1, double lon1,
                                              SegmentSafetyCoreStats* stats) {
   const double coarse_spacing_nm = 0.25;
   const int max_coarse_samples = 256;
-  int coarse_samples =
-      wxMax(2, wxMin(max_coarse_samples,
-                     (int)ceil(dist_nm / coarse_spacing_nm) + 1));
+  int coarse_samples = wxMax(
+      2, wxMin(max_coarse_samples, (int)ceil(dist_nm / coarse_spacing_nm) + 1));
   if (stats) stats->segment_sample_count += coarse_samples;
 
   for (int i = 0; i < coarse_samples; ++i) {
@@ -4783,7 +5109,8 @@ bool SegmentSafetyGridCellAt(long lat_cell, long lon_cell,
     bool built = false;
     if (!EnsureSegmentSafetyGridTile(lat_tile, lon_tile, stats, &built))
       return false;
-    if (built) RecordUnexpectedSegmentSafetyTileBuild(stats, lat_tile, lon_tile);
+    if (built)
+      RecordUnexpectedSegmentSafetyTileBuild(stats, lat_tile, lon_tile);
   } else if (stats) {
     ++stats->grid_cache_hits;
   }
@@ -4798,8 +5125,7 @@ bool SegmentSafetyGridCellAt(long lat_cell, long lon_cell,
 
   int row = (int)lround((lat - tile.min_lat) / tile.resolution);
   int col = (int)lround((lon - tile.min_lon) / tile.resolution);
-  if (row < 0 || row >= tile.rows || col < 0 || col >= tile.cols)
-    return false;
+  if (row < 0 || row >= tile.rows || col < 0 || col >= tile.cols) return false;
 
   int cell_index = row * tile.cols + col;
   SegmentSafetyPointClass cls =
@@ -4813,8 +5139,8 @@ bool SegmentSafetyGridCellAt(long lat_cell, long lon_cell,
   if (source) *source = tile.source;
   if (stats) ++stats->grid_lookups;
 
-  if (SegmentSafetyResultHas(result, offsetof(PlugInSegmentSafetyResult,
-                                              hit_object),
+  if (SegmentSafetyResultHas(result,
+                             offsetof(PlugInSegmentSafetyResult, hit_object),
                              sizeof(result->hit_object))) {
     result->chart_db_index = tile.chart_db_index;
     result->chart_scale = tile.chart_scale;
@@ -4844,22 +5170,20 @@ bool SegmentSafetyGridCellAt(long lat_cell, long lon_cell,
           '\0';
       strncpy(result->depth_source_attribute, "DEPARE/DRVAL1",
               sizeof(result->depth_source_attribute) - 1);
-      result->depth_source_attribute
-          [sizeof(result->depth_source_attribute) - 1] = '\0';
+      result
+          ->depth_source_attribute[sizeof(result->depth_source_attribute) - 1] =
+          '\0';
     }
   }
 
   return cls != SEGMENT_SAFETY_POINT_NO_DATA;
 }
 
-bool SegmentSafetyRouteMaskCellAt(long lat_cell, long lon_cell,
-                                  double safety_margin_nm, bool check_depth,
-                                  double minimum_depth_m,
-                                  bool force_authoritative_fine,
-                                  SegmentSafetyCoreStats* stats,
-                                  PlugInSegmentSafetyResult* result,
-                                  uint16_t* block_flags,
-                                  PlugInSegmentSafetySource* source) {
+bool SegmentSafetyRouteMaskCellAt(
+    long lat_cell, long lon_cell, double safety_margin_nm, bool check_depth,
+    double minimum_depth_m, bool force_authoritative_fine,
+    SegmentSafetyCoreStats* stats, PlugInSegmentSafetyResult* result,
+    uint16_t* block_flags, PlugInSegmentSafetySource* source) {
   double lat = lat_cell * kSegmentSafetyGridResolutionDegrees;
   double lon = lon_cell * kSegmentSafetyGridResolutionDegrees;
   long lat_tile = 0;
@@ -4871,12 +5195,12 @@ bool SegmentSafetyRouteMaskCellAt(long lat_cell, long lon_cell,
   if (!LookupSegmentSafetyRouteMaskTile(key, &mask) ||
       (force_authoritative_fine && !mask.authoritative_fine)) {
     bool built = false;
-    if (!EnsureSegmentSafetyRouteMaskTile(lat_tile, lon_tile,
-                                          safety_margin_nm, check_depth,
-                                          minimum_depth_m, stats, &built,
-                                          force_authoritative_fine))
+    if (!EnsureSegmentSafetyRouteMaskTile(lat_tile, lon_tile, safety_margin_nm,
+                                          check_depth, minimum_depth_m, stats,
+                                          &built, force_authoritative_fine))
       return false;
-    if (built) RecordUnexpectedSegmentSafetyTileBuild(stats, lat_tile, lon_tile);
+    if (built)
+      RecordUnexpectedSegmentSafetyTileBuild(stats, lat_tile, lon_tile);
     if (!LookupSegmentSafetyRouteMaskTile(key, &mask)) return false;
     if (force_authoritative_fine && !mask.authoritative_fine) return false;
   } else if (stats) {
@@ -4886,20 +5210,18 @@ bool SegmentSafetyRouteMaskCellAt(long lat_cell, long lon_cell,
   if (mask.block_flags.empty()) return false;
   int row = (int)lround((lat - mask.min_lat) / mask.resolution);
   int col = (int)lround((lon - mask.min_lon) / mask.resolution);
-  if (row < 0 || row >= mask.rows || col < 0 || col >= mask.cols)
-    return false;
+  if (row < 0 || row >= mask.rows || col < 0 || col >= mask.cols) return false;
 
   int cell_index = row * mask.cols + col;
-  uint16_t flags =
-      cell_index >= 0 && cell_index < (int)mask.block_flags.size()
-          ? mask.block_flags[cell_index]
-          : (uint16_t)SEGMENT_SAFETY_ROUTE_NEEDS_TILE;
+  uint16_t flags = cell_index >= 0 && cell_index < (int)mask.block_flags.size()
+                       ? mask.block_flags[cell_index]
+                       : (uint16_t)SEGMENT_SAFETY_ROUTE_NEEDS_TILE;
   if (block_flags) *block_flags = flags;
   if (source) *source = mask.source;
   if (stats) ++stats->grid_lookups;
 
-  if (SegmentSafetyResultHas(result, offsetof(PlugInSegmentSafetyResult,
-                                              hit_object),
+  if (SegmentSafetyResultHas(result,
+                             offsetof(PlugInSegmentSafetyResult, hit_object),
                              sizeof(result->hit_object))) {
     result->chart_db_index = mask.chart_db_index;
     result->chart_scale = mask.chart_scale;
@@ -4914,8 +5236,7 @@ void SegmentSafetySetRouteMaskHitResult(PlugInSegmentSafetyResult* result,
                                         uint16_t flags,
                                         PlugInSegmentSafetySource source,
                                         long lat_cell, long lon_cell,
-                                        int sample_index,
-                                        int sample_count) {
+                                        int sample_index, int sample_count) {
   if (!result) return;
 
   result->hit_sample_lat = lat_cell * kSegmentSafetyGridResolutionDegrees;
@@ -4931,7 +5252,8 @@ void SegmentSafetySetRouteMaskHitResult(PlugInSegmentSafetyResult* result,
             sizeof(result->hit_object) - 1);
   } else if (flags & SEGMENT_SAFETY_ROUTE_BLOCK_DRYING) {
     SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_DRYING_AREA);
-    SetSegmentSafetyMessage(result, "route mask segment intersects drying area");
+    SetSegmentSafetyMessage(result,
+                            "route mask segment intersects drying area");
     strncpy(result->hit_object, "route mask DRYING cell",
             sizeof(result->hit_object) - 1);
   } else if (flags & SEGMENT_SAFETY_ROUTE_BLOCK_TOO_SHALLOW) {
@@ -4970,22 +5292,17 @@ void SegmentSafetySetRouteMaskHitResult(PlugInSegmentSafetyResult* result,
 }
 
 bool SegmentSafetyCoarseRouteMaskCertifiedSafeCheck(
-    double lat1, double lon1, double lat2, double lon2,
-    double safety_margin_nm, bool check_depth, double minimum_depth_m,
-    PlugInSegmentSafetyResult* result, SegmentSafetyCoreStats* stats,
-    bool* answered) {
+    double lat1, double lon1, double lat2, double lon2, double safety_margin_nm,
+    bool check_depth, double minimum_depth_m, PlugInSegmentSafetyResult* result,
+    SegmentSafetyCoreStats* stats, bool* answered) {
   if (answered) *answered = false;
 
   double coarse_degrees =
       kSegmentSafetyGridTileDegrees * kSegmentSafetyCoarseRouteMaskFactor;
-  long min_lat_cell =
-      (long)floor(wxMin(lat1, lat2) / coarse_degrees);
-  long max_lat_cell =
-      (long)floor(wxMax(lat1, lat2) / coarse_degrees);
-  long min_lon_cell =
-      (long)floor(wxMin(lon1, lon2) / coarse_degrees);
-  long max_lon_cell =
-      (long)floor(wxMax(lon1, lon2) / coarse_degrees);
+  long min_lat_cell = (long)floor(wxMin(lat1, lat2) / coarse_degrees);
+  long max_lat_cell = (long)floor(wxMax(lat1, lat2) / coarse_degrees);
+  long min_lon_cell = (long)floor(wxMin(lon1, lon2) / coarse_degrees);
+  long max_lon_cell = (long)floor(wxMax(lon1, lon2) / coarse_degrees);
 
   long lat_count = max_lat_cell - min_lat_cell + 1;
   long lon_count = max_lon_cell - min_lon_cell + 1;
@@ -5035,23 +5352,20 @@ bool SegmentSafetyCoarseRouteMaskCertifiedSafeCheck(
               kSegmentSafetyCoarseRouteMaskFactor);
   }
   SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_SAFE);
-  SetSegmentSafetySource(
-      result, first_source != PI_SEGMENT_SAFETY_SOURCE_NONE
-                  ? first_source
-                  : PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART);
-  SetSegmentSafetyDiagnosticReason(
-      result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR);
+  SetSegmentSafetySource(result, first_source != PI_SEGMENT_SAFETY_SOURCE_NONE
+                                     ? first_source
+                                     : PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART);
+  SetSegmentSafetyDiagnosticReason(result,
+                                   PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR);
   SetSegmentSafetyMessage(result, "coarse route mask certified clear");
   return true;
 }
 
 bool SegmentSafetyRouteMaskTraversalCheck(
-    double lat1, double lon1, double lat2, double lon2,
-    double safety_margin_nm, bool check_depth, double minimum_depth_m,
-    bool force_authoritative_fine,
+    double lat1, double lon1, double lat2, double lon2, double safety_margin_nm,
+    bool check_depth, double minimum_depth_m, bool force_authoritative_fine,
     PlugInSegmentSafetyResult* result, bool* chart_data_available,
-    SegmentSafetyCoreStats* stats, bool* open_water_shortcut,
-    bool* answered) {
+    SegmentSafetyCoreStats* stats, bool* open_water_shortcut, bool* answered) {
   if (answered) *answered = false;
 
   bool coarse_answered = false;
@@ -5094,9 +5408,8 @@ bool SegmentSafetyRouteMaskTraversalCheck(
     uint16_t flags = SEGMENT_SAFETY_ROUTE_NEEDS_TILE;
     PlugInSegmentSafetySource source = PI_SEGMENT_SAFETY_SOURCE_NONE;
     if (!SegmentSafetyRouteMaskCellAt(y, x, safety_margin_nm, check_depth,
-                                      minimum_depth_m,
-                                      force_authoritative_fine, stats, result,
-                                      &flags, &source)) {
+                                      minimum_depth_m, force_authoritative_fine,
+                                      stats, result, &flags, &source)) {
       if (answered) *answered = false;
       return false;
     }
@@ -5139,8 +5452,8 @@ void SegmentSafetyCheckGridCellNeighborhood(
     PlugInSegmentSafetySource* first_source, bool* any_chart_data,
     bool* all_water, bool* land_hit, bool* drying_hit, bool* shallow_hit,
     bool* unknown_depth_hit, bool check_depth, double minimum_depth_m,
-    SegmentSafetyCoreStats* stats,
-    PlugInSegmentSafetyResult* result, int sample_index, int sample_count) {
+    SegmentSafetyCoreStats* stats, PlugInSegmentSafetyResult* result,
+    int sample_index, int sample_count) {
   for (int dlat = -radius_cells; dlat <= radius_cells; ++dlat) {
     for (int dlon = -radius_cells; dlon <= radius_cells; ++dlon) {
       PlugInSegmentSafetySource source = PI_SEGMENT_SAFETY_SOURCE_NONE;
@@ -5157,11 +5470,10 @@ void SegmentSafetyCheckGridCellNeighborhood(
       *any_chart_data = true;
       if (*first_source == PI_SEGMENT_SAFETY_SOURCE_NONE)
         *first_source = source;
-      if (hazard_flags != SEGMENT_SAFETY_HAZARD_NONE)
-        *all_water = false;
+      if (hazard_flags != SEGMENT_SAFETY_HAZARD_NONE) *all_water = false;
       if (SegmentSafetyResultHas(
-              result, offsetof(PlugInSegmentSafetyResult,
-                               depth_source_attribute),
+              result,
+              offsetof(PlugInSegmentSafetyResult, depth_source_attribute),
               sizeof(result->depth_source_attribute))) {
         result->required_depth_m = minimum_depth_m;
       }
@@ -5186,8 +5498,8 @@ void SegmentSafetyCheckGridCellNeighborhood(
       if (!check_depth) continue;
       if (point_class == SEGMENT_SAFETY_POINT_WATER &&
           SegmentSafetyResultHas(
-              result, offsetof(PlugInSegmentSafetyResult,
-                               depth_source_attribute),
+              result,
+              offsetof(PlugInSegmentSafetyResult, depth_source_attribute),
               sizeof(result->depth_source_attribute)) &&
           !result->has_depth) {
         *unknown_depth_hit = true;
@@ -5221,8 +5533,8 @@ void SegmentSafetyCheckGridCellNeighborhood(
         return;
       }
       if (SegmentSafetyResultHas(
-              result, offsetof(PlugInSegmentSafetyResult,
-                               depth_source_attribute),
+              result,
+              offsetof(PlugInSegmentSafetyResult, depth_source_attribute),
               sizeof(result->depth_source_attribute)) &&
           result->has_depth && result->min_depth_m < minimum_depth_m) {
         *shallow_hit = true;
@@ -5244,8 +5556,7 @@ void SegmentSafetyCheckGridCellNeighborhood(
 
 bool SegmentSafetyGridTraversalCheck(double lat1, double lon1, double lat2,
                                      double lon2, double safety_margin_nm,
-                                     bool check_depth,
-                                     double minimum_depth_m,
+                                     bool check_depth, double minimum_depth_m,
                                      PlugInSegmentSafetyResult* result,
                                      bool* chart_data_available,
                                      SegmentSafetyCoreStats* stats,
@@ -5264,9 +5575,10 @@ bool SegmentSafetyGridTraversalCheck(double lat1, double lon1, double lat2,
   if (steps <= 0) steps = 1;
 
   double mid_lat = (lat1 + lat2) / 2.0;
-  double cell_nm = wxMin(kSegmentSafetyGridResolutionDegrees * 60.0,
-                         kSegmentSafetyGridResolutionDegrees * 60.0 *
-                             wxMax(0.1, fabs(cos(SegmentSafetyDegToRad(mid_lat)))));
+  double cell_nm =
+      wxMin(kSegmentSafetyGridResolutionDegrees * 60.0,
+            kSegmentSafetyGridResolutionDegrees * 60.0 *
+                wxMax(0.1, fabs(cos(SegmentSafetyDegToRad(mid_lat)))));
   int radius_cells = safety_margin_nm > 0.0
                          ? (int)ceil(safety_margin_nm / wxMax(0.01, cell_nm))
                          : 0;
@@ -5294,15 +5606,17 @@ bool SegmentSafetyGridTraversalCheck(double lat1, double lon1, double lat2,
       PlugInSegmentSafetyStatus status =
           radius_cells > 0 ? PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN
                            : PI_SEGMENT_SAFETY_CROSSES_LAND;
-      const char* message = radius_cells > 0
-                                ? "segment grid traversal enters chart land margin"
-                                : "segment grid traversal intersects chart land";
+      const char* message =
+          radius_cells > 0 ? "segment grid traversal enters chart land margin"
+                           : "segment grid traversal intersects chart land";
       if (drying_hit) {
         status = PI_SEGMENT_SAFETY_DRYING_AREA;
         message = "segment grid traversal intersects chart drying area";
       } else if (shallow_hit) {
         status = PI_SEGMENT_SAFETY_TOO_SHALLOW;
-        message = "segment grid traversal intersects chart area shallower than required depth";
+        message =
+            "segment grid traversal intersects chart area shallower than "
+            "required depth";
       } else if (unknown_depth_hit) {
         status = PI_SEGMENT_SAFETY_UNKNOWN_DEPTH;
         message = "segment grid traversal lacks chart depth data";
@@ -5363,9 +5677,8 @@ wxString SegmentSafetyPointDiagnostic(double lat, double lon) {
   for (std::vector<SegmentSafetyChartCandidate>::const_iterator it =
            candidates.begin();
        it != candidates.end(); ++it) {
-    ChartBase* chart = ChartData
-                           ? ChartData->OpenChartFromDB(it->db_index, FULL_INIT)
-                           : NULL;
+    ChartBase* chart =
+        ChartData ? ChartData->OpenChartFromDB(it->db_index, FULL_INIT) : NULL;
     s57chart* s57 = dynamic_cast<s57chart*>(chart);
     if (!s57) continue;
 
@@ -5427,17 +5740,20 @@ wxString SegmentSafetyPointDiagnostic(double lat, double lon) {
   if (objects.empty()) objects = "none";
   chart_path.Replace("\"", "'");
   return wxString::Format(
-      "class=%s source=%s chart_db_index=%d chart_scale=%d chart_path=\"%s\" "
-      "chart_edition=%ld chart_file_time=%ld selection=highest-detail-newest "
-      "chart_stack_entries=%d candidate_charts=%zu area_objects=%d "
-      "land_objects=%d drying_objects=%d depare_objects=%d objects=\"%s\"",
-      point_class, source_name, chart_db_index, chart_scale, chart_path,
-      (long)chart_edition_date, (long)chart_file_time,
-      stats.chart_stack_entries, candidates.size(), area_count, land_count,
-      drying_count, depare_count, objects) +
-      wxString::Format(" has_depth=%d min_depth_m=%.2f depth_attr=\"%s\"",
-                       has_depth ? 1 : 0, has_depth ? min_depth_m : 0.0,
-                       depth_attr);
+             "class=%s source=%s chart_db_index=%d chart_scale=%d "
+             "chart_path=\"%s\" "
+             "chart_edition=%ld chart_file_time=%ld "
+             "selection=highest-detail-newest "
+             "chart_stack_entries=%d candidate_charts=%zu area_objects=%d "
+             "land_objects=%d drying_objects=%d depare_objects=%d "
+             "objects=\"%s\"",
+             point_class, source_name, chart_db_index, chart_scale, chart_path,
+             (long)chart_edition_date, (long)chart_file_time,
+             stats.chart_stack_entries, candidates.size(), area_count,
+             land_count, drying_count, depare_count, objects) +
+         wxString::Format(" has_depth=%d min_depth_m=%.2f depth_attr=\"%s\"",
+                          has_depth ? 1 : 0, has_depth ? min_depth_m : 0.0,
+                          depth_attr);
 }
 
 CachedChartLandGeometry& SegmentSafetyLoadChartLandGeometry(
@@ -5510,9 +5826,8 @@ CachedChartLandGeometry& SegmentSafetyLoadChartLandGeometry(
     wxLogMessage(
         "OpenCPN segment safety: land ring sample db_index=%d key=%s "
         "ring=%zu bbox=[lat %.8f..%.8f lon %.8f..%.8f] points=%zu",
-        db_index, cache_key.c_str(), i, ring.bbox.min_lat,
-        ring.bbox.max_lat, ring.bbox.min_lon, ring.bbox.max_lon,
-        ring.points.size());
+        db_index, cache_key.c_str(), i, ring.bbox.min_lat, ring.bbox.max_lat,
+        ring.bbox.min_lon, ring.bbox.max_lon, ring.points.size());
   }
   if (cached.rings.empty()) {
     wxString chart_path = chart ? chart->GetFullPath() : wxString();
@@ -5533,10 +5848,9 @@ CachedChartLandGeometry& SegmentSafetyLoadChartLandGeometry(
 void LogSegmentSafetyChartHit(const char* cause, int db_index,
                               const std::string& cache_key,
                               PlugInSegmentSafetySource source,
-                              const CachedLandRing& ring,
-                              double lat1, double lon1, double lat2,
-                              double lon2, double safety_margin_nm,
-                              size_t edge_index) {
+                              const CachedLandRing& ring, double lat1,
+                              double lon1, double lat2, double lon2,
+                              double safety_margin_nm, size_t edge_index) {
   if (s_segment_safety_chart_hit_logs >= kMaxSegmentSafetyChartHitLogs) return;
   ++s_segment_safety_chart_hit_logs;
   wxLogMessage(
@@ -5556,9 +5870,9 @@ void SetSegmentSafetyChartHitDetails(PlugInSegmentSafetyResult* result,
                                      const CachedChartLandGeometry& chart_cache,
                                      const CachedLandRing& ring,
                                      size_t edge_index) {
-  if (!SegmentSafetyResultHas(
-          result, offsetof(PlugInSegmentSafetyResult, chart_path),
-          sizeof(result->chart_path)))
+  if (!SegmentSafetyResultHas(result,
+                              offsetof(PlugInSegmentSafetyResult, chart_path),
+                              sizeof(result->chart_path)))
     return;
 
   result->chart_db_index = db_index;
@@ -5582,8 +5896,8 @@ bool CachedChartSegmentSafetyCheck(double lat1, double lon1, double lat2,
   if (!wxThread::IsMain()) {
     if (stats) stats->chart_load_failed = true;
     if (chart_data_available) *chart_data_available = false;
-    SetSegmentSafetyDiagnosticReason(
-        result, PI_SEGMENT_SAFETY_DIAG_NO_CANDIDATE_CHART);
+    SetSegmentSafetyDiagnosticReason(result,
+                                     PI_SEGMENT_SAFETY_DIAG_NO_CANDIDATE_CHART);
     SetSegmentSafetyMessage(
         result,
         "legacy chart geometry check is unavailable from worker thread");
@@ -5610,9 +5924,8 @@ bool CachedChartSegmentSafetyCheck(double lat1, double lon1, double lat2,
 
   for (std::set<int>::const_iterator it = chart_indexes.begin();
        it != chart_indexes.end(); ++it) {
-    CachedChartLandGeometry& chart_cache =
-        SegmentSafetyLoadChartLandGeometry(*it, (lat1 + lat2) / 2.0,
-                                           (lon1 + lon2) / 2.0, stats);
+    CachedChartLandGeometry& chart_cache = SegmentSafetyLoadChartLandGeometry(
+        *it, (lat1 + lat2) / 2.0, (lon1 + lon2) / 2.0, stats);
     if (chart_cache.source == PI_SEGMENT_SAFETY_SOURCE_NONE) continue;
     if (chart_cache.rings.empty()) {
       if (stats) stats->zero_land_geometry = true;
@@ -5633,11 +5946,11 @@ bool CachedChartSegmentSafetyCheck(double lat1, double lon1, double lat2,
         if (stats) stats->geometry_check_ms += geometry_timer.Time();
         LogSegmentSafetyChartHit("endpoint-inside-LNDARE", *it,
                                  chart_cache.cache_key, chart_cache.source,
-                                 ring, lat1, lon1, lat2, lon2,
-                                 safety_margin_nm, 0);
+                                 ring, lat1, lon1, lat2, lon2, safety_margin_nm,
+                                 0);
         SetSegmentSafetyChartHitDetails(
-            result, PI_SEGMENT_SAFETY_HIT_ENDPOINT_IN_LANDARE, *it,
-            chart_cache, ring, 0);
+            result, PI_SEGMENT_SAFETY_HIT_ENDPOINT_IN_LANDARE, *it, chart_cache,
+            ring, 0);
         SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_CROSSES_LAND);
         SetSegmentSafetySource(result, chart_cache.source);
         SetSegmentSafetyMessage(result,
@@ -5679,8 +5992,7 @@ bool CachedChartSegmentSafetyCheck(double lat1, double lon1, double lat2,
           SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN);
           SetSegmentSafetySource(result, chart_cache.source);
           SetSegmentSafetyMessage(
-              result,
-              "segment is within approximate chart land safety margin");
+              result, "segment is within approximate chart land safety margin");
           return true;
         }
       }
@@ -5691,16 +6003,11 @@ bool CachedChartSegmentSafetyCheck(double lat1, double lon1, double lat2,
   return false;
 }
 
-bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
-                                          double lat2, double lon2,
-                                          double safety_margin_nm,
-                                          bool check_depth,
-                                          double minimum_depth_m,
-                                          bool force_authoritative_fine,
-                                          PlugInSegmentSafetyResult* result,
-                                          bool* chart_data_available,
-                                          SegmentSafetyCoreStats* stats,
-                                          bool* open_water_shortcut = NULL) {
+bool ChartSegmentPointClassificationCheck(
+    double lat1, double lon1, double lat2, double lon2, double safety_margin_nm,
+    bool check_depth, double minimum_depth_m, bool force_authoritative_fine,
+    PlugInSegmentSafetyResult* result, bool* chart_data_available,
+    SegmentSafetyCoreStats* stats, bool* open_water_shortcut = NULL) {
   wxStopWatch geometry_timer;
   double bearing = 0.0;
   double dist_nm = 0.0;
@@ -5716,8 +6023,8 @@ bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
   if (SegmentSafetyRouteMaskTraversalCheck(
           lat1, lon1, lat2, lon2, safety_margin_nm, check_depth,
           minimum_depth_m, force_authoritative_fine, result,
-          chart_data_available, stats,
-          open_water_shortcut, &route_mask_answered)) {
+          chart_data_available, stats, open_water_shortcut,
+          &route_mask_answered)) {
     if (stats) stats->geometry_check_ms += geometry_timer.Time();
     return true;
   }
@@ -5733,10 +6040,9 @@ bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
   }
 
   wxStopWatch grid_lookup_timer;
-  if (!check_depth &&
-      SegmentSafetyAllTouchedTilesAreWater(lat1, lon1, lat2, lon2,
-                                           safety_margin_nm, bearing, dist_nm,
-                                           samples, stats)) {
+  if (!check_depth && SegmentSafetyAllTouchedTilesAreWater(
+                          lat1, lon1, lat2, lon2, safety_margin_nm, bearing,
+                          dist_nm, samples, stats)) {
     if (stats) {
       stats->grid_lookup_ms += grid_lookup_timer.Time();
       stats->geometry_check_ms += geometry_timer.Time();
@@ -5748,9 +6054,8 @@ bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
     return false;
   }
 
-  if (SegmentSafetyGridTraversalCheck(lat1, lon1, lat2, lon2,
-                                      safety_margin_nm, check_depth,
-                                      minimum_depth_m, result,
+  if (SegmentSafetyGridTraversalCheck(lat1, lon1, lat2, lon2, safety_margin_nm,
+                                      check_depth, minimum_depth_m, result,
                                       chart_data_available, stats,
                                       open_water_shortcut)) {
     if (stats) stats->geometry_check_ms += geometry_timer.Time();
@@ -5775,9 +6080,8 @@ bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
   }
 
   if (!check_depth &&
-      SegmentSafetyCoarseSampledCellsAreWater(lat1, lon1, lat2, lon2,
-                                              safety_margin_nm, bearing,
-                                              dist_nm, stats)) {
+      SegmentSafetyCoarseSampledCellsAreWater(
+          lat1, lon1, lat2, lon2, safety_margin_nm, bearing, dist_nm, stats)) {
     if (stats) {
       stats->grid_lookup_ms += grid_lookup_timer.Time();
       stats->geometry_check_ms += geometry_timer.Time();
@@ -5822,8 +6126,8 @@ bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
       }
       SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_CROSSES_LAND);
       SetSegmentSafetySource(result, source);
-      SetSegmentSafetyMessage(
-          result, "segment samples intersect chart land area");
+      SetSegmentSafetyMessage(result,
+                              "segment samples intersect chart land area");
       if (s_segment_safety_chart_hit_logs < kMaxSegmentSafetyChartHitLogs) {
         ++s_segment_safety_chart_hit_logs;
         wxLogMessage(
@@ -5832,7 +6136,8 @@ bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
             "object=\"%s\" chart_db_index=%d chart_scale=%d "
             "chart_path=\"%s\"",
             lat1, lon1, lat2, lon2, lat, lon, i + 1, samples,
-            result ? result->hit_object : "", result ? result->chart_db_index : -1,
+            result ? result->hit_object : "",
+            result ? result->chart_db_index : -1,
             result ? result->chart_scale : -1,
             result ? result->chart_path : "");
       }
@@ -5841,8 +6146,7 @@ bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
 
     if (check_depth && point_class == SEGMENT_SAFETY_POINT_WATER &&
         SegmentSafetyResultHas(
-            result, offsetof(PlugInSegmentSafetyResult,
-                             depth_source_attribute),
+            result, offsetof(PlugInSegmentSafetyResult, depth_source_attribute),
             sizeof(result->depth_source_attribute)) &&
         !result->has_depth) {
       if (stats) stats->geometry_check_ms += geometry_timer.Time();
@@ -5857,8 +6161,7 @@ bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
       result->hit_object[sizeof(result->hit_object) - 1] = '\0';
       SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_UNKNOWN_DEPTH);
       SetSegmentSafetySource(result, source);
-      SetSegmentSafetyMessage(result,
-                              "segment samples lack chart depth data");
+      SetSegmentSafetyMessage(result, "segment samples lack chart depth data");
       return true;
     }
 
@@ -5887,8 +6190,7 @@ bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
 
     if (check_depth &&
         SegmentSafetyResultHas(
-            result, offsetof(PlugInSegmentSafetyResult,
-                             depth_source_attribute),
+            result, offsetof(PlugInSegmentSafetyResult, depth_source_attribute),
             sizeof(result->depth_source_attribute)) &&
         result->has_depth && result->min_depth_m < minimum_depth_m) {
       if (stats) stats->geometry_check_ms += geometry_timer.Time();
@@ -5931,14 +6233,12 @@ bool ChartSegmentPointClassificationCheck(double lat1, double lon1,
           right_class == SEGMENT_SAFETY_POINT_LAND) {
         if (stats) stats->geometry_check_ms += geometry_timer.Time();
         if (chart_data_available) *chart_data_available = true;
-        SetSegmentSafetyStatus(result,
-                               PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN);
-        SetSegmentSafetySource(
-            result, left_class == SEGMENT_SAFETY_POINT_LAND ? left_source
-                                                            : right_source);
+        SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_WITHIN_LAND_MARGIN);
+        SetSegmentSafetySource(result, left_class == SEGMENT_SAFETY_POINT_LAND
+                                           ? left_source
+                                           : right_source);
         SetSegmentSafetyMessage(
-            result,
-            "segment samples are within approximate chart land margin");
+            result, "segment samples are within approximate chart land margin");
         return true;
       }
     }
@@ -5997,9 +6297,8 @@ wxString PlugIn_SegmentSafetyPointDiagnostic(double lat, double lon) {
 
 int PlugIn_GetPendingSegmentSafetyRequestCount() {
   wxMutexLocker lock(s_segment_safety_cache_mutex);
-  return static_cast<int>(
-      s_segment_safety_pending_route_mask_requests.size() +
-      s_segment_safety_inflight_route_mask_requests.size());
+  return static_cast<int>(s_segment_safety_pending_route_mask_requests.size() +
+                          s_segment_safety_inflight_route_mask_requests.size());
 }
 
 bool PlugIn_ServicePendingSegmentSafetyRequests(
@@ -6008,9 +6307,8 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
   int result_size = result ? result->struct_size : 0;
   if (result && result_size >= static_cast<int>(sizeof(int))) {
     memset(result, 0,
-           wxMin(result_size,
-                 static_cast<int>(
-                     sizeof(PlugInSegmentSafetyRequestServiceResult))));
+           wxMin(result_size, static_cast<int>(sizeof(
+                                  PlugInSegmentSafetyRequestServiceResult))));
     result->struct_size = result_size;
   }
   if (!wxThread::IsMain()) return false;
@@ -6019,6 +6317,7 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
   int pending_before = PlugIn_GetPendingSegmentSafetyRequestCount();
   int serviced = 0;
   int built_count = 0;
+  int prefetched_count = 0;
   int failed = 0;
 
   while ((max_requests <= 0 || serviced < max_requests) &&
@@ -6042,15 +6341,44 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
     bool built = false;
     bool ok = request.group_index == SegmentSafetyCurrentGroupIndex() &&
               EnsureSegmentSafetyRouteMaskTile(
-                  request.lat_tile, request.lon_tile,
-                  request.safety_margin_nm, request.check_depth,
-                  request.minimum_depth_m, NULL, &built,
+                  request.lat_tile, request.lon_tile, request.safety_margin_nm,
+                  request.check_depth, request.minimum_depth_m, NULL, &built,
                   request.force_authoritative_fine);
+    // A worker stops at the first absent mask and can otherwise incur one GUI
+    // timer wake-up per 0.05-degree tile.  Populate the immediately adjacent
+    // exact masks while the chart is already active on the main thread.  This
+    // changes only scheduling/cache locality: every neighbour is built by the
+    // same authoritative code as an on-demand request.  Keep independent
+    // force-fine validation demand-only to avoid speculative validation work.
+    if (ok && !request.force_authoritative_fine) {
+      for (int dlat = -1; dlat <= 1; ++dlat) {
+        for (int dlon = -1; dlon <= 1; ++dlon) {
+          if (dlat == 0 && dlon == 0) continue;
+          const long neighbour_lat_tile = request.lat_tile + dlat;
+          const long neighbour_lon_tile = request.lon_tile + dlon;
+          const double neighbour_min_lat =
+              neighbour_lat_tile * kSegmentSafetyGridTileDegrees;
+          const double neighbour_min_lon =
+              neighbour_lon_tile * kSegmentSafetyGridTileDegrees;
+          if (neighbour_min_lat < -90.0 || neighbour_min_lat >= 90.0 ||
+              neighbour_min_lon < -180.0 || neighbour_min_lon >= 180.0)
+            continue;
+          bool neighbour_built = false;
+          if (EnsureSegmentSafetyRouteMaskTile(
+                  neighbour_lat_tile, neighbour_lon_tile,
+                  request.safety_margin_nm, request.check_depth,
+                  request.minimum_depth_m, NULL, &neighbour_built, false) &&
+              neighbour_built) {
+            ++built_count;
+            ++prefetched_count;
+          }
+        }
+      }
+    }
     {
       wxMutexLocker lock(s_segment_safety_cache_mutex);
       s_segment_safety_inflight_route_mask_requests.erase(request.key);
-      if (ok)
-        s_segment_safety_pending_route_mask_requests.erase(request.key);
+      if (ok) s_segment_safety_pending_route_mask_requests.erase(request.key);
     }
     ++serviced;
     if (ok && built)
@@ -6060,13 +6388,11 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
   }
 
   int pending_after = PlugIn_GetPendingSegmentSafetyRequestCount();
-  if (serviced > 0 &&
-      s_segment_safety_persistent_tiles_since_checkpoint >=
-          kSegmentSafetyPersistentCheckpointTiles)
+  if (serviced > 0 && s_segment_safety_persistent_tiles_since_checkpoint >=
+                          kSegmentSafetyPersistentCheckpointTiles)
     SegmentSafetyPersistentCacheSave();
-  if (result &&
-      result_size >=
-          static_cast<int>(sizeof(PlugInSegmentSafetyRequestServiceResult))) {
+  if (result && result_size >= static_cast<int>(sizeof(
+                                   PlugInSegmentSafetyRequestServiceResult))) {
     result->pending_before = pending_before;
     result->requests_serviced = serviced;
     result->masks_built = built_count;
@@ -6077,9 +6403,10 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
   if (serviced > 0 || pending_before > 0) {
     wxLogMessage(
         "WR_GRID_REQUEST_SERVICE pending_before=%d serviced=%d built=%d "
-        "failed=%d pending_after=%d elapsed_ms=%ld main_thread=1",
-        pending_before, serviced, built_count, failed, pending_after,
-        timer.Time());
+        "prefetched=%d failed=%d pending_after=%d elapsed_ms=%ld "
+        "main_thread=1",
+        pending_before, serviced, built_count, prefetched_count, failed,
+        pending_after, timer.Time());
   }
   return failed == 0;
 }
@@ -6138,9 +6465,8 @@ bool PlugIn_PrewarmSegmentSafetyHazardSnapshot(
     const bool composite =
         chart && (chart->GetChartType() == CHART_TYPE_CM93 ||
                   chart->GetChartType() == CHART_TYPE_CM93COMP);
-    const bool table_composite =
-        entry.GetChartType() == CHART_TYPE_CM93 ||
-        entry.GetChartType() == CHART_TYPE_CM93COMP;
+    const bool table_composite = entry.GetChartType() == CHART_TYPE_CM93 ||
+                                 entry.GetChartType() == CHART_TYPE_CM93COMP;
     const bool global_or_invalid_bbox =
         entry.GetLatMax() > 90.0 || entry.GetLatMin() < -90.0;
     if (global_or_invalid_bbox && !table_composite && !composite) continue;
@@ -6155,8 +6481,7 @@ bool PlugIn_PrewarmSegmentSafetyHazardSnapshot(
     captured.native_scale = entry.GetScale();
     captured.edition_date = entry.GetChartEditionDate();
     captured.file_time = entry.GetFileTime();
-    captured.chart_path =
-        wxString::FromUTF8(entry.GetFullPath().c_str());
+    captured.chart_path = wxString::FromUTF8(entry.GetFullPath().c_str());
     captured.bbox =
         (global_or_invalid_bbox || composite)
             ? requested
@@ -6167,8 +6492,7 @@ bool PlugIn_PrewarmSegmentSafetyHazardSnapshot(
 
     for (int aux = 0; aux < entry.GetnAuxPlyEntries(); ++aux) {
       CachedLandRing ring = SegmentSafetyRingFromFloatTable(
-          entry.GetpAuxPlyTableEntry(aux),
-          entry.GetAuxCntTableEntry(aux));
+          entry.GetpAuxPlyTableEntry(aux), entry.GetAuxCntTableEntry(aux));
       if (ring.points.size() >= 3) captured.coverage.push_back(ring);
     }
     if (captured.coverage.empty()) {
@@ -6177,32 +6501,30 @@ bool PlugIn_PrewarmSegmentSafetyHazardSnapshot(
       if (ring.points.size() >= 3) captured.coverage.push_back(ring);
     }
     for (int hole = 0; hole < entry.GetnNoCovrPlyEntries(); ++hole) {
-      CachedLandRing ring = SegmentSafetyRingFromFloatTable(
-          entry.GetpNoCovrPlyTableEntry(hole),
-          entry.GetNoCovrCntTableEntry(hole));
+      CachedLandRing ring =
+          SegmentSafetyRingFromFloatTable(entry.GetpNoCovrPlyTableEntry(hole),
+                                          entry.GetNoCovrCntTableEntry(hole));
       if (ring.points.size() >= 3) captured.no_coverage.push_back(ring);
     }
 
     s57chart* s57 = dynamic_cast<s57chart*>(chart);
-    captured.vector_supported =
-        s57 != NULL && !composite &&
-        entry.GetChartFamily() == CHART_FAMILY_VECTOR;
+    captured.vector_supported = s57 != NULL && !composite &&
+                                entry.GetChartFamily() == CHART_FAMILY_VECTOR;
     if (captured.vector_supported) {
       captured.source = PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART;
       std::set<std::string> seen_hazards;
-      SegmentSafetyAppendFeatureRings(
-          s57, "LNDARE", &captured.hazards, &seen_hazards);
-      SegmentSafetyAppendFeatureRings(
-          s57, "DRGARE", &captured.hazards, &seen_hazards);
+      SegmentSafetyAppendFeatureRings(s57, "LNDARE", &captured.hazards,
+                                      &seen_hazards);
+      SegmentSafetyAppendFeatureRings(s57, "DRGARE", &captured.hazards,
+                                      &seen_hazards);
       ++supported_entries;
     } else {
       // CM93 composites dynamically rebuild their active rule set while
       // selecting cells.  Identical scans can expose different ring sets, so
       // they are not accepted as immutable SAFE proof.  The persistent
       // highest-detail authoritative raster/coarse hierarchy remains active.
-      captured.source =
-          composite ? PI_SEGMENT_SAFETY_SOURCE_CM93
-                    : PI_SEGMENT_SAFETY_SOURCE_NONE;
+      captured.source = composite ? PI_SEGMENT_SAFETY_SOURCE_CM93
+                                  : PI_SEGMENT_SAFETY_SOURCE_NONE;
       ++unsupported_entries;
     }
     snapshot->coverage_rings += captured.coverage.size();
@@ -6221,17 +6543,16 @@ bool PlugIn_PrewarmSegmentSafetyHazardSnapshot(
   }
 
   if (result) {
-    SetSegmentSafetyStatus(
-        result, snapshot->charts.empty() ? PI_SEGMENT_SAFETY_NO_DATA
-                                         : PI_SEGMENT_SAFETY_SAFE);
-    SetSegmentSafetySource(
-        result, supported_entries > 0
-                    ? PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART
-                    : PI_SEGMENT_SAFETY_SOURCE_NONE);
-    SetSegmentSafetyMessage(
-        result, snapshot->charts.empty()
-                    ? "no chart coverage found for hazard snapshot"
-                    : "immutable chart hazard snapshot ready");
+    SetSegmentSafetyStatus(result, snapshot->charts.empty()
+                                       ? PI_SEGMENT_SAFETY_NO_DATA
+                                       : PI_SEGMENT_SAFETY_SAFE);
+    SetSegmentSafetySource(result, supported_entries > 0
+                                       ? PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART
+                                       : PI_SEGMENT_SAFETY_SOURCE_NONE);
+    SetSegmentSafetyMessage(result,
+                            snapshot->charts.empty()
+                                ? "no chart coverage found for hazard snapshot"
+                                : "immutable chart hazard snapshot ready");
     result->candidate_chart_count = candidate_entries;
     result->s57_chart_count = supported_entries;
     result->unsupported_chart_count = unsupported_entries;
@@ -6248,10 +6569,8 @@ bool PlugIn_PrewarmSegmentSafetyHazardSnapshot(
       min_lat, max_lat, min_lon, max_lon, snapshot->group_index,
       snapshot->chart_identity, candidate_entries, supported_entries,
       unsupported_entries, snapshot->coverage_rings, snapshot->hazard_rings,
-      static_cast<unsigned long>(
-          snapshot->certified_safe_large_cells.size()),
-      static_cast<unsigned long>(
-          snapshot->certified_safe_fine_cells.size()),
+      static_cast<unsigned long>(snapshot->certified_safe_large_cells.size()),
+      static_cast<unsigned long>(snapshot->certified_safe_fine_cells.size()),
       snapshot->fast_path_enabled ? 1 : 0, snapshot->shadow_compare ? 1 : 0,
       timer.Time());
   return !snapshot->charts.empty();
@@ -6347,10 +6666,9 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
           std::chrono::duration_cast<std::chrono::microseconds>(
               std::chrono::steady_clock::now() - query_start)
               .count();
-      bool notable =
-          result->status != PI_SEGMENT_SAFETY_SAFE ||
-          stats.unexpected_tile_builds > 0 || elapsed_us > 5000 ||
-          stats.water_tile_shortcuts > 0;
+      bool notable = result->status != PI_SEGMENT_SAFETY_SAFE ||
+                     stats.unexpected_tile_builds > 0 || elapsed_us > 5000 ||
+                     stats.water_tile_shortcuts > 0;
       if (!notable && s_segment_safety_query_logs >= 40) return;
       query_log_index = ++s_segment_safety_query_logs;
     }
@@ -6368,13 +6686,11 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
         stats.unexpected_tile_builds > 0)
       unsafe_flags |= 16;
 
-    int64_t elapsed_us =
-        std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now() - query_start)
-            .count();
-    int chart_api_calls =
-        stats.point_cache_misses + stats.s57_chart_count +
-        stats.candidate_chart_count + stats.land_ring_count;
+    int64_t elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                             std::chrono::steady_clock::now() - query_start)
+                             .count();
+    int chart_api_calls = stats.point_cache_misses + stats.s57_chart_count +
+                          stats.candidate_chart_count + stats.land_ring_count;
     long mixed_cell_checks =
         stats.grid_lookups > stats.water_tile_shortcuts
             ? stats.grid_lookups - stats.water_tile_shortcuts
@@ -6386,21 +6702,20 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
         "unsafe_flags=%d all_safe_tile_shortcuts=%d mixed_tile_cell_checks=%ld "
         "missing_tile_requests=%d tile_cache_hits=%d tile_cache_misses=%d "
         "grid_lookups=%d samples=%d query_time_us=%lld "
-        "chart_api_calls_during_query=%d worker_thread_query_without_chart_api=%d "
+        "chart_api_calls_during_query=%d "
+        "worker_thread_query_without_chart_api=%d "
         "message=\"%s\".",
         query_log_index, phase, wxThread::IsMain() ? 0 : 1, lat1, lon1, lat2,
         lon2, safety_margin_nm, check_depth ? 1 : 0, result->status,
         result->source, force_authoritative_fine ? 1 : 0,
         force_authoritative_fine ? 0 : stats.coarse_certified_safe_hits,
-        unsafe_flags, stats.water_tile_shortcuts,
-        mixed_cell_checks, stats.unexpected_tile_builds, stats.grid_cache_hits,
-        stats.grid_cache_misses, stats.grid_lookups,
-        stats.segment_sample_count, (long long)elapsed_us, chart_api_calls,
-        (!wxThread::IsMain() && chart_api_calls == 0) ? 1 : 0,
-        result->message);
+        unsafe_flags, stats.water_tile_shortcuts, mixed_cell_checks,
+        stats.unexpected_tile_builds, stats.grid_cache_hits,
+        stats.grid_cache_misses, stats.grid_lookups, stats.segment_sample_count,
+        (long long)elapsed_us, chart_api_calls,
+        (!wxThread::IsMain() && chart_api_calls == 0) ? 1 : 0, result->message);
     if (stats.coarse_cells_checked > 0 ||
-        stats.coarse_certified_safe_hits > 0 ||
-        stats.coarse_missing > 0) {
+        stats.coarse_certified_safe_hits > 0 || stats.coarse_missing > 0) {
       wxLogMessage(
           "WR_COARSE_SAFETY_QUERY_SUMMARY #%ld coarse_cells_checked=%d "
           "coarse_certified_safe_hits=%d coarse_mixed_fallbacks=%d "
@@ -6416,8 +6731,7 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
           (!wxThread::IsMain() && chart_api_calls == 0) ? 1 : 0);
     }
   };
-  if (snapshot_fast_path &&
-      snapshot_decision == SEGMENT_SAFETY_SNAPSHOT_SAFE) {
+  if (snapshot_fast_path && snapshot_decision == SEGMENT_SAFETY_SNAPSHOT_SAFE) {
     SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_SAFE);
     SetSegmentSafetySource(result, PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART);
     SetSegmentSafetyDiagnosticReason(
@@ -6428,9 +6742,8 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
     log_query("hazard-snapshot-safe");
     return true;
   }
-  const std::string segment_cache_key =
-      SegmentSafetySegmentCacheKey(lat1, lon1, lat2, lon2, safety_margin_nm,
-                                   check_depth, minimum_depth_m);
+  const std::string segment_cache_key = SegmentSafetySegmentCacheKey(
+      lat1, lon1, lat2, lon2, safety_margin_nm, check_depth, minimum_depth_m);
   if (SegmentSafetyResultHas(
           result, offsetof(PlugInSegmentSafetyResult, depth_source_attribute),
           sizeof(result->depth_source_attribute)))
@@ -6457,8 +6770,8 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
           lat1, lon1, lat2, lon2, safety_margin_nm, check_depth,
           minimum_depth_m, force_authoritative_fine, result,
           &chart_data_available, &stats, &open_water_shortcut)) {
-    SetSegmentSafetyDiagnosticReason(
-        result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_HIT);
+    SetSegmentSafetyDiagnosticReason(result,
+                                     PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_HIT);
     StoreSegmentSafetySegmentCache(
         segment_cache_key,
         MakeCachedSegmentSafetyResult(
@@ -6472,8 +6785,8 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
   if (!chart_data_available && !wxThread::IsMain()) {
     SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_PENDING_DATA);
     SetSegmentSafetySource(result, PI_SEGMENT_SAFETY_SOURCE_NONE);
-    SetSegmentSafetyDiagnosticReason(
-        result, PI_SEGMENT_SAFETY_DIAG_PENDING_DATA);
+    SetSegmentSafetyDiagnosticReason(result,
+                                     PI_SEGMENT_SAFETY_DIAG_PENDING_DATA);
     SetSegmentSafetyMessage(
         result,
         "chart safety grid tile requested; worker is waiting for main-thread "
@@ -6486,8 +6799,8 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
   if (!chart_data_available &&
       CachedChartSegmentSafetyCheck(lat1, lon1, lat2, lon2, safety_margin_nm,
                                     result, &chart_data_available, &stats)) {
-    SetSegmentSafetyDiagnosticReason(
-        result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_HIT);
+    SetSegmentSafetyDiagnosticReason(result,
+                                     PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_HIT);
     ApplySegmentSafetyStats(result, stats);
     log_query("legacy-chart-hit");
     return true;
@@ -6501,8 +6814,7 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
       SetSegmentSafetyDiagnosticReason(
           result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR);
       SetSegmentSafetyMessage(
-          result,
-          "segment is clear using chart point land classification");
+          result, "segment is clear using chart point land classification");
       if (open_water_shortcut) {
         SetSegmentSafetyMessage(
             result,
@@ -6524,13 +6836,13 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
     if (result) {
       SetSegmentSafetySource(result, PI_SEGMENT_SAFETY_SOURCE_GSHHS_FALLBACK);
       SetSegmentSafetyFallback(result, true);
-      SetSegmentSafetyStatus(result, crosses_land ? fallback_status
-                                                  : PI_SEGMENT_SAFETY_SAFE);
+      SetSegmentSafetyStatus(
+          result, crosses_land ? fallback_status : PI_SEGMENT_SAFETY_SAFE);
       SetSegmentSafetyDiagnosticReason(result, unavailable_reason);
       SetSegmentSafetyMessage(
-          result, crosses_land ? "segment crosses GSHHS shoreline fallback"
-                               : SegmentSafetyUnavailableMessage(
-                                     unavailable_reason));
+          result, crosses_land
+                      ? "segment crosses GSHHS shoreline fallback"
+                      : SegmentSafetyUnavailableMessage(unavailable_reason));
       ApplySegmentSafetyStats(result, stats);
       log_query("gshhs-fallback");
     }
@@ -6540,8 +6852,8 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
   if (result) {
     SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_NO_DATA);
     SetSegmentSafetyDiagnosticReason(result, unavailable_reason);
-    SetSegmentSafetyMessage(result,
-                            SegmentSafetyUnavailableMessage(unavailable_reason));
+    SetSegmentSafetyMessage(
+        result, SegmentSafetyUnavailableMessage(unavailable_reason));
     ApplySegmentSafetyStats(result, stats);
     log_query("no-data");
   }
@@ -6607,9 +6919,8 @@ bool PlugIn_PrewarmSegmentSafetyGrid(double min_lat, double min_lon,
       "point_cache_hits=%d point_cache_misses=%d grid_cache_size=%lu "
       "grid_cache_evictions=%ld",
       stats.grid_build_ms, stats.grid_cells_total, stats.grid_cells_land,
-      stats.grid_cells_water, stats.grid_cells_drying,
-      stats.grid_cells_unknown, stats.point_cache_hits,
-      stats.point_cache_misses,
+      stats.grid_cells_water, stats.grid_cells_drying, stats.grid_cells_unknown,
+      stats.point_cache_hits, stats.point_cache_misses,
       (unsigned long)SegmentSafetyGridCacheSize(),
       s_segment_safety_grid_cache_evictions);
   wxLogMessage("%s", message.c_str());
@@ -6618,8 +6929,8 @@ bool PlugIn_PrewarmSegmentSafetyGrid(double min_lat, double min_lon,
 }
 
 bool PlugIn_PrewarmSegmentSafetyGridForSegment(
-    double lat1, double lon1, double lat2, double lon2,
-    double safety_margin_nm, PlugInSegmentSafetyResult* result) {
+    double lat1, double lon1, double lat2, double lon2, double safety_margin_nm,
+    PlugInSegmentSafetyResult* result) {
   InitSegmentSafetyResult(result);
 
   if (result && result->struct_size < (int)sizeof(int)) return false;
@@ -6705,9 +7016,8 @@ bool PlugIn_PrewarmSegmentSafetyGridForSegment(
       "point_cache_hits=%d point_cache_misses=%d grid_cache_size=%lu "
       "grid_cache_evictions=%ld",
       stats.grid_build_ms, stats.grid_cells_total, stats.grid_cells_land,
-      stats.grid_cells_water, stats.grid_cells_drying,
-      stats.grid_cells_unknown, stats.point_cache_hits,
-      stats.point_cache_misses,
+      stats.grid_cells_water, stats.grid_cells_drying, stats.grid_cells_unknown,
+      stats.point_cache_hits, stats.point_cache_misses,
       (unsigned long)SegmentSafetyGridCacheSize(),
       s_segment_safety_grid_cache_evictions);
   wxLogMessage("%s", message.c_str());
@@ -6750,9 +7060,9 @@ bool PlugIn_PrewarmSegmentSafetyRouteMask(
   // Keep the complete active envelope resident.  In particular, do this
   // before the first tile build so an envelope larger than the inactive cache
   // target cannot evict its own start tiles while it is still being built.
-  PinSegmentSafetyRouteMaskEnvelope(
-      min_lat_tile, max_lat_tile, min_lon_tile, max_lon_tile,
-      safety_margin_nm, check_depth, minimum_depth_m);
+  PinSegmentSafetyRouteMaskEnvelope(min_lat_tile, max_lat_tile, min_lon_tile,
+                                    max_lon_tile, safety_margin_nm, check_depth,
+                                    minimum_depth_m);
 
   SegmentSafetyCoreStats stats;
   long base_built_tiles = 0;
@@ -6773,8 +7083,7 @@ bool PlugIn_PrewarmSegmentSafetyRouteMask(
               lat_tile, lon_tile, safety_margin_nm, check_depth,
               minimum_depth_m, &certified_coarse)) {
         std::string mask_key = SegmentSafetyRouteMaskKey(
-            lat_tile, lon_tile, safety_margin_nm, check_depth,
-            minimum_depth_m);
+            lat_tile, lon_tile, safety_margin_nm, check_depth, minimum_depth_m);
         if (!LookupSegmentSafetyRouteMaskTile(mask_key, NULL)) {
           StoreSegmentSafetyRouteMaskTile(
               mask_key, BuildPersistentCertifiedSafeRouteMaskTile(
@@ -6866,16 +7175,15 @@ bool PlugIn_PrewarmSegmentSafetyRouteMask(
       base_reused_tiles, mask_built_tiles, mask_reused_tiles,
       fine_tiles_avoided_by_certified_safe, safety_margin_nm,
       check_depth ? 1 : 0, minimum_depth_m, coarse_requested_cells,
-      coarse_built_cells, coarse_reused_cells,
-      coarse_certified_safe_cells, coarse_missing_cells);
+      coarse_built_cells, coarse_reused_cells, coarse_certified_safe_cells,
+      coarse_missing_cells);
   message += wxString::Format(
       "build_ms=%d cells=%d land=%d water=%d drying=%d unknown=%d "
       "point_cache_hits=%d point_cache_misses=%d grid_cache_size=%lu "
       "grid_cache_evictions=%ld",
       stats.grid_build_ms, stats.grid_cells_total, stats.grid_cells_land,
-      stats.grid_cells_water, stats.grid_cells_drying,
-      stats.grid_cells_unknown, stats.point_cache_hits,
-      stats.point_cache_misses,
+      stats.grid_cells_water, stats.grid_cells_drying, stats.grid_cells_unknown,
+      stats.point_cache_hits, stats.point_cache_misses,
       (unsigned long)SegmentSafetyGridCacheSize(),
       s_segment_safety_grid_cache_evictions);
   wxLogMessage("%s", message.c_str());
@@ -6944,9 +7252,10 @@ void AddSegmentSafetyRouteMaskCorridorTiles(
   int samples = wxMax(
       2, wxMin(max_samples, (int)ceil(dist_nm / tile_sample_spacing_nm) + 1));
   double offset_step_nm = corridor_margin_nm > 0.0 ? 2.0 : 1.0;
-  int offset_count = corridor_margin_nm > 0.0
-                         ? (int)ceil((2.0 * corridor_margin_nm) / offset_step_nm)
-                         : 0;
+  int offset_count =
+      corridor_margin_nm > 0.0
+          ? (int)ceil((2.0 * corridor_margin_nm) / offset_step_nm)
+          : 0;
 
   for (int offset_index = 0; offset_index <= offset_count; ++offset_index) {
     double offset_nm = 0.0;
@@ -7005,8 +7314,8 @@ void AddSegmentSafetyRouteMaskCorridorTiles(
 }
 
 bool PrewarmSegmentSafetyRouteMaskTileSet(
-    const std::set<std::pair<long, long> >& tiles,
-    double corridor_margin_nm, const PlugInSegmentSafetyOptions& options,
+    const std::set<std::pair<long, long> >& tiles, double corridor_margin_nm,
+    const PlugInSegmentSafetyOptions& options,
     PlugInSegmentSafetyResult* result, const char* scope, int polyline_count,
     int segment_count, int fine_tile_halo) {
   double safety_margin_nm = wxMax(0.0, options.safety_margin_nm);
@@ -7037,8 +7346,8 @@ bool PrewarmSegmentSafetyRouteMaskTileSet(
   long coarse_certified_safe_cells = 0;
   long coarse_missing_cells = 0;
 
-  std::map<std::pair<long, long>,
-           std::set<std::pair<long, long> > > coarse_occupancy;
+  std::map<std::pair<long, long>, std::set<std::pair<long, long> > >
+      coarse_occupancy;
   for (std::set<std::pair<long, long> >::const_iterator it = tiles.begin();
        it != tiles.end(); ++it) {
     const long coarse_lat =
@@ -7058,8 +7367,7 @@ bool PrewarmSegmentSafetyRouteMaskTileSet(
     const long coarse_lat = it->first.first;
     const long coarse_lon = it->first.second;
     const std::string coarse_key = SegmentSafetyCoarseRouteMaskKey(
-        coarse_lat, coarse_lon, safety_margin_nm, check_depth,
-        minimum_depth_m);
+        coarse_lat, coarse_lon, safety_margin_nm, check_depth, minimum_depth_m);
     CachedSegmentSafetyCoarseRouteMaskCell coarse;
     if (LookupSegmentSafetyCoarseRouteMaskCell(coarse_key, &coarse)) {
       ++coarse_reused_cells;
@@ -7074,8 +7382,8 @@ bool PrewarmSegmentSafetyRouteMaskTileSet(
     }
 
     bool built_from_base = BuildSegmentSafetyCoarseRouteMaskCellFromBase(
-        coarse_lat, coarse_lon, safety_margin_nm, check_depth,
-        minimum_depth_m, false, &coarse, &stats, &base_built_tiles);
+        coarse_lat, coarse_lon, safety_margin_nm, check_depth, minimum_depth_m,
+        false, &coarse, &stats, &base_built_tiles);
     if (!built_from_base &&
         SegmentSafetyCoarseProofDoesNotExpandBaseBuildSet(
             coarse_lat, coarse_lon, it->second, safety_margin_nm)) {
@@ -7092,29 +7400,36 @@ bool PrewarmSegmentSafetyRouteMaskTileSet(
     }
   }
 
+  // Build the complete fine-grid evidence halo before deriving any route
+  // masks.  A mask with a non-zero safety margin depends on neighbouring base
+  // tiles even when only its own route tile is requested.  Building masks
+  // immediately after each centre tile left those neighbours to be discovered
+  // on demand, causing long GUI-thread stalls and defeating the prewarm
+  // contract.
+  std::set<std::pair<long, long> > certified_fine_tiles;
+  std::set<std::pair<long, long> > fine_base_tiles;
   for (std::set<std::pair<long, long> >::const_iterator it = tiles.begin();
        it != tiles.end(); ++it) {
     CachedSegmentSafetyCoarseRouteMaskCell certified_coarse;
     if (LookupCertifiedSegmentSafetyCoarseRouteMaskCellForFineTile(
             it->first, it->second, safety_margin_nm, check_depth,
             minimum_depth_m, &certified_coarse)) {
-      std::string mask_key = SegmentSafetyRouteMaskKey(
-          it->first, it->second, safety_margin_nm, check_depth,
-          minimum_depth_m);
-      if (!LookupSegmentSafetyRouteMaskTile(mask_key, NULL)) {
-        StoreSegmentSafetyRouteMaskTile(
-            mask_key, BuildPersistentCertifiedSafeRouteMaskTile(
-                          it->first, it->second, safety_margin_nm, check_depth,
-                          minimum_depth_m, certified_coarse));
-      }
-      ++fine_tiles_avoided_by_certified_safe;
-      ++base_reused_tiles;
-      ++mask_reused_tiles;
-      ++stats.fine_tiles_avoided;
+      certified_fine_tiles.insert(*it);
       continue;
     }
+    const double tile_min_lat = it->first * kSegmentSafetyGridTileDegrees;
+    const int margin_radius = SegmentSafetyMarginTileRadius(
+        safety_margin_nm,
+        wxMax(fabs(tile_min_lat),
+              fabs(tile_min_lat + kSegmentSafetyGridTileDegrees)));
+    AddSegmentSafetyTileHalo(it->first, it->second, margin_radius,
+                             &fine_base_tiles);
+  }
 
-    std::string base_key =
+  for (std::set<std::pair<long, long> >::const_iterator it =
+           fine_base_tiles.begin();
+       it != fine_base_tiles.end(); ++it) {
+    const std::string base_key =
         SegmentSafetyGridTileKeyForIndices(it->first, it->second);
     if (LookupSegmentSafetyGridTile(base_key, NULL)) {
       ++stats.grid_cache_hits;
@@ -7126,6 +7441,30 @@ bool PrewarmSegmentSafetyRouteMaskTileSet(
         ++base_built_tiles;
       else
         ++base_reused_tiles;
+    }
+  }
+
+  for (std::set<std::pair<long, long> >::const_iterator it = tiles.begin();
+       it != tiles.end(); ++it) {
+    if (certified_fine_tiles.count(*it) != 0) {
+      CachedSegmentSafetyCoarseRouteMaskCell certified_coarse;
+      LookupCertifiedSegmentSafetyCoarseRouteMaskCellForFineTile(
+          it->first, it->second, safety_margin_nm, check_depth, minimum_depth_m,
+          &certified_coarse);
+      std::string mask_key =
+          SegmentSafetyRouteMaskKey(it->first, it->second, safety_margin_nm,
+                                    check_depth, minimum_depth_m);
+      if (!LookupSegmentSafetyRouteMaskTile(mask_key, NULL)) {
+        StoreSegmentSafetyRouteMaskTile(
+            mask_key, BuildPersistentCertifiedSafeRouteMaskTile(
+                          it->first, it->second, safety_margin_nm, check_depth,
+                          minimum_depth_m, certified_coarse));
+      }
+      ++fine_tiles_avoided_by_certified_safe;
+      ++base_reused_tiles;
+      ++mask_reused_tiles;
+      ++stats.fine_tiles_avoided;
+      continue;
     }
 
     bool mask_built = false;
@@ -7153,8 +7492,8 @@ bool PrewarmSegmentSafetyRouteMaskTileSet(
     CachedSegmentSafetyCoarseRouteMaskCell coarse;
     if (!LookupSegmentSafetyCoarseRouteMaskCell(coarse_key, &coarse) &&
         EnsureSegmentSafetyCoarseRouteMaskCell(
-                   it->first.first, it->first.second, safety_margin_nm, check_depth,
-                   minimum_depth_m, &coarse, &stats)) {
+            it->first.first, it->first.second, safety_margin_nm, check_depth,
+            minimum_depth_m, &coarse, &stats)) {
       ++coarse_built_cells;
     } else if (!LookupSegmentSafetyCoarseRouteMaskCell(coarse_key, &coarse)) {
       ++coarse_missing_cells;
@@ -7169,11 +7508,11 @@ bool PrewarmSegmentSafetyRouteMaskTileSet(
     SetSegmentSafetySource(result, PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART);
     SetSegmentSafetyDiagnosticReason(
         result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR);
-    SetSegmentSafetyMessage(result, "segment safety route mask shape prewarmed");
+    SetSegmentSafetyMessage(result,
+                            "segment safety route mask shape prewarmed");
     ApplySegmentSafetyStats(result, stats);
     if (result->struct_size >=
-        (int)(offsetof(PlugInSegmentSafetyResult,
-                       prewarm_fine_tiles_avoided) +
+        (int)(offsetof(PlugInSegmentSafetyResult, prewarm_fine_tiles_avoided) +
               sizeof(result->prewarm_fine_tiles_avoided))) {
       result->prewarm_requested_tiles = static_cast<int>(tiles.size());
       result->prewarm_base_tiles_built = static_cast<int>(base_built_tiles);
@@ -7197,8 +7536,8 @@ bool PrewarmSegmentSafetyRouteMaskTileSet(
       "build_ms=%d cells=%d "
       "land=%d water=%d drying=%d unknown=%d point_cache_hits=%d "
       "point_cache_misses=%d grid_cache_size=%lu grid_cache_evictions=%ld",
-      scope ? scope : "unknown", segment_count,
-      corridor_margin_nm, fine_tile_halo, safety_margin_nm,
+      scope ? scope : "unknown", segment_count, corridor_margin_nm,
+      fine_tile_halo, safety_margin_nm,
       static_cast<unsigned long>(tiles.size()), base_built_tiles,
       base_reused_tiles, mask_built_tiles, mask_reused_tiles,
       fine_tiles_avoided_by_certified_safe, check_depth ? 1 : 0,
@@ -7206,8 +7545,8 @@ bool PrewarmSegmentSafetyRouteMaskTileSet(
       coarse_reused_cells, coarse_certified_safe_cells, coarse_missing_cells,
       coarse_base_proof_cells, coarse_base_proof_chart_build_cells,
       stats.grid_build_ms, stats.grid_cells_total, stats.grid_cells_land,
-      stats.grid_cells_water, stats.grid_cells_drying,
-      stats.grid_cells_unknown, stats.point_cache_hits, stats.point_cache_misses,
+      stats.grid_cells_water, stats.grid_cells_drying, stats.grid_cells_unknown,
+      stats.point_cache_hits, stats.point_cache_misses,
       (unsigned long)SegmentSafetyGridCacheSize(),
       s_segment_safety_grid_cache_evictions);
   wxLogMessage(
@@ -7226,8 +7565,7 @@ bool PrewarmSegmentSafetyRouteMaskTileSet(
 
 bool PlugIn_PrewarmSegmentSafetyRouteMaskForSegment(
     double lat1, double lon1, double lat2, double lon2,
-    double corridor_margin_nm,
-    const PlugInSegmentSafetyOptions* options,
+    double corridor_margin_nm, const PlugInSegmentSafetyOptions* options,
     PlugInSegmentSafetyResult* result) {
   InitSegmentSafetyResult(result);
   SegmentSafetyRefreshPersistentChartIdentity();
@@ -7243,8 +7581,7 @@ bool PlugIn_PrewarmSegmentSafetyRouteMaskForSegment(
   AddSegmentSafetyRouteMaskCorridorTiles(lat1, lon1, lat2, lon2,
                                          corridor_margin_nm, &tiles);
   return PrewarmSegmentSafetyRouteMaskTileSet(
-      tiles, corridor_margin_nm, effective_options, result, "segment", 1, 1,
-      0);
+      tiles, corridor_margin_nm, effective_options, result, "segment", 1, 1, 0);
 }
 
 static bool PrewarmSegmentSafetyRouteMaskForPolylinesImpl(
@@ -7340,10 +7677,8 @@ void PlugIn_ReleaseSegmentSafetyRouteMaskPins() {
     s_segment_safety_pinned_grid_keys.clear();
     s_segment_safety_pinned_route_mask_keys.clear();
 
-    while (s_segment_safety_grid_cache.size() >
-           kMaxSegmentSafetyGridTiles) {
-      s_segment_safety_grid_cache.erase(
-          s_segment_safety_grid_cache.begin());
+    while (s_segment_safety_grid_cache.size() > kMaxSegmentSafetyGridTiles) {
+      s_segment_safety_grid_cache.erase(s_segment_safety_grid_cache.begin());
       ++s_segment_safety_grid_cache_evictions;
     }
     while (s_segment_safety_route_mask_cache.size() >
@@ -7423,8 +7758,7 @@ bool PlugIn_ClearSegmentSafetyPersistentCache() {
     s_segment_safety_persistent_tiles_since_checkpoint = 0;
   }
   if (wxFileExists(path)) removed = wxRemoveFile(path);
-  if (wxFileExists(base_path))
-    removed = wxRemoveFile(base_path) && removed;
+  if (wxFileExists(base_path)) removed = wxRemoveFile(base_path) && removed;
   wxLogMessage(
       "WR_CERT_SAFE_CACHE clear success=%d cache_file_path=\"%s\" "
       "base_cache_file_path=\"%s\"",

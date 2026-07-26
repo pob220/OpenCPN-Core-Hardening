@@ -4588,13 +4588,13 @@ extern wxString PlugIn_SegmentSafetyPointDiagnostic(double lat, double lon);
 namespace {
 
 struct PointSafetyDiagnosticCase {
-  const char* name;
+  const char *name;
   double lat;
   double lon;
 };
 
 struct SegmentSafetyDiagnosticCase {
-  const char* name;
+  const char *name;
   double lat1;
   double lon1;
   double lat2;
@@ -4603,7 +4603,7 @@ struct SegmentSafetyDiagnosticCase {
   int expected_status;
 };
 
-const char* SegmentSafetyStatusName(int status) {
+const char *SegmentSafetyStatusName(int status) {
   switch (status) {
     case PI_SEGMENT_SAFETY_SAFE:
       return "SAFE";
@@ -4630,7 +4630,7 @@ const char* SegmentSafetyStatusName(int status) {
   }
 }
 
-const char* SegmentSafetySourceName(int source) {
+const char *SegmentSafetySourceName(int source) {
   switch (source) {
     case PI_SEGMENT_SAFETY_SOURCE_NONE:
       return "NONE";
@@ -4645,7 +4645,7 @@ const char* SegmentSafetySourceName(int source) {
   }
 }
 
-const char* SegmentSafetyHitCauseName(int cause) {
+const char *SegmentSafetyHitCauseName(int cause) {
   switch (cause) {
     case PI_SEGMENT_SAFETY_HIT_NONE:
       return "NONE";
@@ -4671,15 +4671,14 @@ bool SegmentSafetyStatusMatchesExpected(int status, int expected_status) {
 }
 
 void RunSegmentSafetyDiagnostics() {
-  const char* persistent_cache =
+  const char *persistent_cache =
       getenv("WR_HEADLESS_PERSISTENT_CERT_SAFE_CACHE");
   if (persistent_cache)
     PlugIn_SetSegmentSafetyPersistentCacheEnabled(
-        !strcmp(persistent_cache, "1") ||
-                !strcmp(persistent_cache, "true")
+        !strcmp(persistent_cache, "1") || !strcmp(persistent_cache, "true")
             ? 1
             : 0);
-  const char* clear_cache = getenv("WR_HEADLESS_CLEAR_CERT_SAFE_CACHE");
+  const char *clear_cache = getenv("WR_HEADLESS_CLEAR_CERT_SAFE_CACHE");
   if (clear_cache && !strcmp(clear_cache, "1"))
     PlugIn_ClearSegmentSafetyPersistentCache();
   wxLogMessage("SEGMENT_SAFETY_TEST begin chart_only=1 fallback=0");
@@ -4701,18 +4700,17 @@ void RunSegmentSafetyDiagnostics() {
   };
 
   for (size_t i = 0; i < WXSIZEOF(point_cases); ++i) {
-    const PointSafetyDiagnosticCase& pc = point_cases[i];
+    const PointSafetyDiagnosticCase &pc = point_cases[i];
     wxString diagnostic = PlugIn_SegmentSafetyPointDiagnostic(pc.lat, pc.lon);
-    wxLogMessage(
-        "POINT_SAFETY_TEST point=\"%s\" lat=%.8f lon=%.8f %s",
-        pc.name, pc.lat, pc.lon, diagnostic.c_str());
+    wxLogMessage("POINT_SAFETY_TEST point=\"%s\" lat=%.8f lon=%.8f %s", pc.name,
+                 pc.lat, pc.lon, diagnostic.c_str());
   }
 
   for (int pass = 1; pass <= 2; ++pass) {
     PlugInSegmentSafetyResult prewarm = {};
     prewarm.struct_size = sizeof(prewarm);
-    PlugIn_PrewarmSegmentSafetyGridForSegment(
-        53.325000, -4.705000, 54.000000, -4.835000, 0.0, &prewarm);
+    PlugIn_PrewarmSegmentSafetyGridForSegment(53.325000, -4.705000, 54.000000,
+                                              -4.835000, 0.0, &prewarm);
     wxLogMessage(
         "SEGMENT_SAFETY_GRID_TEST pass=%d route=\"Holyhead outside TSS to "
         "South of Calf of Man\" status=%s source=%s message=\"%s\" "
@@ -4732,16 +4730,15 @@ void RunSegmentSafetyDiagnostics() {
   }
 
   const double route_shape_lats[] = {
-      53.325000, 53.650000, 54.000000,
-      53.325000, 53.650000, 54.000000,
+      53.325000, 53.650000, 54.000000, 53.325000, 53.650000, 54.000000,
   };
   const double route_shape_lons[] = {
-      -4.705000, -4.760000, -4.835000,
-      -4.705000, -4.760000, -4.835000,
+      -4.705000, -4.760000, -4.835000, -4.705000, -4.760000, -4.835000,
   };
   const int route_shape_counts[] = {3, 3};
   PlugInSegmentSafetyOptions route_shape_options = {};
   route_shape_options.struct_size = sizeof(route_shape_options);
+  route_shape_options.safety_margin_nm = 0.41;
   route_shape_options.check_land = 1;
   route_shape_options.allow_gshhs_fallback = 0;
   int route_shape_requested_tiles = -1;
@@ -4752,13 +4749,12 @@ void RunSegmentSafetyDiagnostics() {
         route_shape_lats, route_shape_lons, route_shape_counts,
         WXSIZEOF(route_shape_counts), 4.0, &route_shape_options,
         &route_shape_result);
-    bool pass =
-        ok && route_shape_result.status == PI_SEGMENT_SAFETY_SAFE &&
-        route_shape_result.prewarm_requested_tiles > 0 &&
-        (route_shape_requested_tiles < 0 ||
-         route_shape_result.prewarm_requested_tiles ==
-             route_shape_requested_tiles) &&
-        route_shape_result.unexpected_tile_builds == 0;
+    bool pass = ok && route_shape_result.status == PI_SEGMENT_SAFETY_SAFE &&
+                route_shape_result.prewarm_requested_tiles > 0 &&
+                (route_shape_requested_tiles < 0 ||
+                 route_shape_result.prewarm_requested_tiles ==
+                     route_shape_requested_tiles) &&
+                route_shape_result.unexpected_tile_builds == 0;
     route_shape_requested_tiles = route_shape_result.prewarm_requested_tiles;
     if (!pass) ++failures;
     wxLogMessage(
@@ -4778,37 +4774,32 @@ void RunSegmentSafetyDiagnostics() {
   }
 
   const SegmentSafetyDiagnosticCase cases[] = {
-      {"Holyhead outside TSS to South of Calf of Man",
-       53.325000, -4.705000, 54.000000, -4.835000, 0.0,
-       PI_SEGMENT_SAFETY_SAFE},
-      {"Holyhead saved waypoint leg to South of Calf of Man",
-       53.337802, -4.614540, 53.941243, -4.850975, 0.0,
-       PI_SEGMENT_SAFETY_SAFE},
-      {"Holy Island plotted route land crossing",
-       53.337802, -4.614540, 53.245000, -4.780000, 0.0,
-       PI_SEGMENT_SAFETY_CROSSES_LAND},
-      {"Holyhead offshore south-west route",
-       53.325000, -4.705000, 53.245000, -4.780000, 0.0,
-       PI_SEGMENT_SAFETY_SAFE},
-      {"Portpatrick west water to inland east",
-       54.842500, -5.135000, 54.842500, -5.085000, 0.0,
-       PI_SEGMENT_SAFETY_CROSSES_LAND},
-      {"Portpatrick nearshore offshore parallel",
-       54.825000, -5.210000, 54.875000, -5.210000, 0.0,
-       PI_SEGMENT_SAFETY_SAFE},
-      {"Portpatrick Killantringan visible land crossing",
-       54.875000, -5.110000, 54.770000, -5.010000, 0.0,
-       PI_SEGMENT_SAFETY_CROSSES_LAND},
-      {"Mull of Galloway Drummore visible land crossing",
-       54.760000, -5.050000, 54.700000, -4.570000, 0.0,
-       PI_SEGMENT_SAFETY_CROSSES_LAND},
-      {"Mull of Galloway offshore west parallel",
-       54.630000, -5.120000, 54.800000, -5.120000, 0.0,
-       PI_SEGMENT_SAFETY_SAFE},
+      {"Holyhead outside TSS to South of Calf of Man", 53.325000, -4.705000,
+       54.000000, -4.835000, 0.0, PI_SEGMENT_SAFETY_SAFE},
+      {"Holyhead outside TSS to South of Calf of Man with margin", 53.325000,
+       -4.705000, 54.000000, -4.835000, 0.4, PI_SEGMENT_SAFETY_SAFE},
+      {"Holyhead saved waypoint leg to South of Calf of Man", 53.337802,
+       -4.614540, 53.941243, -4.850975, 0.0, PI_SEGMENT_SAFETY_SAFE},
+      {"Holy Island plotted route land crossing", 53.337802, -4.614540,
+       53.245000, -4.780000, 0.0, PI_SEGMENT_SAFETY_CROSSES_LAND},
+      {"Holyhead offshore south-west route", 53.325000, -4.705000, 53.245000,
+       -4.780000, 0.0, PI_SEGMENT_SAFETY_SAFE},
+      {"Portpatrick west water to inland east", 54.842500, -5.135000, 54.842500,
+       -5.085000, 0.0, PI_SEGMENT_SAFETY_CROSSES_LAND},
+      {"Portpatrick west water to inland east with margin", 54.842500,
+       -5.135000, 54.842500, -5.085000, 0.4, PI_SEGMENT_SAFETY_CROSSES_LAND},
+      {"Portpatrick nearshore offshore parallel", 54.825000, -5.210000,
+       54.875000, -5.210000, 0.0, PI_SEGMENT_SAFETY_SAFE},
+      {"Portpatrick Killantringan visible land crossing", 54.875000, -5.110000,
+       54.770000, -5.010000, 0.0, PI_SEGMENT_SAFETY_CROSSES_LAND},
+      {"Mull of Galloway Drummore visible land crossing", 54.760000, -5.050000,
+       54.700000, -4.570000, 0.0, PI_SEGMENT_SAFETY_CROSSES_LAND},
+      {"Mull of Galloway offshore west parallel", 54.630000, -5.120000,
+       54.800000, -5.120000, 0.0, PI_SEGMENT_SAFETY_SAFE},
   };
 
   for (size_t i = 0; i < WXSIZEOF(cases); ++i) {
-    const SegmentSafetyDiagnosticCase& tc = cases[i];
+    const SegmentSafetyDiagnosticCase &tc = cases[i];
     PlugInSegmentSafetyOptions options = {};
     options.struct_size = sizeof(options);
     options.safety_margin_nm = tc.safety_margin_nm;
@@ -4819,16 +4810,14 @@ void RunSegmentSafetyDiagnostics() {
     result.struct_size = sizeof(result);
     bool ok = PlugIn_CheckSegmentSafety(tc.lat1, tc.lon1, tc.lat2, tc.lon2,
                                         &options, &result);
-    bool pass = ok &&
-                SegmentSafetyStatusMatchesExpected(result.status,
-                                                   tc.expected_status);
+    bool pass = ok && SegmentSafetyStatusMatchesExpected(result.status,
+                                                         tc.expected_status);
     if (!pass) ++failures;
 
     wxString line = wxString::Format(
         "SEGMENT_SAFETY_TEST case=\"%s\" pass=%d expected=%s status=%s "
         "source=%s fallback=%d reason=%d message=\"%s\" ",
-        tc.name, pass ? 1 : 0,
-        SegmentSafetyStatusName(tc.expected_status),
+        tc.name, pass ? 1 : 0, SegmentSafetyStatusName(tc.expected_status),
         SegmentSafetyStatusName(result.status),
         SegmentSafetySourceName(result.source), result.used_fallback,
         result.diagnostic_reason, result.message);
@@ -4842,10 +4831,10 @@ void RunSegmentSafetyDiagnostics() {
         "ring_bbox=[lat %.8f..%.8f lon %.8f..%.8f] "
         "ring_points=%d edge_index=%d ",
         result.bbox_ring_tests, result.edge_tests,
-        SegmentSafetyHitCauseName(result.hit_cause),
-        result.hit_ring_min_lat, result.hit_ring_max_lat,
-        result.hit_ring_min_lon, result.hit_ring_max_lon,
-        result.hit_ring_point_count, result.hit_edge_index);
+        SegmentSafetyHitCauseName(result.hit_cause), result.hit_ring_min_lat,
+        result.hit_ring_max_lat, result.hit_ring_min_lon,
+        result.hit_ring_max_lon, result.hit_ring_point_count,
+        result.hit_edge_index);
     line += wxString::Format(
         "chart_stack_entries=%d candidate_charts=%d raster_charts=%d "
         "unsupported_charts=%d s57_charts=%d cache_ms=%d select_ms=%d "
@@ -4859,22 +4848,20 @@ void RunSegmentSafetyDiagnostics() {
         result.chart_stack_entries, result.candidate_chart_count,
         result.raster_chart_count, result.unsupported_chart_count,
         result.s57_chart_count, result.cache_build_ms, result.chart_select_ms,
-        result.geometry_check_ms, result.hit_sample_lat,
-        result.hit_sample_lon, result.hit_sample_index + 1,
-        result.hit_sample_count, result.chart_scale, result.point_cache_hits,
-        result.point_cache_misses, result.grid_cache_hits,
-        result.grid_cache_misses, result.grid_build_ms,
+        result.geometry_check_ms, result.hit_sample_lat, result.hit_sample_lon,
+        result.hit_sample_index + 1, result.hit_sample_count,
+        result.chart_scale, result.point_cache_hits, result.point_cache_misses,
+        result.grid_cache_hits, result.grid_cache_misses, result.grid_build_ms,
         result.grid_cells_total, result.grid_cells_land,
         result.grid_cells_water, result.grid_cells_drying,
-        result.grid_cells_unknown, result.grid_lookups,
-        result.grid_lookup_ms, result.segment_sample_count,
-        result.water_tile_shortcuts, result.unexpected_tile_builds,
-        result.hit_object);
+        result.grid_cells_unknown, result.grid_lookups, result.grid_lookup_ms,
+        result.segment_sample_count, result.water_tile_shortcuts,
+        result.unexpected_tile_builds, result.hit_object);
     wxLogMessage("%s", line.c_str());
   }
 
   struct SegmentSafetyDepthDiagnosticCase {
-    const char* name;
+    const char *name;
     double lat1;
     double lon1;
     double lat2;
@@ -4886,20 +4873,17 @@ void RunSegmentSafetyDiagnostics() {
       // Highest-detail local CM93 coverage is 1:50,000 and reports DEPARE
       // DRVAL1=100 m at the south endpoint and 50 m at the north endpoint.
       // The older 1:1,000,000 composite view reported DRVAL1=0 here.
-      {"Portpatrick offshore low-depth requirement",
-       54.825000, -5.210000, 54.875000, -5.210000, 1.0,
-       PI_SEGMENT_SAFETY_SAFE},
+      {"Portpatrick offshore low-depth requirement", 54.825000, -5.210000,
+       54.875000, -5.210000, 1.0, PI_SEGMENT_SAFETY_SAFE},
       // The highest-resolution local CM93 coverage classifies the start point
       // as LNDARE.  Land takes precedence over the segment's depth requirement.
-      {"Mull land-start depth requirement",
-       54.680000, -4.870000, 54.700000, -4.570000, 1.0,
-       PI_SEGMENT_SAFETY_CROSSES_LAND},
-      {"Portpatrick offshore deliberately too-deep requirement",
-       54.825000, -5.210000, 54.875000, -5.210000, 250.0,
-       PI_SEGMENT_SAFETY_TOO_SHALLOW},
+      {"Mull land-start depth requirement", 54.680000, -4.870000, 54.700000,
+       -4.570000, 1.0, PI_SEGMENT_SAFETY_CROSSES_LAND},
+      {"Portpatrick offshore deliberately too-deep requirement", 54.825000,
+       -5.210000, 54.875000, -5.210000, 250.0, PI_SEGMENT_SAFETY_TOO_SHALLOW},
   };
   for (size_t i = 0; i < WXSIZEOF(depth_cases); ++i) {
-    const SegmentSafetyDepthDiagnosticCase& tc = depth_cases[i];
+    const SegmentSafetyDepthDiagnosticCase &tc = depth_cases[i];
     PlugInSegmentSafetyOptions options = {};
     options.struct_size = sizeof(options);
     options.safety_margin_nm = 0.0;
@@ -4912,9 +4896,8 @@ void RunSegmentSafetyDiagnostics() {
     result.struct_size = sizeof(result);
     bool ok = PlugIn_CheckSegmentSafety(tc.lat1, tc.lon1, tc.lat2, tc.lon2,
                                         &options, &result);
-    bool pass = ok &&
-                SegmentSafetyStatusMatchesExpected(result.status,
-                                                   tc.expected_status);
+    bool pass = ok && SegmentSafetyStatusMatchesExpected(result.status,
+                                                         tc.expected_status);
     if (!pass) ++failures;
     wxLogMessage(
         "SEGMENT_SAFETY_DEPTH_TEST case=\"%s\" pass=%d expected=%s "
@@ -4936,8 +4919,8 @@ void RunSegmentSafetyDiagnostics() {
     double lon;
   };
   struct FinalRouteDiagnosticCase {
-    const char* name;
-    const FinalRoutePoint* points;
+    const char *name;
+    const FinalRoutePoint *points;
     size_t point_count;
     int expected_status;
   };
@@ -4977,24 +4960,20 @@ void RunSegmentSafetyDiagnostics() {
       {"Holy Island final route with chart land crossing",
        holy_island_bad_route, WXSIZEOF(holy_island_bad_route),
        PI_SEGMENT_SAFETY_CROSSES_LAND},
-      {"Holyhead final route offshore",
-       holyhead_offshore_route, WXSIZEOF(holyhead_offshore_route),
-       PI_SEGMENT_SAFETY_SAFE},
+      {"Holyhead final route offshore", holyhead_offshore_route,
+       WXSIZEOF(holyhead_offshore_route), PI_SEGMENT_SAFETY_SAFE},
       {"Portpatrick final route with chart land crossing",
        portpatrick_bad_route, WXSIZEOF(portpatrick_bad_route),
        PI_SEGMENT_SAFETY_CROSSES_LAND},
-      {"Portpatrick final route offshore",
-       portpatrick_offshore_route, WXSIZEOF(portpatrick_offshore_route),
-       PI_SEGMENT_SAFETY_SAFE},
-      {"Mull of Galloway final route with chart land crossing",
-       mull_bad_route, WXSIZEOF(mull_bad_route),
-       PI_SEGMENT_SAFETY_CROSSES_LAND},
-      {"Mull of Galloway final route offshore",
-       mull_offshore_route, WXSIZEOF(mull_offshore_route),
-       PI_SEGMENT_SAFETY_SAFE},
+      {"Portpatrick final route offshore", portpatrick_offshore_route,
+       WXSIZEOF(portpatrick_offshore_route), PI_SEGMENT_SAFETY_SAFE},
+      {"Mull of Galloway final route with chart land crossing", mull_bad_route,
+       WXSIZEOF(mull_bad_route), PI_SEGMENT_SAFETY_CROSSES_LAND},
+      {"Mull of Galloway final route offshore", mull_offshore_route,
+       WXSIZEOF(mull_offshore_route), PI_SEGMENT_SAFETY_SAFE},
   };
   for (size_t i = 0; i < WXSIZEOF(final_cases); ++i) {
-    const FinalRouteDiagnosticCase& fc = final_cases[i];
+    const FinalRouteDiagnosticCase &fc = final_cases[i];
     int route_status = PI_SEGMENT_SAFETY_SAFE;
     size_t failed_segment = 0;
     PlugInSegmentSafetyResult failed_result = {};
@@ -5018,8 +4997,8 @@ void RunSegmentSafetyDiagnostics() {
         break;
       }
     }
-    bool pass = SegmentSafetyStatusMatchesExpected(route_status,
-                                                   fc.expected_status);
+    bool pass =
+        SegmentSafetyStatusMatchesExpected(route_status, fc.expected_status);
     if (!pass) ++failures;
     wxLogMessage(
         "FINAL_ROUTE_SAFETY_TEST case=\"%s\" pass=%d expected=%s status=%s "

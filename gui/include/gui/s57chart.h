@@ -156,6 +156,15 @@ public:
   virtual size_t CollectFeatureAreaRings(
       const char *feature_name,
       std::vector<std::vector<wxPoint2DDouble> > &rings);
+  /**
+   * Conservatively test whether any loaded area object which chart safety
+   * treats as land or drying has a bounding box intersecting the query.
+   * This is intended only as a fast negative proof: false means that exact
+   * point classification cannot find one of these hazards in the box.
+   */
+  virtual bool SafetyAreaHazardMayIntersect(double min_lat, double max_lat,
+                                            double min_lon, double max_lon,
+                                            int *hazard_objects = NULL);
   virtual wxString GetFeatureDebugSummary();
   bool DoesLatLonSelectObject(float lat, float lon, float select_radius,
                               S57Obj *obj);
