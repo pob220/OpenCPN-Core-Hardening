@@ -3486,7 +3486,13 @@ enum PlugInSegmentSafetyStatus {
   PI_SEGMENT_SAFETY_ERROR,
   PI_SEGMENT_SAFETY_DRYING_AREA,
   PI_SEGMENT_SAFETY_TOO_SHALLOW,
-  PI_SEGMENT_SAFETY_UNKNOWN_DEPTH
+  PI_SEGMENT_SAFETY_UNKNOWN_DEPTH,
+  /**
+   * The query is not unsafe, but its chart-derived worker cache entry has not
+   * been built yet.  A worker may enqueue the missing entry; only the main
+   * application thread may service the request and publish it.
+   */
+  PI_SEGMENT_SAFETY_PENDING_DATA
 };
 
 enum PlugInSegmentSafetySource {
@@ -3506,7 +3512,8 @@ enum PlugInSegmentSafetyDiagnosticReason {
   PI_SEGMENT_SAFETY_DIAG_NO_LANDARE_GEOMETRY,
   PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR,
   PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_HIT,
-  PI_SEGMENT_SAFETY_DIAG_GSHHS_FALLBACK
+  PI_SEGMENT_SAFETY_DIAG_GSHHS_FALLBACK,
+  PI_SEGMENT_SAFETY_DIAG_PENDING_DATA
 };
 
 enum PlugInSegmentSafetyHitCause {
@@ -3598,10 +3605,51 @@ struct PlugInSegmentSafetyResult {
   int prewarm_fine_tiles_avoided;
 };
 
+/** Result from servicing chart-safety cache requests on the main thread. */
+struct PlugInSegmentSafetyRequestServiceResult {
+  int struct_size;
+  int pending_before;
+  int requests_serviced;
+  int masks_built;
+  int requests_failed;
+  int pending_after;
+  int elapsed_ms;
+};
+
 extern "C" DECL_EXP bool PlugIn_CheckSegmentSafety(
     double lat1, double lon1, double lat2, double lon2,
     const PlugInSegmentSafetyOptions *options,
     PlugInSegmentSafetyResult *result);
+
+/**
+ * Builds an immutable, best-available-chart hazard snapshot for an area.
+ *
+ * Snapshot construction is main-thread only.  Worker segment checks may use
+ * only conservative SAFE certificates; uncertain coverage, depth checks,
+ * unsupported chart formats, chart disagreement and hazard-adjacent geometry
+ * continue through the authoritative grid path.
+ *
+ * enable_fast_path controls whether SAFE certificates may accelerate worker
+ * queries.  shadow_compare records disagreements whenever the authoritative
+ * path is also evaluated; pass enable_fast_path=0 for full shadow validation.
+ */
+extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyHazardSnapshot(
+    double min_lat, double min_lon, double max_lat, double max_lon,
+    int enable_fast_path, int shadow_compare,
+    const PlugInSegmentSafetyOptions *options,
+    PlugInSegmentSafetyResult *result);
+
+/** Return the number of deduplicated chart-safety worker requests pending. */
+extern "C" DECL_EXP int PlugIn_GetPendingSegmentSafetyRequestCount();
+
+/**
+ * Build pending chart-safety worker requests.  This is main-thread only.
+ * max_requests <= 0 means no count limit; max_milliseconds <= 0 means no
+ * elapsed-time limit.  A single chart tile build is never interrupted.
+ */
+extern "C" DECL_EXP bool PlugIn_ServicePendingSegmentSafetyRequests(
+    int max_requests, int max_milliseconds,
+    PlugInSegmentSafetyRequestServiceResult *result);
 
 extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyGrid(
     double min_lat, double min_lon, double max_lat, double max_lon,
@@ -3634,6 +3682,15 @@ extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyRouteMaskForPolylines(
     const double *latitudes, const double *longitudes,
     const int *point_counts, int polyline_count, double corridor_margin_nm,
     const PlugInSegmentSafetyOptions *options,
+    PlugInSegmentSafetyResult *result);
+// As above, with a deterministic halo measured in fine route-mask tiles.
+// This is intended for traversal/frontier uncertainty, not passage-width
+// expansion.  A value of one adds exactly the neighbouring tile ring.
+extern "C" DECL_EXP bool
+PlugIn_PrewarmSegmentSafetyRouteMaskForPolylinesWithTileHalo(
+    const double *latitudes, const double *longitudes,
+    const int *point_counts, int polyline_count, double corridor_margin_nm,
+    int fine_tile_halo, const PlugInSegmentSafetyOptions *options,
     PlugInSegmentSafetyResult *result);
 
 /**

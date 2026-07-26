@@ -4591,6 +4591,8 @@ const char* SegmentSafetyStatusName(int status) {
       return "TOO_SHALLOW";
     case PI_SEGMENT_SAFETY_UNKNOWN_DEPTH:
       return "UNKNOWN_DEPTH";
+    case PI_SEGMENT_SAFETY_PENDING_DATA:
+      return "PENDING_DATA";
     default:
       return "UNKNOWN";
   }
