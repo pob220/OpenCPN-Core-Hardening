@@ -1466,6 +1466,8 @@ std::map<std::string, CachedPointSafetyGridTile> s_segment_safety_grid_cache;
 std::set<std::string> s_segment_safety_pinned_grid_keys;
 std::map<std::string, CachedPointSafetyGridTile>
     s_segment_safety_persistent_base_tile_cache;
+PlugInSegmentSafetyTileCacheCallbacks
+    s_segment_safety_external_tile_cache = {};
 
 uint16_t SegmentSafetyPointHazardFlags(SegmentSafetyPointClass point_class) {
   switch (point_class) {
@@ -2446,30 +2448,44 @@ wxString SegmentSafetyChartIdentity() {
 void SegmentSafetyRefreshPersistentChartIdentity() {
   if (!wxThread::IsMain()) return;
   wxString identity = SegmentSafetyChartIdentity();
-  wxMutexLocker lock(s_segment_safety_cache_mutex);
-  if (identity != s_segment_safety_chart_identity) {
-    wxLogMessage("WR_CERT_SAFE_CACHE chart_identity old=\"%s\" new=\"%s\"",
-                 s_segment_safety_chart_identity, identity);
-    s_segment_safety_chart_identity = identity;
-    // Every classification and derived proof is chart-set specific.  Clear
-    // session state as well as pending persistent data when the chart
-    // identity changes so stale tiles cannot survive a chart database update.
-    s_segment_safety_land_cache.clear();
-    s_segment_safety_hazard_snapshot.reset();
-    s_segment_safety_point_cache.clear();
-    s_segment_safety_grid_cache.clear();
-    s_segment_safety_route_mask_cache.clear();
-    s_segment_safety_coarse_route_mask_cache.clear();
-    s_segment_safety_segment_cache.clear();
-    s_segment_safety_pinned_grid_keys.clear();
-    s_segment_safety_pinned_route_mask_keys.clear();
-    s_segment_safety_persistent_base_tile_cache.clear();
-    s_segment_safety_persistent_certified_safe_cache.clear();
-    s_segment_safety_persistent_cache_loaded = false;
-    s_segment_safety_persistent_base_tiles_loaded = false;
-    s_segment_safety_persistent_cache_dirty = false;
-    s_segment_safety_persistent_base_tiles_dirty = false;
-    s_segment_safety_persistent_tiles_since_checkpoint = 0;
+  PlugInSegmentSafetyTileCacheIdentityFn identity_callback = nullptr;
+  void* identity_context = nullptr;
+  {
+    wxMutexLocker lock(s_segment_safety_cache_mutex);
+    if (identity != s_segment_safety_chart_identity) {
+      wxLogMessage("WR_CERT_SAFE_CACHE chart_identity old=\"%s\" new=\"%s\"",
+                   s_segment_safety_chart_identity, identity);
+      s_segment_safety_chart_identity = identity;
+      // Every classification and derived proof is chart-set specific. Clear
+      // session state as well as pending persistent data when the chart
+      // identity changes so stale tiles cannot survive a chart database
+      // update.
+      s_segment_safety_land_cache.clear();
+      s_segment_safety_hazard_snapshot.reset();
+      s_segment_safety_point_cache.clear();
+      s_segment_safety_grid_cache.clear();
+      s_segment_safety_route_mask_cache.clear();
+      s_segment_safety_coarse_route_mask_cache.clear();
+      s_segment_safety_segment_cache.clear();
+      s_segment_safety_pinned_grid_keys.clear();
+      s_segment_safety_pinned_route_mask_keys.clear();
+      s_segment_safety_persistent_base_tile_cache.clear();
+      s_segment_safety_persistent_certified_safe_cache.clear();
+      s_segment_safety_persistent_cache_loaded = false;
+      s_segment_safety_persistent_base_tiles_loaded = false;
+      s_segment_safety_persistent_cache_dirty = false;
+      s_segment_safety_persistent_base_tiles_dirty = false;
+      s_segment_safety_persistent_tiles_since_checkpoint = 0;
+      identity_callback =
+          s_segment_safety_external_tile_cache.identity_changed;
+      identity_context = s_segment_safety_external_tile_cache.context;
+    }
+  }
+  // Plugin callbacks may perform disk I/O and use their own mutex. Never call
+  // them while holding the host cache mutex.
+  if (identity_callback) {
+    wxCharBuffer utf8 = identity.ToUTF8();
+    identity_callback(identity_context, utf8.data() ? utf8.data() : "");
   }
 }
 
@@ -3300,41 +3316,184 @@ CachedPointSafetyGridTile BuildSegmentSafetyGridTile(
     double lat, double lon, long lat_tile, long lon_tile,
     SegmentSafetyCoreStats* stats, bool require_depth);
 
+bool SegmentSafetyExternalTileCacheLookup(
+    long lat_tile, long lon_tile, bool require_depth,
+    CachedPointSafetyGridTile* result) {
+  if (!result || !wxThread::IsMain()) return false;
+  PlugInSegmentSafetyTileCacheCallbacks callbacks = {};
+  {
+    wxMutexLocker lock(s_segment_safety_cache_mutex);
+    callbacks = s_segment_safety_external_tile_cache;
+  }
+  if (!callbacks.lookup) return false;
+
+  const int side = static_cast<int>(
+                       lround(kSegmentSafetyGridTileDegrees /
+                              kSegmentSafetyGridResolutionDegrees)) +
+                   1;
+  const int cells = side * side;
+  CachedPointSafetyGridTile tile;
+  tile.hazard_flags.resize(cells);
+  tile.has_depth.resize(cells);
+  tile.min_depth_m.resize(cells);
+  PlugInSegmentSafetyTile external = {};
+  external.struct_size = sizeof(external);
+  external.group_index = SegmentSafetyCurrentGroupIndex();
+  external.lat_tile = lat_tile;
+  external.lon_tile = lon_tile;
+  external.resolution = kSegmentSafetyGridResolutionDegrees;
+  external.rows = side;
+  external.cols = side;
+  external.hazard_flags = tile.hazard_flags.data();
+  external.has_depth = tile.has_depth.data();
+  external.min_depth_m = tile.min_depth_m.data();
+  external.cell_capacity = cells;
+  if (!callbacks.lookup(callbacks.context, lat_tile, lon_tile,
+                        require_depth ? 1 : 0, &external))
+    return false;
+
+  const uint16_t valid_hazards =
+      SEGMENT_SAFETY_HAZARD_LAND | SEGMENT_SAFETY_HAZARD_DRYING |
+      SEGMENT_SAFETY_HAZARD_NO_CHART | SEGMENT_SAFETY_HAZARD_UNKNOWN_CLASS;
+  if (external.group_index != SegmentSafetyCurrentGroupIndex() ||
+      external.lat_tile != lat_tile || external.lon_tile != lon_tile ||
+      external.rows != side || external.cols != side ||
+      external.cell_capacity < cells ||
+      fabs(external.resolution - kSegmentSafetyGridResolutionDegrees) >
+          1e-12 ||
+      external.source < PI_SEGMENT_SAFETY_SOURCE_NONE ||
+      external.source > PI_SEGMENT_SAFETY_SOURCE_GSHHS_FALLBACK ||
+      (external.hazard_summary_flags & ~valid_hazards) ||
+      (require_depth && !external.depth_complete))
+    return false;
+
+  tile.group_index = external.group_index;
+  tile.lat_tile = lat_tile;
+  tile.lon_tile = lon_tile;
+  tile.min_lat = lat_tile * kSegmentSafetyGridTileDegrees;
+  tile.min_lon = lon_tile * kSegmentSafetyGridTileDegrees;
+  tile.resolution = external.resolution;
+  tile.rows = external.rows;
+  tile.cols = external.cols;
+  tile.chart_db_index = external.chart_db_index;
+  tile.chart_scale = external.chart_scale;
+  tile.source =
+      static_cast<PlugInSegmentSafetySource>(external.source);
+  tile.hazard_summary_flags = external.hazard_summary_flags;
+  tile.depth_complete = external.depth_complete != 0;
+  strncpy(tile.chart_path, external.chart_path, sizeof(tile.chart_path) - 1);
+  tile.chart_path[sizeof(tile.chart_path) - 1] = '\0';
+  tile.classes.resize(cells);
+  tile.has_drying.resize(cells);
+  tile.land_count = tile.water_count = tile.drying_count =
+      tile.unknown_count = 0;
+  for (int i = 0; i < cells; ++i) {
+    const uint16_t hazards = tile.hazard_flags[i];
+    if ((hazards & ~valid_hazards) || tile.has_depth[i] > 1 ||
+        (tile.has_depth[i] && !std::isfinite(tile.min_depth_m[i])))
+      return false;
+    if (hazards & SEGMENT_SAFETY_HAZARD_LAND) {
+      tile.classes[i] = SEGMENT_SAFETY_POINT_LAND;
+      ++tile.land_count;
+    } else if (hazards & SEGMENT_SAFETY_HAZARD_DRYING) {
+      tile.classes[i] = SEGMENT_SAFETY_POINT_DRYING;
+      ++tile.drying_count;
+    } else if (hazards & (SEGMENT_SAFETY_HAZARD_NO_CHART |
+                          SEGMENT_SAFETY_HAZARD_UNKNOWN_CLASS)) {
+      tile.classes[i] = SEGMENT_SAFETY_POINT_NO_DATA;
+      ++tile.unknown_count;
+    } else {
+      tile.classes[i] = SEGMENT_SAFETY_POINT_WATER;
+      ++tile.water_count;
+    }
+    tile.has_drying[i] =
+        (hazards & SEGMENT_SAFETY_HAZARD_DRYING) ? 1 : 0;
+  }
+  tile.built = true;
+  tile.persistent_loaded = true;
+  *result = tile;
+  return true;
+}
+
+void SegmentSafetyExternalTileCacheStore(
+    const CachedPointSafetyGridTile& tile) {
+  if (!tile.built || tile.persistent_loaded || !wxThread::IsMain()) return;
+  PlugInSegmentSafetyTileCacheCallbacks callbacks = {};
+  {
+    wxMutexLocker lock(s_segment_safety_cache_mutex);
+    callbacks = s_segment_safety_external_tile_cache;
+  }
+  if (!callbacks.store) return;
+  const size_t cells = static_cast<size_t>(tile.rows) * tile.cols;
+  if (!cells || tile.hazard_flags.size() != cells ||
+      tile.has_depth.size() != cells || tile.min_depth_m.size() != cells)
+    return;
+  PlugInSegmentSafetyTile external = {};
+  external.struct_size = sizeof(external);
+  external.group_index = tile.group_index;
+  external.lat_tile = tile.lat_tile;
+  external.lon_tile = tile.lon_tile;
+  external.resolution = tile.resolution;
+  external.rows = tile.rows;
+  external.cols = tile.cols;
+  external.chart_db_index = tile.chart_db_index;
+  external.chart_scale = tile.chart_scale;
+  external.source = tile.source;
+  external.hazard_summary_flags = tile.hazard_summary_flags;
+  external.depth_complete = tile.depth_complete ? 1 : 0;
+  const size_t chart_path_size =
+      strnlen(tile.chart_path, sizeof(external.chart_path) - 1);
+  memcpy(external.chart_path, tile.chart_path, chart_path_size);
+  external.chart_path[chart_path_size] = '\0';
+  external.hazard_flags =
+      const_cast<unsigned short*>(tile.hazard_flags.data());
+  external.has_depth =
+      const_cast<unsigned char*>(tile.has_depth.data());
+  external.min_depth_m = const_cast<float*>(tile.min_depth_m.data());
+  external.cell_capacity = static_cast<int>(cells);
+  callbacks.store(callbacks.context, &external);
+}
+
 void StoreSegmentSafetyGridTile(const std::string& key,
                                 const CachedPointSafetyGridTile& tile) {
-  wxMutexLocker lock(s_segment_safety_cache_mutex);
-  if (s_segment_safety_grid_cache.find(key) ==
-      s_segment_safety_grid_cache.end()) {
-    while (s_segment_safety_grid_cache.size() >= kMaxSegmentSafetyGridTiles) {
-      std::map<std::string, CachedPointSafetyGridTile>::iterator victim =
-          s_segment_safety_grid_cache.end();
-      for (std::map<std::string, CachedPointSafetyGridTile>::iterator it =
-               s_segment_safety_grid_cache.begin();
-           it != s_segment_safety_grid_cache.end(); ++it) {
-        if (s_segment_safety_pinned_grid_keys.find(it->first) ==
-            s_segment_safety_pinned_grid_keys.end()) {
-          victim = it;
-          break;
+  {
+    wxMutexLocker lock(s_segment_safety_cache_mutex);
+    if (s_segment_safety_grid_cache.find(key) ==
+        s_segment_safety_grid_cache.end()) {
+      while (s_segment_safety_grid_cache.size() >=
+             kMaxSegmentSafetyGridTiles) {
+        std::map<std::string, CachedPointSafetyGridTile>::iterator victim =
+            s_segment_safety_grid_cache.end();
+        for (std::map<std::string, CachedPointSafetyGridTile>::iterator it =
+                 s_segment_safety_grid_cache.begin();
+             it != s_segment_safety_grid_cache.end(); ++it) {
+          if (s_segment_safety_pinned_grid_keys.find(it->first) ==
+              s_segment_safety_pinned_grid_keys.end()) {
+            victim = it;
+            break;
+          }
         }
+        if (victim == s_segment_safety_grid_cache.end()) break;
+        s_segment_safety_grid_cache.erase(victim);
+        ++s_segment_safety_grid_cache_evictions;
       }
-      if (victim == s_segment_safety_grid_cache.end()) break;
-      s_segment_safety_grid_cache.erase(victim);
-      ++s_segment_safety_grid_cache_evictions;
+    }
+    s_segment_safety_grid_cache[key] = tile;
+    if (s_segment_safety_persistent_cache_enabled && tile.built &&
+        !tile.persistent_loaded) {
+      // Compatibility store for older plugins which use the host-owned
+      // persistent cache. New weather-routing builds register an external
+      // plugin-owned tile cache instead.
+      s_segment_safety_persistent_base_tile_cache[key] = tile;
+      while (s_segment_safety_persistent_base_tile_cache.size() >
+             kMaxSegmentSafetyPersistentGridTiles)
+        s_segment_safety_persistent_base_tile_cache.erase(
+            s_segment_safety_persistent_base_tile_cache.begin());
+      s_segment_safety_persistent_base_tiles_dirty = true;
+      ++s_segment_safety_persistent_tiles_since_checkpoint;
     }
   }
-  s_segment_safety_grid_cache[key] = tile;
-  if (s_segment_safety_persistent_cache_enabled && tile.built &&
-      !tile.persistent_loaded) {
-    // Insert immediately into the durable working set.  A hot-cache eviction
-    // before the next checkpoint must not throw away expensive chart work.
-    s_segment_safety_persistent_base_tile_cache[key] = tile;
-    while (s_segment_safety_persistent_base_tile_cache.size() >
-           kMaxSegmentSafetyPersistentGridTiles)
-      s_segment_safety_persistent_base_tile_cache.erase(
-          s_segment_safety_persistent_base_tile_cache.begin());
-    s_segment_safety_persistent_base_tiles_dirty = true;
-    ++s_segment_safety_persistent_tiles_since_checkpoint;
-  }
+  SegmentSafetyExternalTileCacheStore(tile);
 }
 
 bool LookupSegmentSafetyGridTile(const std::string& key,
@@ -3396,6 +3555,14 @@ bool EnsureSegmentSafetyGridTile(long lat_tile, long lon_tile,
           lon_tile * kSegmentSafetyGridTileDegrees);
     }
     return false;
+  }
+
+  CachedPointSafetyGridTile external_tile;
+  if (SegmentSafetyExternalTileCacheLookup(
+          lat_tile, lon_tile, require_depth, &external_tile)) {
+    StoreSegmentSafetyGridTile(key, external_tile);
+    if (stats) ++stats->grid_cache_hits;
+    return true;
   }
 
   if (s_segment_safety_persistent_cache_enabled) {
@@ -3700,6 +3867,13 @@ bool LoadSegmentSafetyGridTileWithoutBuilding(long lat_tile, long lon_tile,
   const std::string key =
       SegmentSafetyGridTileKeyForIndices(lat_tile, lon_tile);
   if (LookupSegmentSafetyGridTile(key, tile)) return true;
+  CachedPointSafetyGridTile external;
+  if (SegmentSafetyExternalTileCacheLookup(lat_tile, lon_tile, false,
+                                           &external)) {
+    StoreSegmentSafetyGridTile(key, external);
+    if (tile) *tile = external;
+    return true;
+  }
   if (!s_segment_safety_persistent_cache_enabled) return false;
 
   SegmentSafetyPersistentCacheEnsureLoaded();
@@ -5400,6 +5574,7 @@ bool SegmentSafetyRouteMaskTraversalCheck(
 
   bool any_chart_data = false;
   bool all_clear = true;
+  bool missing_mask = false;
   PlugInSegmentSafetySource first_source = PI_SEGMENT_SAFETY_SOURCE_NONE;
 
   long x = x0;
@@ -5410,18 +5585,23 @@ bool SegmentSafetyRouteMaskTraversalCheck(
     if (!SegmentSafetyRouteMaskCellAt(y, x, safety_margin_nm, check_depth,
                                       minimum_depth_m, force_authoritative_fine,
                                       stats, result, &flags, &source)) {
-      if (answered) *answered = false;
-      return false;
-    }
-    any_chart_data = true;
-    if (first_source == PI_SEGMENT_SAFETY_SOURCE_NONE) first_source = source;
-    if (flags != SEGMENT_SAFETY_ROUTE_CLEAR) {
+      // Worker-side misses enqueue their exact mask tile.  Continue walking
+      // the segment so a single query publishes every missing tile instead
+      // of forcing one worker/GUI round trip per 0.05-degree boundary.  The
+      // query still fails closed below until all samples are available.
+      missing_mask = true;
       all_clear = false;
-      if (chart_data_available) *chart_data_available = true;
-      if (answered) *answered = true;
-      SegmentSafetySetRouteMaskHitResult(result, flags, source, y, x, (int)i,
-                                         (int)steps);
-      return true;
+    } else {
+      any_chart_data = true;
+      if (first_source == PI_SEGMENT_SAFETY_SOURCE_NONE) first_source = source;
+      if (flags != SEGMENT_SAFETY_ROUTE_CLEAR) {
+        all_clear = false;
+        if (chart_data_available) *chart_data_available = true;
+        if (answered) *answered = true;
+        SegmentSafetySetRouteMaskHitResult(result, flags, source, y, x, (int)i,
+                                           (int)steps);
+        return true;
+      }
     }
 
     if (x == x1 && y == y1) break;
@@ -5434,6 +5614,11 @@ bool SegmentSafetyRouteMaskTraversalCheck(
       err += dx;
       y += sy;
     }
+  }
+
+  if (missing_mask) {
+    if (answered) *answered = false;
+    return false;
   }
 
   if (any_chart_data) {
@@ -6348,9 +6533,15 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
     // timer wake-up per 0.05-degree tile.  Populate the immediately adjacent
     // exact masks while the chart is already active on the main thread.  This
     // changes only scheduling/cache locality: every neighbour is built by the
-    // same authoritative code as an on-demand request.  Keep independent
+    // same authoritative code as an on-demand request.  Do not fan out from
+    // an all-blocked centre tile: propagation cannot continue through it, and
+    // prefetching eight more inland tiles was pure work.  Keep independent
     // force-fine validation demand-only to avoid speculative validation work.
-    if (ok && !request.force_authoritative_fine) {
+    CachedSegmentSafetyRouteMaskTile centre_mask;
+    const bool useful_to_prefetch_neighbours =
+        ok && LookupSegmentSafetyRouteMaskTile(request.key, &centre_mask) &&
+        centre_mask.clear_count > 0;
+    if (useful_to_prefetch_neighbours && !request.force_authoritative_fine) {
       for (int dlat = -1; dlat <= 1; ++dlat) {
         for (int dlon = -1; dlon <= 1; ++dlon) {
           if (dlat == 0 && dlon == 0) continue;
@@ -7697,6 +7888,51 @@ void PlugIn_ReleaseSegmentSafetyRouteMaskPins() {
       (unsigned long)base_before, (unsigned long)base_after,
       (unsigned long)masks_before, (unsigned long)masks_after,
       s_segment_safety_grid_cache_evictions);
+}
+
+bool PlugIn_RegisterSegmentSafetyTileCache(
+    const PlugInSegmentSafetyTileCacheCallbacks* callbacks) {
+  if (!wxThread::IsMain()) return false;
+  wxString identity = SegmentSafetyChartIdentity();
+  PlugInSegmentSafetyTileCacheIdentityFn identity_callback = nullptr;
+  void* identity_context = nullptr;
+  {
+    wxMutexLocker lock(s_segment_safety_cache_mutex);
+    if (!callbacks) {
+      memset(&s_segment_safety_external_tile_cache, 0,
+             sizeof(s_segment_safety_external_tile_cache));
+      wxLogMessage("WR_PLUGIN_TILE_CACHE registered=0");
+      return true;
+    }
+    if (callbacks->struct_size <
+            static_cast<int>(
+                offsetof(PlugInSegmentSafetyTileCacheCallbacks,
+                         identity_changed) +
+                sizeof(callbacks->identity_changed)) ||
+        !callbacks->lookup || !callbacks->store)
+      return false;
+    s_segment_safety_external_tile_cache = *callbacks;
+    identity_callback = callbacks->identity_changed;
+    identity_context = callbacks->context;
+  }
+  if (identity_callback) {
+    wxCharBuffer utf8 = identity.ToUTF8();
+    identity_callback(identity_context, utf8.data() ? utf8.data() : "");
+  }
+  wxLogMessage(
+      "WR_PLUGIN_TILE_CACHE registered=1 identity=\"%s\" lookup=1 store=1",
+      identity);
+  return true;
+}
+
+bool PlugIn_GetSegmentSafetyChartIdentity(char* identity, int identity_size) {
+  if (!identity || identity_size <= 0 || !wxThread::IsMain()) return false;
+  wxString value = SegmentSafetyChartIdentity();
+  wxCharBuffer utf8 = value.ToUTF8();
+  const char* source = utf8.data() ? utf8.data() : "";
+  strncpy(identity, source, static_cast<size_t>(identity_size) - 1);
+  identity[identity_size - 1] = '\0';
+  return !value.IsEmpty();
 }
 
 bool PlugIn_SetSegmentSafetyPersistentCacheEnabled(int enabled) {
