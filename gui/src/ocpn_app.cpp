@@ -442,7 +442,17 @@ bool DoNavMessage(wxString &new_version_string) {
   //  Send the Welcome/warning message if it has never been sent before,
   //  or if the version string has changed at all
   //  We defer until here to allow for localization of the message
-  if (!n_NavMessageShown || (new_version_string != g_config_version_string)) {
+  // Automated Weather Routing scenarios are non-interactive and must not
+  // enter this modal event loop while OpenCPN is still constructing core
+  // navigation managers. The disclaimer remains unchanged for every normal
+  // OpenCPN launch.
+  const char* weather_routing_headless =
+      getenv("WR_HEADLESS_ROUTE_TEST");
+  if (weather_routing_headless && *weather_routing_headless) {
+    n_NavMessageShown = 1;
+    wxLogMessage("WR_HEADLESS_ROUTE_TEST startup disclaimer suppressed");
+  } else if (!n_NavMessageShown ||
+             (new_version_string != g_config_version_string)) {
     if (!ShowNavWarning()) return false;
     n_NavMessageShown = 1;
     pConfig->Flush();

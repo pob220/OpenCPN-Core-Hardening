@@ -3616,6 +3616,64 @@ struct PlugInSegmentSafetyRequestServiceResult {
   int elapsed_ms;
 };
 
+/**
+ * Exact authoritative chart-safety base tile exchanged with an optional
+ * plugin-owned cache.
+ *
+ * The caller owns all pointed-to arrays. cell_capacity must be at least
+ * rows*cols. Cache implementations must preserve the complete payload and
+ * return false for malformed, stale or insufficiently deep entries.
+ */
+struct PlugInSegmentSafetyTile {
+  int struct_size;
+  int group_index;
+  long lat_tile;
+  long lon_tile;
+  double resolution;
+  int rows;
+  int cols;
+  int chart_db_index;
+  int chart_scale;
+  int source;
+  unsigned int hazard_summary_flags;
+  int depth_complete;
+  char chart_path[256];
+  unsigned short *hazard_flags;
+  unsigned char *has_depth;
+  float *min_depth_m;
+  int cell_capacity;
+};
+
+typedef int (*PlugInSegmentSafetyTileCacheLookupFn)(
+    void *context, long lat_tile, long lon_tile, int require_depth,
+    PlugInSegmentSafetyTile *tile);
+typedef void (*PlugInSegmentSafetyTileCacheStoreFn)(
+    void *context, const PlugInSegmentSafetyTile *tile);
+typedef void (*PlugInSegmentSafetyTileCacheIdentityFn)(
+    void *context, const char *identity);
+
+struct PlugInSegmentSafetyTileCacheCallbacks {
+  int struct_size;
+  void *context;
+  PlugInSegmentSafetyTileCacheLookupFn lookup;
+  PlugInSegmentSafetyTileCacheStoreFn store;
+  PlugInSegmentSafetyTileCacheIdentityFn identity_changed;
+};
+
+/**
+ * Registers a plugin-owned RAM/persistent cache for authoritative base tiles.
+ *
+ * OpenCPN retains chart parsing and classification authority. The plugin owns
+ * cache capacity, persistence and recovery. Pass NULL to unregister before
+ * unloading the plugin.
+ */
+extern "C" DECL_EXP bool PlugIn_RegisterSegmentSafetyTileCache(
+    const PlugInSegmentSafetyTileCacheCallbacks *callbacks);
+
+/** Copies the exact current chart-database identity into caller storage. */
+extern "C" DECL_EXP bool PlugIn_GetSegmentSafetyChartIdentity(
+    char *identity, int identity_size);
+
 extern "C" DECL_EXP bool PlugIn_CheckSegmentSafety(
     double lat1, double lon1, double lat2, double lon2,
     const PlugInSegmentSafetyOptions *options,
