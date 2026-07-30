@@ -761,11 +761,6 @@ bool PlugIn_GSHHS_CrossesLand(double lat1, double lon1, double lat2,
   //   return gShapeBasemap.CrossesLand(lat1, lon1, lat2, lon2);
   // } else {
   //  Fall back to the GSHHS data.
-  static bool loaded = false;
-  if (!loaded) {
-    gshhsCrossesLandInit();
-    loaded = true;
-  }
   return gshhsCrossesLand(lat1, lon1, lat2, lon2);
   //}
 }
@@ -6612,6 +6607,107 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
         pending_after, timer.Time());
   }
   return failed == 0;
+}
+
+bool PlugIn_PrewarmSegmentSafetyRawTiles(
+    const long* lat_tiles, const long* lon_tiles, int tile_count,
+    int require_depth, PlugInSegmentSafetyResult* result) {
+  wxStopWatch timer;
+  InitSegmentSafetyResult(result);
+  if (!wxThread::IsMain() || !ChartData) {
+    SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_NO_DATA);
+    SetSegmentSafetyMessage(
+        result, wxThread::IsMain()
+                    ? "chart database unavailable for raw tile extraction"
+                    : "raw chart tile extraction is main-thread only");
+    return false;
+  }
+  if (result && result->struct_size < (int)sizeof(int)) return false;
+  if (!lat_tiles || !lon_tiles || tile_count <= 0 || tile_count > 1000000) {
+    SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_ERROR);
+    SetSegmentSafetyMessage(result, "invalid raw chart tile request");
+    return false;
+  }
+
+  SegmentSafetyRefreshPersistentChartIdentity();
+  SegmentSafetyPersistentCacheEnsureLoaded();
+  std::set<std::pair<long, long> > tiles;
+  for (int index = 0; index < tile_count; ++index)
+    tiles.insert(std::make_pair(lat_tiles[index], lon_tiles[index]));
+
+  {
+    wxMutexLocker lock(s_segment_safety_cache_mutex);
+    for (std::set<std::pair<long, long> >::const_iterator it = tiles.begin();
+         it != tiles.end(); ++it)
+      s_segment_safety_pinned_grid_keys.insert(
+          SegmentSafetyGridTileKeyForIndices(it->first, it->second));
+  }
+
+  SegmentSafetyCoreStats stats;
+  long built_tiles = 0;
+  long reused_tiles = 0;
+  long failed_tiles = 0;
+  PlugInSegmentSafetySource source = PI_SEGMENT_SAFETY_SOURCE_NONE;
+  for (std::set<std::pair<long, long> >::const_iterator it = tiles.begin();
+       it != tiles.end(); ++it) {
+    bool built = false;
+    if (!EnsureSegmentSafetyGridTile(it->first, it->second, &stats, &built,
+                                     require_depth != 0)) {
+      ++failed_tiles;
+      continue;
+    }
+    CachedPointSafetyGridTile tile;
+    if (!LookupSegmentSafetyGridTile(
+            SegmentSafetyGridTileKeyForIndices(it->first, it->second),
+            &tile) ||
+        !tile.built || (require_depth && !tile.depth_complete)) {
+      ++failed_tiles;
+      continue;
+    }
+    // An already-hot host tile might predate plugin cache registration.
+    // Republish it so the caller always owns a complete immutable snapshot.
+    SegmentSafetyExternalTileCacheStore(tile);
+    if (source == PI_SEGMENT_SAFETY_SOURCE_NONE) source = tile.source;
+    if (built)
+      ++built_tiles;
+    else
+      ++reused_tiles;
+  }
+
+  if (result) {
+    SetSegmentSafetyStatus(result, failed_tiles == 0
+                                       ? PI_SEGMENT_SAFETY_SAFE
+                                       : PI_SEGMENT_SAFETY_NO_DATA);
+    SetSegmentSafetySource(result, source);
+    SetSegmentSafetyDiagnosticReason(
+        result, failed_tiles == 0
+                    ? PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR
+                    : PI_SEGMENT_SAFETY_DIAG_NO_CANDIDATE_CHART);
+    SetSegmentSafetyMessage(
+        result, failed_tiles == 0
+                    ? "raw chart classification tiles published to plugin"
+                    : "one or more raw chart tiles could not be extracted");
+    ApplySegmentSafetyStats(result, stats);
+    if (result->struct_size >=
+        (int)(offsetof(PlugInSegmentSafetyResult, prewarm_fine_tiles_avoided) +
+              sizeof(result->prewarm_fine_tiles_avoided))) {
+      result->prewarm_requested_tiles = static_cast<int>(tiles.size());
+      result->prewarm_base_tiles_built = static_cast<int>(built_tiles);
+      result->prewarm_base_tiles_reused = static_cast<int>(reused_tiles);
+      result->prewarm_masks_built = 0;
+      result->prewarm_masks_reused = 0;
+      result->prewarm_fine_tiles_avoided = 0;
+    }
+  }
+  wxLogMessage(
+      "WR_RAW_TILE_PREWARM requested=%lu built=%ld reused=%ld failed=%ld "
+      "require_depth=%d elapsed_ms=%ld cells=%d land=%d water=%d drying=%d "
+      "unknown=%d ownership=weather-routing-plugin",
+      static_cast<unsigned long>(tiles.size()), built_tiles, reused_tiles,
+      failed_tiles, require_depth ? 1 : 0, timer.Time(),
+      stats.grid_cells_total, stats.grid_cells_land, stats.grid_cells_water,
+      stats.grid_cells_drying, stats.grid_cells_unknown);
+  return failed_tiles == 0;
 }
 
 bool PlugIn_PrewarmSegmentSafetyHazardSnapshot(

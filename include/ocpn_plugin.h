@@ -3680,6 +3680,16 @@ extern "C" DECL_EXP bool PlugIn_CheckSegmentSafety(
     PlugInSegmentSafetyResult *result);
 
 /**
+ * Materializes exact immutable base-classification tiles requested by a
+ * plugin.  OpenCPN performs chart-format-specific extraction on the main
+ * thread and publishes each tile through the registered cache callbacks; all
+ * route geometry, derived masks and worker queries remain plugin-owned.
+ */
+extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyRawTiles(
+    const long *lat_tiles, const long *lon_tiles, int tile_count,
+    int require_depth, PlugInSegmentSafetyResult *result);
+
+/**
  * Builds an immutable, best-available-chart hazard snapshot for an area.
  *
  * Snapshot construction is main-thread only.  Worker segment checks may use
