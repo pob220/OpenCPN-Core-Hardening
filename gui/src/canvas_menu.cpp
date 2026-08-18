@@ -1560,7 +1560,6 @@ void CanvasMenuHandler::PopupMenuHandler(wxCommandEvent &event) {
 
         if (m_pSelectedRoute->m_bIsInLayer) break;
 
-        NavObj_dB::GetInstance().DeleteRoute(m_pSelectedRoute);
         if (!g_pRouteMan->DeleteRoute(m_pSelectedRoute)) break;
 
         if (RouteManagerDialog::getInstanceFlag()) {
@@ -1687,8 +1686,6 @@ void CanvasMenuHandler::PopupMenuHandler(wxCommandEvent &event) {
 
       pRouteList->push_back(m_pTail);
       NavObj_dB::GetInstance().InsertRoute(m_pTail);
-
-      NavObj_dB::GetInstance().DeleteRoute(m_pSelectedRoute);
 
       pSelect->DeleteAllSelectableRoutePoints(m_pSelectedRoute);
       pSelect->DeleteAllSelectableRouteSegments(m_pSelectedRoute);

@@ -829,7 +829,6 @@ bool Routeman::DeleteRoute(Route *pRoute) {
           }
 
           pnode = list->end();
-          NavObj_dB::GetInstance().DeleteRoutePoint(prp);
           delete prp;
         } else {
           prp->m_bIsolatedMark = true;  // This has become an isolated mark

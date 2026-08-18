@@ -33,6 +33,7 @@
 #include "model/base_platform.h"
 #include "model/comm_appmsg_bus.h"
 #include "model/navobj_db.h"
+#include "model/navobj_db_transaction.h"
 #include "model/navobj_db_util.h"
 #include "model/navutil_base.h"
 #include "model/notification.h"
@@ -509,18 +510,6 @@ bool InsertRoutePointLink(sqlite3* db, Route* route, RoutePoint* point,
     return false;
   }
   return true;
-}
-
-void DeleteOrphanedRoutepoint(sqlite3* db) {
-  const char* sql = R"(
-        DELETE FROM routepoints
-        WHERE guid NOT IN (SELECT point_guid FROM routepoints_link)
-    )";
-  char* errMsg = nullptr;
-
-  if (sqlite3_exec(db, sql, nullptr, nullptr, &errMsg) != SQLITE_OK) {
-  } else {
-  }
 }
 
 void errorLogCallback(void* pArg, int iErrCode, const char* zMsg) {
@@ -1588,19 +1577,9 @@ bool NavObj_dB::UpdateDBRoutePointViz(RoutePoint* point) {
 bool NavObj_dB::DeleteRoute(Route* route) {
   if (m_importing) return false;
   if (!route) return false;
-  std::string route_guid = route->m_GUID.ToStdString();
-  const char* sql = "DELETE FROM routes WHERE guid = ?";
-  sqlite3_stmt* stmt;
-
-  if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-    sqlite3_bind_text(stmt, 1, route_guid.c_str(), -1, SQLITE_TRANSIENT);
-    if (sqlite3_step(stmt) != SQLITE_DONE) {
-      ReportError("DeleteRoute:step");
-      sqlite3_finalize(stmt);
-      return false;
-    }
-    sqlite3_finalize(stmt);
-  } else {
+  if (!navobj_db::DeleteRouteAndOrphanedPoints(m_db,
+                                               route->m_GUID.ToStdString())) {
+    ReportError("DeleteRoute:transaction");
     return false;
   }
   return true;
@@ -1794,7 +1773,9 @@ bool NavObj_dB::LoadAllRoutes() {
       if (existing_point) {
         point = existing_point;
         if (!b_closed_route) {
-          point->SetShared(true);  // by definition, unless point is a closer.
+          // Shared is the persisted keep-on-route-delete policy, not a route
+          // reference count. The point already carries the database value
+          // loaded with its first route, so do not derive it from membership.
           point->m_bIsolatedMark = false;
         }
       } else {

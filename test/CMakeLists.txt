@@ -48,6 +48,7 @@ set(SRC
   datetime_tests.cpp
   external_api_tests.cpp
   tests.cpp filter_tests.cpp
+  navobj_db_transaction_tests.cpp
   renderer_config_tests.cpp
   navutil_base_tests.cpp
   route_point_tests.cpp

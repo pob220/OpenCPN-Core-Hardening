@@ -1435,7 +1435,6 @@ void RouteManagerDialog::OnRteDeleteClick(wxCommandEvent &event) {
     }
     for (Route *route : list) {
       if (route) {
-        NavObj_dB::GetInstance().DeleteRoute(route);
         g_pRouteMan->DeleteRoute(route);
       }
     }
