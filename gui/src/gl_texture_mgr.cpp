@@ -757,21 +757,7 @@ glTextureManager::glTextureManager() {
 
 glTextureManager::~glTextureManager() {
   m_timer.Stop();
-  PurgeJobList();
-
-  // Workers post raw ticket pointers back to this event handler. Drain them
-  // before deleting either the tickets or the handler, then discard the now
-  // stale completion/progress events they queued.
-  for (JobTicket *ticket : running_list) {
-    if (ticket->pthread) {
-      ticket->pthread->Wait();
-      delete ticket->pthread;
-      ticket->pthread = nullptr;
-    }
-  }
-  DeletePendingEvents();
-  for (JobTicket *ticket : running_list) delete ticket;
-  running_list.clear();
+  ClearAllRasterTextures(true);
 
   for (int i = 0; i < m_max_jobs; i++) {
     auto it = progList.begin();
@@ -1173,10 +1159,27 @@ void glTextureManager::ClearJobList() {
   todo_list.clear();
 }
 
-void glTextureManager::ClearAllRasterTextures() {
+void glTextureManager::WaitForRunningJobs() {
+  // Workers post raw ticket pointers back to this event handler. Drain them
+  // before deleting either the tickets or the state they can access, then
+  // discard the now-stale completion/progress events they queued.
+  for (JobTicket *ticket : running_list) {
+    if (ticket->pthread) {
+      ticket->pthread->Wait();
+      delete ticket->pthread;
+      ticket->pthread = nullptr;
+    }
+  }
+  DeletePendingEvents();
+  for (JobTicket *ticket : running_list) delete ticket;
+  running_list.clear();
+}
+
+void glTextureManager::ClearAllRasterTextures(bool wait_for_jobs) {
   // Cancel outstanding work before removing manager ownership. Running
   // tickets retain their factory until the worker completion is handled.
   PurgeJobList();
+  if (wait_for_jobs) WaitForRunningJobs();
   m_chart_texfactory_hash.clear();
 }
 

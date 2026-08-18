@@ -465,67 +465,55 @@ wxArrayString GetChartDBDirArrayString() {
   return ChartData->GetChartDirArrayString();
 }
 
-int AddChartToDBInPlace(wxString& full_path, bool b_RefreshCanvas) {
-  // extract the path from the chart name
-  wxFileName fn(full_path);
-  wxString fdir = fn.GetPath();
-
-  bool bret = false;
-  if (ChartData) {
-    bret = ChartData->AddSingleChart(full_path);
-
-    if (bret) {
-      // Save to disk
-      pConfig->UpdateChartDirs(ChartData->GetChartDirArray());
-      ChartData->SaveBinary(ChartListFileName);
-
-      //  Completely reload the chart database, for a fresh start
-      ArrayOfCDI XnewChartDirArray;
-      pConfig->LoadChartDirArray(XnewChartDirArray);
-      delete ChartData;
-      ChartData = new ChartDB();
-      ChartData->LoadBinary(ChartListFileName, XnewChartDirArray);
-
-      // Update group contents
-      if (g_pGroupArray) ChartData->ApplyGroupArray(g_pGroupArray);
-
-      if (g_options && g_options->IsShown())
-        g_options->UpdateDisplayedChartDirList(ChartData->GetChartDirArray());
-
-      if (b_RefreshCanvas || !gFrame->GetPrimaryCanvas()->GetQuiltMode()) {
-        gFrame->ChartsRefresh();
-      }
-    }
+static bool PrepareChartCatalogueMutation() {
+  if (!wxThread::IsMain()) {
+    wxLogError("Chart catalogue changes must be made on the main thread");
+    return false;
   }
-  return bret;
+  if (!ChartData || !gFrame || ChartData->IsBusy()) return false;
+
+  // Canvases and texture workers hold objects derived from the current chart
+  // catalogue. Drop those borrows before changing indices or cached charts.
+  gFrame->InvalidateAllQuilts();
+#ifdef ocpnUSE_GL
+  if (g_glTextureManager) g_glTextureManager->ClearAllRasterTextures(true);
+#endif
+  ChartData->PurgeCache();
+  return true;
+}
+
+int AddChartToDBInPlace(wxString& full_path, bool b_RefreshCanvas) {
+  if (!PrepareChartCatalogueMutation()) return false;
+
+  const bool added = ChartData->AddSingleChart(full_path);
+  if (!added) return false;
+
+  // AddSingleChart may finish synchronously or may leave chart scanning to its
+  // worker pool. FinalizeChartUpdate persists and reloads canvases after the
+  // latter completes; crucially, it does so on this same ChartData instance.
+  pConfig->UpdateChartDirs(ChartData->GetChartDirArray());
+  if (g_pGroupArray) ChartData->ApplyGroupArray(g_pGroupArray);
+  if (g_options && g_options->IsShown())
+    g_options->UpdateDisplayedChartDirList(ChartData->GetChartDirArray());
+
+  if (!ChartData->IsBusy() &&
+      (b_RefreshCanvas || !gFrame->GetPrimaryCanvas()->GetQuiltMode()))
+    gFrame->ChartsRefresh();
+  return true;
 }
 
 int RemoveChartFromDBInPlace(wxString& full_path) {
-  bool bret = false;
-  if (ChartData) {
-    bret = ChartData->RemoveSingleChart(full_path);
+  if (!PrepareChartCatalogueMutation()) return false;
 
-    // Save to disk
-    pConfig->UpdateChartDirs(ChartData->GetChartDirArray());
-    ChartData->SaveBinary(ChartListFileName);
+  const bool removed = ChartData->RemoveSingleChart(full_path);
+  if (!removed) return false;
 
-    //  Completely reload the chart database, for a fresh start
-    ArrayOfCDI XnewChartDirArray;
-    pConfig->LoadChartDirArray(XnewChartDirArray);
-    delete ChartData;
-    ChartData = new ChartDB();
-    ChartData->LoadBinary(ChartListFileName, XnewChartDirArray);
-
-    // Update group contents
-    if (g_pGroupArray) ChartData->ApplyGroupArray(g_pGroupArray);
-
-    if (g_options && g_options->IsShown())
-      g_options->UpdateDisplayedChartDirList(ChartData->GetChartDirArray());
-
-    gFrame->ChartsRefresh();
-  }
-
-  return bret;
+  pConfig->UpdateChartDirs(ChartData->GetChartDirArray());
+  if (g_pGroupArray) ChartData->ApplyGroupArray(g_pGroupArray);
+  if (g_options && g_options->IsShown())
+    g_options->UpdateDisplayedChartDirList(ChartData->GetChartDirArray());
+  if (!ChartData->IsBusy()) gFrame->ChartsRefresh();
+  return true;
 }
 
 //---------------------------------------------------------------------------
