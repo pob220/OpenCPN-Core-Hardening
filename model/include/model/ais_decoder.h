@@ -24,9 +24,10 @@
 #ifndef AIS_DECODER_H_
 #define AIS_DECODER_H_
 
+#include <deque>
 #include <map>
-#include <unordered_map>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 #include <wx/datetime.h>
@@ -39,6 +40,7 @@
 
 #include "model/ais_bitstring.h"
 #include "model/ais_defs.h"
+#include "model/ais_safety_message.h"
 #include "model/ais_target_data.h"
 #include "model/comm_navmsg.h"
 #include "model/ocpn_types.h"
@@ -133,6 +135,9 @@ public:
   void DeletePersistentTrack(const Track *track);
   std::map<int, Track *> m_persistent_tracks;
   bool AIS_AlertPlaying() const { return m_bAIS_AlertPlaying; };
+  const std::deque<AisSafetyMessage> &GetSafetyMessages() const {
+    return m_safety_messages;
+  }
 
   /**
    * Notified when AIS user dialogs should update. Event contains an
@@ -154,6 +159,9 @@ public:
 
   /** A JSON message should be sent. Contains an AisTargetData* pointer. */
   obs::EventVar plugin_msg_evt;
+
+  /** A valid AIS message 14 was decoded. Contains an AisSafetyMessage. */
+  obs::EventVar safety_message;
 
 private:
   void OnTimerAIS(wxTimerEvent &event);
@@ -227,6 +235,7 @@ private:
   bool m_OK;
 
   std::shared_ptr<AisTargetData> m_pLatestTargetData;
+  std::deque<AisSafetyMessage> m_safety_messages;
 
   bool m_bAIS_Audio_Alert_On;
   wxTimer m_AIS_Audio_Alert_Timer;

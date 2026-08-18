@@ -39,10 +39,12 @@
 #include "gl_headers.h"  // Must be before anything including GL stuff
 
 #include "model/ais_decoder.h"
+#include "model/ais_safety_message.h"
 #include "model/ais_state_vars.h"
 #include "model/ais_target_data.h"
 #include "model/gui_vars.h"
 #include "model/navobj_db.h"
+#include "model/notification_manager.h"
 #include "model/route_point.h"
 
 #include "ais_info_gui.h"
@@ -59,6 +61,7 @@ wxDEFINE_EVENT(EVT_AIS_INFO, ObservedEvt);
 wxDEFINE_EVENT(EVT_AIS_NEW_TRACK, wxCommandEvent);
 wxDEFINE_EVENT(EVT_AIS_TOUCH, wxCommandEvent);
 wxDEFINE_EVENT(EVT_AIS_WP, wxCommandEvent);
+wxDEFINE_EVENT(EVT_AIS_SAFETY_MESSAGE, ObservedEvt);
 wxDEFINE_EVENT(SOUND_PLAYED_EVTYPE, wxCommandEvent);
 
 AisInfoGui *g_pAISGUI;  // global instance
@@ -127,6 +130,18 @@ AisInfoGui::AisInfoGui() {
   Bind(EVT_AIS_DEL_TRACK, [&](wxCommandEvent ev) {
     auto t = static_cast<MmsiProperties *>(ev.GetClientData());
     OnDeleteTrack(t);
+  });
+
+  ais_safety_message_listener.Listen(g_pAIS->safety_message, this,
+                                     EVT_AIS_SAFETY_MESSAGE);
+  Bind(EVT_AIS_SAFETY_MESSAGE, [&](ObservedEvt &ev) {
+    const auto message = obs::UnpackEvtPointer<AisSafetyMessage>(ev);
+    if (!message) return;
+    wxString heading = wxString::Format(
+        _("AIS safety broadcast from MMSI %09u"), message->source_mmsi);
+    NotificationManager::GetInstance().AddNotification(
+        NotificationSeverity::kWarning,
+        heading.ToStdString() + "\n" + message->text);
   });
 
   Bind(SOUND_PLAYED_EVTYPE,
