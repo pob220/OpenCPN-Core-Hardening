@@ -135,13 +135,28 @@ if (LINUX)
 endif ()
 
 include(GoogleTest)
-gtest_add_tests(TARGET tests)
-gtest_add_tests(TARGET buffer_tests)
+gtest_add_tests(TARGET tests TEST_LIST model_tests)
+gtest_add_tests(TARGET buffer_tests TEST_LIST buffer_tests_list)
+
+# Keep the default blocking test set deterministic and independent of host
+# services. Environment-dependent tests remain available using
+# `ctest --label-regex integration`.
+foreach(test_name IN LISTS model_tests)
+  if (test_name MATCHES
+      "^(IpcClient|RestServer|CanEnvironment|DriverProcessing|LogProcessing|Loopback)\\."
+  )
+    set_tests_properties("${test_name}" PROPERTIES LABELS integration)
+  else ()
+    set_tests_properties("${test_name}" PROPERTIES LABELS deterministic)
+  endif ()
+endforeach()
+set_tests_properties(${buffer_tests_list} PROPERTIES LABELS deterministic)
 
 if (LINUX AND NOT DEFINED ENV{FLATPAK_ID} AND NOT OCPN_DISTRO_BUILD)
   # We don't have a session bus available when testing flatpak
   # so these can just be run in native builds.
-  gtest_add_tests(TARGET ipc-srv-tests)
+  gtest_add_tests(TARGET ipc-srv-tests TEST_LIST ipc_server_tests)
+  set_tests_properties(${ipc_server_tests} PROPERTIES LABELS integration)
   # gtest_add_tests(TARGET dbus_tests)      dbus tests broken on wayland
 endif ()
 
@@ -173,7 +188,6 @@ if (UNIX)
   if (NOT "${ENABLE_SANITIZER}" STREQUAL "none")
     target_link_libraries(std-instance PRIVATE -fsanitize=${ENABLE_SANITIZER})
   endif ()
-  add_test(NAME tests COMMAND tests)
 endif ()
 
 # Create a batch file which can be used to add paths to downloaded

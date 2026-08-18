@@ -4,14 +4,23 @@ Provisionary Unittest README
 This directory contains a very small set of unit tests. They are hooked up
 in the overall OpenCPN build.
 
-Running the tests requires the ctest runner which comes with cmake. Other
-runners are available, but ctest seems to do the job.
+Running the tests requires the ctest runner which comes with cmake. Tests are
+split into a deterministic blocking set and integration tests which need host
+services such as D-Bus, SocketCAN or an OpenCPN IPC server.
 
 Build and run is basically about first running the ordinary build. After a
 successful build, tests are run using
 
     $ cd build
     $ cmake --build . --target=run-tests
+
+The same deterministic set can be run directly from the build root using
+
+    $ ctest --output-on-failure --label-regex deterministic
+
+Environment-dependent tests are available using
+
+    $ ctest --output-on-failure --label-regex integration
 
 On non-windows platforms, `make run-tests `can be used instead.
 
