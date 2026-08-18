@@ -2026,13 +2026,15 @@ bool AisDecoder::HandleN2K_129793(const N2000MsgPtr &n2k_msg) {
 //     Handle events from SignalK
 //----------------------------------------------------------------------------------
 void AisDecoder::HandleSignalK(const SignalKMsgPtr &sK_msg) {
+  if (!sK_msg) return;
+
   rapidjson::Document root;
 
   root.Parse(sK_msg->raw_message);
 
-  if (root.HasParseError()) return;
+  if (root.HasParseError() || !root.IsObject()) return;
 
-  if (root.HasMember("self")) {
+  if (root.HasMember("self") && root["self"].IsString()) {
     // m_signalk_selfid = "vessels." + (root["self"].AsString());
     m_signalk_selfid =
         (root["self"]
@@ -2148,9 +2150,11 @@ void AisDecoder::HandleSignalK(const SignalKMsgPtr &sK_msg) {
 
 void AisDecoder::handleUpdate(const std::shared_ptr<AisTargetData> &pTargetData,
                               bool bnewtarget, const rapidjson::Value &update) {
+  if (!update.IsObject()) return;
+
   wxString sfixtime = "";
 
-  if (update.HasMember("timestamp")) {
+  if (update.HasMember("timestamp") && update["timestamp"].IsString()) {
     sfixtime = update["timestamp"].GetString();
   }
   if (update.HasMember("values") && update["values"].IsArray()) {
@@ -2181,11 +2185,14 @@ void AisDecoder::handleUpdate(const std::shared_ptr<AisTargetData> &pTargetData,
 void AisDecoder::updateItem(const std::shared_ptr<AisTargetData> &pTargetData,
                             bool bnewtarget, const rapidjson::Value &item,
                             wxString &sfixtime) const {
-  if (item.HasMember("path") && item.HasMember("value")) {
+  if (item.IsObject() && item.HasMember("path") && item["path"].IsString() &&
+      item.HasMember("value")) {
     const wxString &update_path = item["path"].GetString();
     if (update_path == "navigation.position") {
-      if (item["value"].HasMember("latitude") &&
-          item["value"].HasMember("longitude")) {
+      if (item["value"].IsObject() && item["value"].HasMember("latitude") &&
+          item["value"]["latitude"].IsNumber() &&
+          item["value"].HasMember("longitude") &&
+          item["value"]["longitude"].IsNumber()) {
         wxDateTime now = wxDateTime::Now();
         now.MakeUTC();
         double lat = item["value"]["latitude"].GetDouble();
@@ -2216,22 +2223,24 @@ void AisDecoder::updateItem(const std::shared_ptr<AisTargetData> &pTargetData,
                item["value"].IsNumber()) {
       pTargetData->ROTAIS = 4.733 * sqrt(item["value"].GetDouble());
     } else if (update_path == "design.aisShipType") {
-      if (item["value"].HasMember("id")) {
+      if (item["value"].IsObject() && item["value"].HasMember("id") &&
+          item["value"]["id"].IsUint()) {
         if (!pTargetData->b_isDSCtarget) {
           pTargetData->ShipType = item["value"]["id"].GetUint();
         }
       }
     } else if (update_path == "atonType") {
-      if (item["value"].HasMember("id")) {
+      if (item["value"].IsObject() && item["value"].HasMember("id") &&
+          item["value"]["id"].IsUint()) {
         pTargetData->ShipType = item["value"]["id"].GetUint();
       }
-    } else if (update_path == "virtual") {
+    } else if (update_path == "virtual" && item["value"].IsBool()) {
       if (item["value"].GetBool()) {
         pTargetData->NavStatus = ATON_VIRTUAL;
       } else {
         pTargetData->NavStatus = ATON_REAL;
       }
-    } else if (update_path == "offPosition") {
+    } else if (update_path == "offPosition" && item["value"].IsBool()) {
       if (item["value"].GetBool()) {
         if (ATON_REAL == pTargetData->NavStatus) {
           pTargetData->NavStatus = ATON_REAL_OFFPOSITION;
@@ -2239,7 +2248,7 @@ void AisDecoder::updateItem(const std::shared_ptr<AisTargetData> &pTargetData,
           pTargetData->NavStatus = ATON_VIRTUAL_OFFPOSITION;
         }
       }
-    } else if (update_path == "design.draft") {
+    } else if (update_path == "design.draft" && item["value"].IsObject()) {
       if (item["value"].HasMember("maximum") &&
           item["value"]["maximum"].IsNumber()) {
         pTargetData->Draft = item["value"]["maximum"].GetDouble();
@@ -2253,7 +2262,7 @@ void AisDecoder::updateItem(const std::shared_ptr<AisTargetData> &pTargetData,
           pTargetData->Euro_Draft = draft;
         }
       }
-    } else if (update_path == "design.length") {
+    } else if (update_path == "design.length" && item["value"].IsObject()) {
       if (pTargetData->DimB == 0) {
         if (item["value"].HasMember("overall")) {
           if (item["value"]["overall"].IsNumber()) {
@@ -2263,7 +2272,7 @@ void AisDecoder::updateItem(const std::shared_ptr<AisTargetData> &pTargetData,
           pTargetData->DimB = 0;
         }
       }
-    } else if (update_path == "sensors.ais.class") {
+    } else if (update_path == "sensors.ais.class" && item["value"].IsString()) {
       wxString aisclass = item["value"].GetString();
       if (aisclass == "A") {
         if (!pTargetData->b_isDSCtarget) pTargetData->Class = AIS_CLASS_A;
@@ -2309,7 +2318,7 @@ void AisDecoder::updateItem(const std::shared_ptr<AisTargetData> &pTargetData,
           pTargetData->DimD = beam - pTargetData->DimC;
         }
       }
-    } else if (update_path == "navigation.state") {
+    } else if (update_path == "navigation.state" && item["value"].IsString()) {
       wxString state = item["value"].GetString();
       if (state == "motoring") {
         pTargetData->NavStatus = UNDERWAY_USING_ENGINE;
@@ -2338,12 +2347,14 @@ void AisDecoder::updateItem(const std::shared_ptr<AisTargetData> &pTargetData,
       } else {
         pTargetData->NavStatus = UNDEFINED;
       }
-    } else if (update_path == "navigation.destination.commonName") {
+    } else if (update_path == "navigation.destination.commonName" &&
+               item["value"].IsString()) {
       const wxString &destination = item["value"].GetString();
       pTargetData->Destination[0] = '\0';
       strncpy(pTargetData->Destination, destination.c_str(),
               DESTINATION_LEN - 1);
-    } else if (update_path == "navigation.destination.eta") {
+    } else if (update_path == "navigation.destination.eta" &&
+               item["value"].IsString()) {
       const wxString &eta = item["value"].GetString();
       if (eta.Len()) {
         // Parse ISO 8601 date/time
@@ -2354,7 +2365,8 @@ void AisDecoder::updateItem(const std::shared_ptr<AisTargetData> &pTargetData,
         pTargetData->ETA_Hr = tz.GetHour();
         pTargetData->ETA_Min = tz.GetMinute();
       }
-    } else if (update_path == "navigation.specialManeuver") {
+    } else if (update_path == "navigation.specialManeuver" &&
+               item["value"].IsString()) {
       if (strcmp("not available", item["value"].GetString()) != 0 &&
           pTargetData->IMO < 1) {
         const wxString &bluesign = item["value"].GetString();
@@ -2367,18 +2379,20 @@ void AisDecoder::updateItem(const std::shared_ptr<AisTargetData> &pTargetData,
         pTargetData->b_blue_paddle =
             pTargetData->blue_paddle == 2 ? true : false;
       }
-    } else if (update_path == "sensors.ais.designatedAreaCode") {
+    } else if (update_path == "sensors.ais.designatedAreaCode" &&
+               item["value"].IsInt()) {
       if (item["value"].GetInt() == 200) {  // European inland
         pTargetData->b_hasInlandDac = true;
       }
-    } else if (update_path == "sensors.ais.functionalId") {
+    } else if (update_path == "sensors.ais.functionalId" &&
+               item["value"].IsInt()) {
       if (item["value"].GetInt() == 10 && pTargetData->b_hasInlandDac) {
         // "Inland ship static and voyage related data"
         pTargetData->b_isEuroInland = true;
       }
 
       // METEO Data
-    } else if (update_path == "environment.date") {
+    } else if (update_path == "environment.date" && item["value"].IsString()) {
       const wxString &issued = item["value"].GetString();
       if (issued.Len()) {
         // Parse ISO 8601 date/time
@@ -2487,23 +2501,30 @@ void AisDecoder::updateItem(const std::shared_ptr<AisTargetData> &pTargetData,
       pTargetData->met_data.hor_vis =
           GEODESIC_METERS2NM(item["value"].GetDouble());
     } else if (update_path ==
-               "environment.outside.horizontalVisibility.overRange") {
+                   "environment.outside.horizontalVisibility.overRange" &&
+               item["value"].IsBool()) {
       pTargetData->met_data.hor_vis_GT = item["value"].GetBool();
-    } else if (update_path.empty()) {
-      if (item["value"].HasMember("name")) {
+    } else if (update_path.empty() && item["value"].IsObject()) {
+      if (item["value"].HasMember("name") && item["value"]["name"].IsString()) {
         const wxString &name = item["value"]["name"].GetString();
         strncpy(pTargetData->ShipName, name.c_str(), SHIP_NAME_LEN - 1);
         pTargetData->b_nameValid = true;
         pTargetData->MID = 123;  // Indicates a name from SignalK
-      } else if (item["value"].HasMember("registrations")) {
+      } else if (item["value"].HasMember("registrations") &&
+                 item["value"]["registrations"].IsObject() &&
+                 item["value"]["registrations"].HasMember("imo") &&
+                 item["value"]["registrations"]["imo"].IsString()) {
         const wxString &imo = item["value"]["registrations"]["imo"].GetString();
         pTargetData->IMO = wxAtoi(imo.Right(7));
-      } else if (item["value"].HasMember("communication")) {
+      } else if (item["value"].HasMember("communication") &&
+                 item["value"]["communication"].IsObject() &&
+                 item["value"]["communication"].HasMember("callsignVhf") &&
+                 item["value"]["communication"]["callsignVhf"].IsString()) {
         const wxString &callsign =
             item["value"]["communication"]["callsignVhf"].GetString();
         strncpy(pTargetData->CallSign, callsign.c_str(), 7);
       }
-      if (item["value"].HasMember("mmsi") &&
+      if (item["value"].HasMember("mmsi") && item["value"]["mmsi"].IsString() &&
           1994 != (pTargetData->MMSI) / 100000) {  // Meteo
         long mmsi;
         wxString tmp = item["value"]["mmsi"].GetString();
