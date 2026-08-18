@@ -22,6 +22,7 @@
  * Implement comm_drv_n2k.h -- Nmea2000 serial driver.
  */
 
+#include <algorithm>
 #include <mutex>  // std::mutex
 #include <queue>  // std::queue
 #include <vector>
@@ -35,6 +36,7 @@
 #include <wx/log.h>
 
 #include "model/comm_buffers.h"
+#include "model/actisense_framer.h"
 #include "model/comm_drv_n2k_serial.h"
 #include "model/comm_navmsg_bus.h"
 #include "model/comm_drv_registry.h"
@@ -82,15 +84,13 @@ private:
   size_t WriteComPortPhysical(std::vector<unsigned char> msg);
   size_t WriteComPortPhysical(unsigned char* msg, size_t length);
   void SetGatewayOperationMode();
+  void ProcessReceivedBytes(const uint8_t* data, size_t size);
 
   CommDriverN2KSerial* m_pParentDriver;
   wxString m_PortName;
   wxString m_FullPortName;
 
-  unsigned char* put_ptr;
-  unsigned char* tak_ptr;
-
-  unsigned char* rx_buffer;
+  actisense::Framer m_framer;
 
   int m_baud;
   int m_n_timeout;
@@ -230,9 +230,10 @@ void CommDriverN2KSerial::Close() {
     m_bsec_thread_active = false;
   }
 }
-static uint64_t PayloadToName(const std::vector<unsigned char> payload) {
-  uint64_t name;
-  memcpy(&name, reinterpret_cast<const void*>(payload.data()), sizeof(name));
+static uint64_t PayloadToName(const std::vector<unsigned char>& payload) {
+  uint64_t name = 0;
+  const auto bytes = std::min(payload.size(), sizeof(name));
+  memcpy(&name, reinterpret_cast<const void*>(payload.data()), bytes);
   return name;
 }
 
@@ -244,10 +245,12 @@ bool CommDriverN2KSerial::SendMessage(std::shared_ptr<const NavMsg> msg,
 #ifndef ANDROID
 
   auto msg_n2k = std::dynamic_pointer_cast<const Nmea2000Msg>(msg);
+  if (!msg_n2k) return false;
   std::vector<uint8_t> load = msg_n2k->payload;
 
   uint64_t _pgn = msg_n2k->PGN.pgn;
-  auto destination_address = std::static_pointer_cast<const NavAddr2000>(addr);
+  auto destination_address =
+      std::dynamic_pointer_cast<const NavAddr2000>(addr);
 
   tN2kMsg N2kMsg;  // automatically sets destination 255
   N2kMsg.SetPGN(_pgn);
@@ -285,6 +288,8 @@ bool CommDriverN2KSerial::SendMessage(std::shared_ptr<const NavMsg> msg,
 
 void CommDriverN2KSerial::ProcessManagementPacket(
     std::vector<unsigned char>* payload) {
+  if (!payload || payload->size() < 3) return;
+
   if (payload->at(2) != 0xF2) {  // hearbeat
     // printf("    pl ");
     // for (unsigned int i = 0; i < payload->size(); i++)
@@ -304,7 +309,8 @@ void CommDriverN2KSerial::ProcessManagementPacket(
       break;
     case 0x041: {
       m_bmg41_resp = true;
-      if (payload->at(3) == 0x02) {  // ASCII device_common_name
+      if (payload->size() >= 46 &&
+          payload->at(3) == 0x02) {  // ASCII device_common_name
         std::string device_common_name;
         for (unsigned int i = 0; i < 32; i++) {
           device_common_name += payload->at(i + 14);
@@ -316,6 +322,7 @@ void CommDriverN2KSerial::ProcessManagementPacket(
     }
     case 0x042: {
       m_bmg42_resp = true;
+      if (payload->size() < 23) break;
       unsigned char name[8];
       for (unsigned int i = 0; i < 8; i++) name[i] = payload->at(i + 15);
 
@@ -335,6 +342,7 @@ void CommDriverN2KSerial::ProcessManagementPacket(
 void CommDriverN2KSerial::handle_N2K_SERIAL_RAW(
     CommDriverN2KSerialEvent& event) {
   auto p = event.GetPayload();
+  if (!p || p->empty()) return;
 
   std::vector<unsigned char>* payload = p.get();
 
@@ -342,6 +350,11 @@ void CommDriverN2KSerial::handle_N2K_SERIAL_RAW(
     ProcessManagementPacket(payload);
     return;
   }
+
+  // Only Actisense N2K receive packets have PGN fields at offsets 3..5.
+  // The stream framer validates generic packet length/checksum; this check
+  // validates the packet shape before interpreting type-specific offsets.
+  if (payload->at(0) != MsgTypeN2kData || payload->size() < 8) return;
 
   // If port INPUT is not set, filter the mesage here
   if (m_params.IOSelect != DS_TYPE_OUTPUT) {
@@ -529,11 +542,6 @@ CommDriverN2KSerialThread::CommDriverN2KSerialThread(
   m_PortName = PortName;
   m_FullPortName = "Serial:" + PortName;
 
-  rx_buffer = new unsigned char[DS_RX_BUFFER_SIZE + 1];
-
-  put_ptr = rx_buffer;  // local circular queue
-  tak_ptr = rx_buffer;
-
   m_baud = 9600;  // default
   long lbaud;
   if (strBaudRate.ToLong(&lbaud)) m_baud = (int)lbaud;
@@ -547,7 +555,7 @@ CommDriverN2KSerialThread::CommDriverN2KSerialThread(
   Create();
 }
 
-CommDriverN2KSerialThread::~CommDriverN2KSerialThread() { delete[] rx_buffer; }
+CommDriverN2KSerialThread::~CommDriverN2KSerialThread() = default;
 
 void CommDriverN2KSerialThread::OnExit() {}
 
@@ -628,14 +636,36 @@ bool CommDriverN2KSerialThread::SetOutMsg(
   return false;
 }
 
+void CommDriverN2KSerialThread::ProcessReceivedBytes(const uint8_t* data,
+                                                     size_t size) {
+  for (size_t i = 0; i < size; ++i) {
+    auto result = m_framer.Feed(data[i]);
+    if (result.status == actisense::FeedStatus::kRejected) {
+      std::lock_guard lock(m_stats_mutex);
+      ++m_driver_stats.error_count;
+      continue;
+    }
+    if (result.status != actisense::FeedStatus::kFrame) continue;
+    if (actisense::ValidateFrame(result.frame) !=
+        actisense::FrameError::kNone) {
+      std::lock_guard lock(m_stats_mutex);
+      ++m_driver_stats.error_count;
+      continue;
+    }
+
+    auto payload = std::make_shared<std::vector<unsigned char>>(
+        std::move(result.frame));
+    CommDriverN2KSerialEvent event(wxEVT_COMMDRIVER_N2K_SERIAL, 0);
+    event.SetPayload(payload);
+    m_pParentDriver->AddPendingEvent(event);
+  }
+}
+
 #ifndef __WXMSW__
 void* CommDriverN2KSerialThread::Entry() {
   bool not_done = true;
-  bool nl_found = false;
   wxString msg;
   uint8_t rdata[2000];
-  CircularBuffer<uint8_t> circle(DS_RX_BUFFER_SIZE);
-  int ib = 0;
 
   //    Request the com port from the comm manager
   if (!OpenComPortPhysical(m_PortName, m_baud)) {
@@ -661,10 +691,6 @@ void* CommDriverN2KSerialThread::Entry() {
 
   //    The main loop
   static size_t retries = 0;
-
-  bool bInMsg = false;
-  bool bGotESC = false;
-  bool bGotSOT = false;
 
   while ((not_done) && (m_pParentDriver->m_Thread_run_flag > 0)) {
     if (TestDestroy()) not_done = false;  // smooth exit
@@ -709,74 +735,8 @@ void* CommDriverN2KSerialThread::Entry() {
       std::lock_guard lock(m_stats_mutex);
       m_driver_stats.rx_count += newdata;
 
-      for (int i = 0; i < newdata; i++) {
-        circle.Put(rdata[i]);
-      }
+      ProcessReceivedBytes(rdata, static_cast<size_t>(newdata));
     }
-
-    while (!circle.IsEmpty()) {
-      if (ib >= DS_RX_BUFFER_SIZE) ib = 0;
-      uint8_t next_byte = circle.Get();
-
-      if (bInMsg) {
-        if (bGotESC) {
-          if (ESCAPE == next_byte) {
-            rx_buffer[ib++] = next_byte;
-            bGotESC = false;
-          }
-        }
-
-        if (bGotESC && (ENDOFTEXT == next_byte)) {
-          // Process packet
-          //    Copy the message into a std::vector
-
-          auto buffer = std::make_shared<std::vector<unsigned char>>(
-              rx_buffer, rx_buffer + ib);
-          std::vector<unsigned char>* vec = buffer.get();
-
-          ib = 0;
-          // tak_ptr = tptr;
-          bInMsg = false;
-          bGotESC = false;
-
-          //           printf("raw ");
-          //              for (unsigned int i = 0; i < vec->size(); i++)
-          //                printf("%02X ", vec->at(i));
-          //              printf("\n");
-
-          // Message is finished
-          // Send the captured raw data vector pointer to the thread's "parent"
-          //  thereby releasing the thread for further data capture
-          CommDriverN2KSerialEvent Nevent(wxEVT_COMMDRIVER_N2K_SERIAL, 0);
-          Nevent.SetPayload(buffer);
-          m_pParentDriver->AddPendingEvent(Nevent);
-
-        } else {
-          bGotESC = (next_byte == ESCAPE);
-
-          if (!bGotESC) {
-            rx_buffer[ib++] = next_byte;
-          }
-        }
-      }
-
-      else {
-        if (STARTOFTEXT == next_byte) {
-          bGotSOT = false;
-          if (bGotESC) {
-            bGotSOT = true;
-          }
-        } else {
-          bGotESC = (next_byte == ESCAPE);
-          if (bGotSOT) {
-            bGotSOT = false;
-            bInMsg = true;
-
-            rx_buffer[ib++] = next_byte;
-          }
-        }
-      }
-    }  // if newdata > 0
 
     //      Check for any pending output message
 #if 1
@@ -814,9 +774,7 @@ void* CommDriverN2KSerialThread::Entry() {
 #else
 void* CommDriverN2KSerialThread::Entry() {
   bool not_done = true;
-  bool nl_found = false;
   wxString msg;
-  CircularBuffer<uint8_t> circle(DS_RX_BUFFER_SIZE);
 
   //    Request the com port from the comm manager
   if (!OpenComPortPhysical(m_PortName, m_baud)) {
@@ -841,10 +799,6 @@ void* CommDriverN2KSerialThread::Entry() {
 
   //    The main loop
   static size_t retries = 0;
-
-  bool bInMsg = false;
-  bool bGotESC = false;
-  bool bGotSOT = false;
 
   while ((not_done) && (m_pParentDriver->m_Thread_run_flag > 0)) {
     if (TestDestroy()) not_done = false;  // smooth exit
@@ -882,90 +836,8 @@ void* CommDriverN2KSerialThread::Entry() {
     }
 
     if (newdata > 0) {
-      for (int i = 0; i < newdata; i++) {
-        circle.Put(rdata[i]);
-      }
+      ProcessReceivedBytes(rdata, static_cast<size_t>(newdata));
     }
-
-    while (!circle.IsEmpty()) {
-      uint8_t next_byte = circle.Get();
-
-      if (1) {
-        if (bInMsg) {
-          if (bGotESC) {
-            if (ESCAPE == next_byte) {
-              *put_ptr++ = next_byte;
-              if ((put_ptr - rx_buffer) > DS_RX_BUFFER_SIZE)
-                put_ptr = rx_buffer;
-              bGotESC = false;
-            } else if (ENDOFTEXT == next_byte) {
-              // Process packet
-              //    Copy the message into a std::vector
-
-              auto buffer = std::make_shared<std::vector<unsigned char>>();
-              std::vector<unsigned char>* vec = buffer.get();
-
-              unsigned char* tptr;
-              tptr = tak_ptr;
-
-              while ((tptr != put_ptr)) {
-                vec->push_back(*tptr++);
-                if ((tptr - rx_buffer) > DS_RX_BUFFER_SIZE) tptr = rx_buffer;
-              }
-
-              tak_ptr = tptr;
-              bInMsg = false;
-              bGotESC = false;
-
-              // Message is finished
-              // Send the captured raw data vector pointer to the thread's
-              // "parent"
-              //  thereby releasing the thread for further data capture
-              CommDriverN2KSerialEvent Nevent(wxEVT_COMMDRIVER_N2K_SERIAL, 0);
-              Nevent.SetPayload(buffer);
-              m_pParentDriver->AddPendingEvent(Nevent);
-              std::lock_guard lock(m_stats_mutex);
-              m_driver_stats.rx_count += vec->size();
-            } else if (next_byte == STARTOFTEXT) {
-              put_ptr = rx_buffer;
-              bGotESC = false;
-            } else {
-              put_ptr = rx_buffer;
-              bInMsg = false;
-              bGotESC = false;
-            }
-
-          } else {
-            bGotESC = (next_byte == ESCAPE);
-
-            if (!bGotESC) {
-              *put_ptr++ = next_byte;
-              if ((put_ptr - rx_buffer) > DS_RX_BUFFER_SIZE)
-                put_ptr = rx_buffer;
-            }
-          }
-        }
-
-        else {
-          if (STARTOFTEXT == next_byte) {
-            bGotSOT = false;
-            if (bGotESC) {
-              bGotSOT = true;
-            }
-          } else {
-            bGotESC = (next_byte == ESCAPE);
-            if (bGotSOT) {
-              bGotSOT = false;
-              bInMsg = true;
-
-              *put_ptr++ = next_byte;
-              if ((put_ptr - rx_buffer) > DS_RX_BUFFER_SIZE)
-                put_ptr = rx_buffer;
-            }
-          }
-        }
-      }  // if newdata > 0
-    }  // while
 
     //      Check for any pending output message
     bool b_qdata = !m_out_que.IsEmpty();

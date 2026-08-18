@@ -26,6 +26,7 @@ endif ()
 set(MODEL_HDR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include/model)
 set(
   HDRS
+  ${MODEL_HDR_DIR}/actisense_framer.h
   ${MODEL_HDR_DIR}/ais_bitstring.h
   ${MODEL_HDR_DIR}/ais_decoder.h
   ${MODEL_HDR_DIR}/ais_defs.h
@@ -147,6 +148,7 @@ set(
 
 set(MODEL_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SRC
+  ${MODEL_SRC_DIR}/actisense_framer.cpp
   ${MODEL_SRC_DIR}/ais_bitstring.cpp
   ${MODEL_SRC_DIR}/ais_decoder.cpp
   ${MODEL_SRC_DIR}/ais_state_vars.cpp
