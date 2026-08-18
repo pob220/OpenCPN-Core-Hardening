@@ -2993,11 +2993,11 @@ void glChartCanvas::RenderRasterChartRegionGL(ChartBase *chart, ViewPort &vp,
 
   //    Not Found ?
   if (ittf == hash.end()) {
-    hash[key] = new glTexFactory(chart, g_raster_format);
+    hash[key] = std::make_shared<glTexFactory>(chart, g_raster_format);
     hash[key]->SetHashKey(key);
   }
 
-  pTexFact = hash[key];
+  pTexFact = hash[key].get();
   pTexFact->SetLRUTime(++m_LRUtime);
 
   // for small scales, don't use normalized coordinates for accuracy (difference

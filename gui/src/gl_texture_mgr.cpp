@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <list>
+#include <utility>
 #include <vector>
 
 #include <wx/wxprec.h>
@@ -182,10 +183,22 @@ WX_DECLARE_OBJARRAY(compress_target, ArrayOfCompressTargets);
 // WX_DEFINE_OBJARRAY(ArrayOfCompressTargets);
 
 JobTicket::JobTicket() {
+  pthread = nullptr;
+  level0_bits = nullptr;
+  b_abort = false;
+  b_isaborted = false;
   for (int i = 0; i < 10; i++) {
     compcomp_size_array[i] = 0;
     comp_bits_array[i] = NULL;
     compcomp_bits_array[i] = NULL;
+  }
+}
+
+JobTicket::~JobTicket() {
+  free(level0_bits);
+  for (int i = 0; i < 10; ++i) {
+    free(comp_bits_array[i]);
+    free(compcomp_bits_array[i]);
   }
 }
 
@@ -220,7 +233,8 @@ void FlattenColorsForCompression(unsigned char *data, int dim, bool swap_colors=
 
 /* return malloced data which is the etc compressed texture of the source */
 static void CompressDataETC(const unsigned char *data, int dim, int size,
-                            unsigned char *tex_data, volatile bool &b_abort) {
+                            unsigned char *tex_data,
+                            const std::atomic_bool &b_abort) {
   wxASSERT(dim * dim == 2 * size || (dim < 4 && size == 8));  // must be 4bpp
   uint64_t *tex_data64 = (uint64_t *)tex_data;
 
@@ -236,7 +250,7 @@ static void CompressDataETC(const unsigned char *data, int dim, int size,
       extern uint64_t ProcessRGB(const uint8_t *src);
       *tex_data64++ = ProcessRGB(block);
     }
-    if (b_abort) break;
+    if (b_abort.load()) break;
   }
 }
 
@@ -521,7 +535,7 @@ bool JobTicket::DoJob(const wxRect &rect) {
     else if (g_raster_format == GL_COMPRESSED_RGB_FXT1_3DFX) {
       if (!CompressUsingGPU(bit_array[level], dim, size, tex_data,
                             texture_level, binplace)) {
-        b_abort = true;
+        b_abort.store(true);
         break;
       }
 
@@ -531,7 +545,7 @@ bool JobTicket::DoJob(const wxRect &rect) {
     }
     comp_bits_array[level] = tex_data;
 
-    if (b_abort) {
+    if (b_abort.load()) {
       for (int i = 0; i < g_mipmap_max_level + 1; i++) {
         free(bit_array[i]);
         bit_array[i] = 0;
@@ -548,13 +562,13 @@ bool JobTicket::DoJob(const wxRect &rect) {
 
   if (b_throttle) wxThread::Sleep(1);
 
-  if (b_abort) return false;
+  if (b_abort.load()) return false;
 
   if (bpost_zip_compress) {
     int max_compressed_size = LZ4_COMPRESSBOUND(g_tile_size);
     for (int level = level_min_request; level < g_mipmap_max_level + 1;
          level++) {
-      if (b_abort) return false;
+      if (b_abort.load()) return false;
 
       unsigned char *compressed_data =
           (unsigned char *)malloc(max_compressed_size);
@@ -649,7 +663,10 @@ wxEvent *OCPN_CompressionThreadEvent::Clone() const {
 }
 
 CompressionPoolThread::CompressionPoolThread(JobTicket *ticket,
-                                             wxEvtHandler *message_target) {
+                                             wxEvtHandler *message_target)
+    : wxThread(wxTHREAD_JOINABLE) {
+  // The manager joins this worker either on its completion event or during
+  // shutdown. A detached worker can otherwise outlive both manager and ticket.
   m_pMessageTarget = message_target;
   m_ticket = ticket;
 
@@ -739,17 +756,29 @@ glTextureManager::glTextureManager() {
 }
 
 glTextureManager::~glTextureManager() {
-  //    ClearAllRasterTextures();
-  ClearJobList();
+  m_timer.Stop();
+  PurgeJobList();
+
+  // Workers post raw ticket pointers back to this event handler. Drain them
+  // before deleting either the tickets or the handler, then discard the now
+  // stale completion/progress events they queued.
+  for (JobTicket *ticket : running_list) {
+    if (ticket->pthread) {
+      ticket->pthread->Wait();
+      delete ticket->pthread;
+      ticket->pthread = nullptr;
+    }
+  }
+  DeletePendingEvents();
+  for (JobTicket *ticket : running_list) delete ticket;
+  running_list.clear();
+
   for (int i = 0; i < m_max_jobs; i++) {
     auto it = progList.begin();
     std::advance(it, i);
     delete *it;
   }
   progList.clear();
-  for (auto hash : m_chart_texfactory_hash) {
-    delete hash.second;
-  }
   m_chart_texfactory_hash.clear();
 }
 
@@ -833,12 +862,7 @@ void glTextureManager::OnEvtThread(OCPN_CompressionThreadEvent &event) {
     return;
   }
 
-  if (ticket->b_isaborted || ticket->b_abort) {
-    for (int i = 0; i < g_mipmap_max_level + 1; i++) {
-      free(ticket->comp_bits_array[i]);
-      free(ticket->compcomp_bits_array[i]);
-    }
-
+  if (ticket->b_isaborted || ticket->b_abort.load()) {
     if (bthread_debug)
       printf(
           "    Abort job: %08X  Jobs running: %d             Job count: %lu   "
@@ -849,11 +873,13 @@ void glTextureManager::OnEvtThread(OCPN_CompressionThreadEvent &event) {
     glTextureDescriptor *ptd = ticket->pFact->GetpTD(ticket->m_rect);
     if (ptd) {
       for (int i = 0; i < g_mipmap_max_level + 1; i++)
-        ptd->comp_array[i] = ticket->comp_bits_array[i];
+        ptd->comp_array[i] =
+            std::exchange(ticket->comp_bits_array[i], nullptr);
 
       if (ticket->bpost_zip_compress) {
         for (int i = 0; i < g_mipmap_max_level + 1; i++) {
-          ptd->compcomp_array[i] = ticket->compcomp_bits_array[i];
+          ptd->compcomp_array[i] =
+              std::exchange(ticket->compcomp_bits_array[i], nullptr);
           ptd->compcomp_size[i] = ticket->compcomp_size_array[i];
         }
       }
@@ -877,7 +903,6 @@ void glTextureManager::OnEvtThread(OCPN_CompressionThreadEvent &event) {
     ChartBase *pchart =
         ChartData->OpenChartFromDB(ticket->m_ChartPath, FULL_INIT);
     ChartData->DeleteCacheChart(pchart);
-    delete ticket->pFact;
   }
 
   for (auto tnode = progList.begin(); tnode != progList.end(); ++tnode) {
@@ -889,6 +914,12 @@ void glTextureManager::OnEvtThread(OCPN_CompressionThreadEvent &event) {
     auto found = std::find(running_list.begin(), running_list.end(), ticket);
     if (found != running_list.end()) running_list.erase(found);
     StartTopJob();
+  }
+
+  if (ticket->pthread) {
+    ticket->pthread->Wait();
+    delete ticket->pthread;
+    ticket->pthread = nullptr;
   }
 
   delete ticket;
@@ -904,7 +935,7 @@ void glTextureManager::OnTimer(wxTimerEvent &event) {
     for (ChartPathHashTexfactType::iterator itt =
              m_chart_texfactory_hash.begin();
          itt != m_chart_texfactory_hash.end(); ++itt) {
-      glTexFactory *ptf = itt->second;
+      glTexFactory *ptf = itt->second.get();
       if (ptf && ptf->OnTimer()) {
         // break;
       }
@@ -938,10 +969,9 @@ void glTextureManager::OnTimer(wxTimerEvent &event) {
 #endif
 }
 
-bool glTextureManager::ScheduleJob(glTexFactory *client, const wxRect &rect,
-                                   int level, bool b_throttle_thread,
-                                   bool b_nolimit, bool b_postZip,
-                                   bool b_inplace) {
+bool glTextureManager::ScheduleJob(
+    const std::shared_ptr<glTexFactory> &client, const wxRect &rect, int level,
+    bool b_throttle_thread, bool b_nolimit, bool b_postZip, bool b_inplace) {
   wxString chart_path = client->GetChartPath();
   if (!b_nolimit) {
     if (todo_list.size() >= 50) {
@@ -1060,7 +1090,11 @@ bool glTextureManager::StartTopJob() {
   }
 
   running_list.push_back(ticket);
-  DoThreadJob(ticket);
+  if (!DoThreadJob(ticket)) {
+    running_list.remove(ticket);
+    delete ticket;
+    return StartTopJob();
+  }
 
   return true;
 }
@@ -1076,7 +1110,11 @@ bool glTextureManager::DoThreadJob(JobTicket *pticket) {
   CompressionPoolThread *t = new CompressionPoolThread(pticket, this);
   pticket->pthread = t;
 
-  t->Run();
+  if (t->Run() != wxTHREAD_NO_ERROR) {
+    pticket->pthread = nullptr;
+    delete t;
+    return false;
+  }
 
   return true;
 }
@@ -1136,18 +1174,10 @@ void glTextureManager::ClearJobList() {
 }
 
 void glTextureManager::ClearAllRasterTextures() {
-  //     Delete all the TexFactory instances
-  ChartPathHashTexfactType::iterator itt;
-  for (itt = m_chart_texfactory_hash.begin();
-       itt != m_chart_texfactory_hash.end(); ++itt) {
-    glTexFactory *ptf = itt->second;
-
-    delete ptf;
-  }
+  // Cancel outstanding work before removing manager ownership. Running
+  // tickets retain their factory until the worker completion is handled.
+  PurgeJobList();
   m_chart_texfactory_hash.clear();
-
-  if (g_tex_mem_used != 0)
-    wxLogMessage("Texture memory use calculation error\n");
 }
 
 bool glTextureManager::PurgeChartTextures(ChartBase *pc, bool b_purge_factory) {
@@ -1157,13 +1187,12 @@ bool glTextureManager::PurgeChartTextures(ChartBase *pc, bool b_purge_factory) {
 
   //    Found ?
   if (ittf != m_chart_texfactory_hash.end()) {
-    glTexFactory *pTexFact = ittf->second;
+    std::shared_ptr<glTexFactory> pTexFact = ittf->second;
 
     if (pTexFact) {
       if (b_purge_factory) {
+        PurgeJobList(pTexFact->GetChartPath());
         m_chart_texfactory_hash.erase(ittf);  // This chart  becoming invalid
-
-        delete pTexFact;
       }
 
       return true;
@@ -1186,7 +1215,7 @@ bool glTextureManager::TextureCrunch(double factor) {
   ChartPathHashTexfactType::iterator it0;
   for (it0 = m_chart_texfactory_hash.begin();
        it0 != m_chart_texfactory_hash.end(); ++it0) {
-    glTexFactory *ptf = it0->second;
+    glTexFactory *ptf = it0->second.get();
     if (!ptf) continue;
     wxString chart_full_path = ptf->GetChartPath();
 
@@ -1247,7 +1276,7 @@ bool glTextureManager::FactoryCrunch(double factor) {
 
   for (it0 = m_chart_texfactory_hash.begin();
        it0 != m_chart_texfactory_hash.end(); ++it0) {
-    glTexFactory *ptf = it0->second;
+    glTexFactory *ptf = it0->second.get();
     if (!ptf) continue;
     wxString chart_full_path = ptf->GetChartPath();
 
@@ -1297,10 +1326,9 @@ bool glTextureManager::FactoryCrunch(double factor) {
 
   //  Need more, so delete the oldest chart too
 
+  PurgeJobList(ptf_oldest->GetChartPath());
   m_chart_texfactory_hash.erase(
       ptf_oldest->GetHashKey());  // This chart  becoming invalid
-
-  delete ptf_oldest;
 
   return true;
 }
@@ -1466,7 +1494,7 @@ void glTextureManager::BuildCompressedCache() {
     ChartBaseBSB *pBSBChart = dynamic_cast<ChartBaseBSB *>(pchart);
     if (pBSBChart == 0) continue;
 
-    glTexFactory *tex_fact = new glTexFactory(pchart, g_raster_format);
+    auto tex_fact = std::make_shared<glTexFactory>(pchart, g_raster_format);
 
     m_progMsg.Printf(_("Distance from Ownship:  %4.0f NMi"), distance);
     m_progMsg += "\n";
@@ -1475,7 +1503,7 @@ void glTextureManager::BuildCompressedCache() {
     if (m_skipout) {
       g_glTextureManager->PurgeJobList();
       ChartData->DeleteCacheChart(pchart);
-      delete tex_fact;
+      tex_fact.reset();
       break;
     }
 
@@ -1506,7 +1534,7 @@ void glTextureManager::BuildCompressedCache() {
     //  Nothing to do
     //  Free all possible memory
     ChartData->DeleteCacheChart(pchart);
-    delete tex_fact;
+    tex_fact.reset();
     yield++;
     if (yield == 200) {
       ::wxYield();
@@ -1533,7 +1561,7 @@ void glTextureManager::BuildCompressedCache() {
     if (m_skipout) {
       g_glTextureManager->PurgeJobList();
       ChartData->DeleteCacheChart(pchart);
-      delete tex_fact;
+      tex_fact.reset();
       break;
     }
   }

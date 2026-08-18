@@ -24,6 +24,8 @@
 #ifndef __GLTEXTCACHE_H__
 #define __GLTEXTCACHE_H__
 
+#include <memory>
+
 #include <wx/glcanvas.h>
 #include <wx/ffile.h>
 #include <wx/timer.h>
@@ -105,7 +107,7 @@ public:
 
 #define MAX_TEX_LEVEL 10
 
-class glTexFactory {
+class glTexFactory : public std::enable_shared_from_this<glTexFactory> {
 public:
   glTexFactory(ChartBase *chart, int raster_format);
   ~glTexFactory();
@@ -131,7 +133,6 @@ public:
   void DeleteSomeTextures(long target);
   void DeleteAllDescriptors(void);
   bool BackgroundCompressionAsJob() const;
-  void PurgeBackgroundCompressionPool();
   void SetLRUTime(int lru) { m_LRUtime = lru; }
   int GetLRUTime() { return m_LRUtime; }
   void FreeSome(long target);

@@ -25,7 +25,9 @@
 #ifndef __GLTEXTUREMANAGER_H__
 #define __GLTEXTUREMANAGER_H__
 
+#include <atomic>
 #include <list>
+#include <memory>
 
 #include <wx/event.h>
 #include <wx/string.h>
@@ -84,11 +86,11 @@ class CompressionPoolThread;
 class JobTicket {
 public:
   JobTicket();
-  ~JobTicket() { free(level0_bits); }
+  ~JobTicket();
   bool DoJob();
   bool DoJob(const wxRect &rect);
 
-  glTexFactory *pFact;
+  std::shared_ptr<glTexFactory> pFact;
   wxRect m_rect;
   int level_min_request;
   int ident;
@@ -98,7 +100,7 @@ public:
   unsigned char *level0_bits;
   unsigned char *comp_bits_array[10];
   wxString m_ChartPath;
-  bool b_abort;
+  std::atomic_bool b_abort;
   bool b_isaborted;
   bool bpost_zip_compress;
   bool binplace;
@@ -108,7 +110,8 @@ public:
 };
 
 //      This is a hashmap with Chart full path as key, and glTexFactory as value
-WX_DECLARE_STRING_HASH_MAP(glTexFactory *, ChartPathHashTexfactType);
+WX_DECLARE_STRING_HASH_MAP(std::shared_ptr<glTexFactory>,
+                           ChartPathHashTexfactType);
 
 //      glTextureManager Definition
 class glTextureManager : public wxEvtHandler {
@@ -118,9 +121,9 @@ public:
 
   void OnEvtThread(OCPN_CompressionThreadEvent &event);
   void OnTimer(wxTimerEvent &event);
-  bool ScheduleJob(glTexFactory *client, const wxRect &rect, int level_min,
-                   bool b_throttle_thread, bool b_nolimit, bool b_postZip,
-                   bool b_inplace);
+  bool ScheduleJob(const std::shared_ptr<glTexFactory> &client,
+                   const wxRect &rect, int level_min, bool b_throttle_thread,
+                   bool b_nolimit, bool b_postZip, bool b_inplace);
 
   int GetRunningJobCount() { return running_list.size(); }
   int GetJobCount() { return GetRunningJobCount() + todo_list.size(); }
