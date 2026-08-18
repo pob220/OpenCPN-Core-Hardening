@@ -2835,36 +2835,22 @@ else ()
   message(STATUS "Experimental Vulkan presenter: disabled")
 endif ()
 
-if ("${ENABLE_SANITIZER}" STREQUAL "none")
-  if (MSVC)
-    set(test_root  ${CMAKE_BINARY_DIR}/test/${CMAKE_BUILD_TYPE})
-  else ()
-    set(test_root  ${CMAKE_BINARY_DIR}/test/)
-  endif ()
-  set(_run_tests "
-  execute_process(COMMAND ${test_root}/tests)
-  execute_process(COMMAND ${test_root}/buffer_tests)
-  ")
-else ()
-  set(_run_tests "message(STATUS \"tests disabled on sanitized builds\")")
-endif ()
-
-file(WRITE "${CMAKE_BINARY_DIR}/run_tests.cmake" ${_run_tests})
 if (OCPN_BUILD_TEST)
+  # enable_testing() must be called in the top-level directory for ctest run
+  # from the build root to discover tests registered by test/CMakeLists.txt.
+  enable_testing()
   add_subdirectory(libs/gtest)
   add_subdirectory(test)
   add_custom_target(
     run-tests
-    COMMAND cmake -P "${CMAKE_BINARY_DIR}/run_tests.cmake"
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/test
+    COMMAND
+      ${CMAKE_CTEST_COMMAND} --output-on-failure --label-regex deterministic
+      --build-config $<CONFIG>
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    USES_TERMINAL
   )
   add_dependencies(run-tests tests)
-  if (UNIX AND NOT DEFINED ENV{FLATPAK_ID})
-    add_dependencies(run-tests ipc-srv-tests)
-  endif ()
-  if (LINUX)
-    add_dependencies(run-tests dbus_tests)
-  endif ()
+  add_dependencies(run-tests buffer_tests)
 else ()
   add_custom_target(run-tests COMMAND cmake -E echo "No tests available")
 endif ()
