@@ -1028,9 +1028,6 @@ void RoutePropDlgImpl::SplitOnButtonClick(wxCommandEvent& event) {
     // pConfig->AddNewRoute(m_pTail);
     NavObj_dB::GetInstance().InsertRoute(m_pTail);
 
-    // pConfig->DeleteConfigRoute(m_pRoute);
-    NavObj_dB::GetInstance().DeleteRoute(m_pRoute);
-
     pSelect->DeleteAllSelectableRoutePoints(m_pRoute);
     pSelect->DeleteAllSelectableRouteSegments(m_pRoute);
     g_pRouteMan->DeleteRoute(m_pRoute);

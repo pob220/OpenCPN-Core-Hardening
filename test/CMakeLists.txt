@@ -45,6 +45,7 @@ set(SRC
   autopilot_output_tests.cpp
   datetime_tests.cpp
   tests.cpp filter_tests.cpp
+  navobj_db_transaction_tests.cpp
   navutil_base_tests.cpp
   route_point_tests.cpp
   ${CMAKE_SOURCE_DIR}/cli/api_shim.cpp
