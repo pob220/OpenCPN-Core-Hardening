@@ -41,6 +41,7 @@ public:
 
 private:
   void DoAdvance();
+  void UpdateNavigationState();
 
   Routeman& m_routeman;
 };

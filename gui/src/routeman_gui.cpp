@@ -42,6 +42,7 @@
 #include "model/nav_object_database.h"
 #include "model/own_ship.h"
 #include "model/route.h"
+#include "model/route_leg_state.h"
 #include "model/route_point.h"
 #include "model/select.h"
 #include "model/track.h"
@@ -54,7 +55,6 @@
 #include "routeman_gui.h"
 #include "top_frame.h"
 #include "track_prop_dlg.h"
-#include "vector2D.h"
 
 static bool ConfirmDeleteAisMob() {
   int r = OCPNMessageBox(NULL,
@@ -83,96 +83,31 @@ RoutemanDlgCtx RoutemanGui::GetDlgCtx() {
   return ctx;
 }
 
+void RoutemanGui::UpdateNavigationState() {
+  const RoutePosition vessel{gLat, gLon};
+  const RoutePosition segment_begin{
+      m_routeman.pActiveRouteSegmentBeginPoint->m_lat,
+      m_routeman.pActiveRouteSegmentBeginPoint->m_lon};
+  const RoutePosition waypoint{m_routeman.pActivePoint->m_lat,
+                               m_routeman.pActivePoint->m_lon};
+  const auto state =
+      CalculateRouteLegState(vessel, segment_begin, waypoint);
+
+  m_routeman.CurrentBrgToActivePoint = state.bearing_to_waypoint;
+  m_routeman.CurrentRngToActivePoint = state.range_to_waypoint;
+  m_routeman.CurrentXTEToActivePoint = state.cross_track_error;
+  m_routeman.CurrentRangeToActiveNormalCrossing =
+      state.range_to_arrival_normal;
+  m_routeman.CurrentSegmentCourse = state.segment_course;
+  m_routeman.CourseToRouteSegment = state.course_to_segment;
+  m_routeman.XTEDir = state.cross_track_direction;
+}
+
 bool RoutemanGui::UpdateProgress() {
   bool bret_val = false;
 
   if (m_routeman.pActiveRoute) {
-    //      Update bearing, range, and crosstrack error
-
-    //  Bearing is calculated as Mercator Sailing, i.e. a  cartographic
-    //  "bearing"
-    double north, east;
-    toSM(m_routeman.pActivePoint->m_lat, m_routeman.pActivePoint->m_lon, gLat,
-         gLon, &east, &north);
-    double a = atan(north / east);
-    if (fabs(m_routeman.pActivePoint->m_lon - gLon) < 180.) {
-      if (m_routeman.pActivePoint->m_lon >= gLon)
-        m_routeman.CurrentBrgToActivePoint = 90. - (a * 180 / PI);
-      else
-        m_routeman.CurrentBrgToActivePoint = 270. - (a * 180 / PI);
-    } else {
-      if (m_routeman.pActivePoint->m_lon >= gLon)
-        m_routeman.CurrentBrgToActivePoint = 270. - (a * 180 / PI);
-      else
-        m_routeman.CurrentBrgToActivePoint = 90. - (a * 180 / PI);
-    }
-
-    //      Calculate range using Great Circle Formula
-
-    double d5 = DistGreatCircle(gLat, gLon, m_routeman.pActivePoint->m_lat,
-                                m_routeman.pActivePoint->m_lon);
-    m_routeman.CurrentRngToActivePoint = d5;
-
-    //      Get the XTE vector, normal to current segment
-    vector2D va, vb, vn;
-
-    double brg1, dist1, brg2, dist2;
-    DistanceBearingMercator(
-        m_routeman.pActivePoint->m_lat, m_routeman.pActivePoint->m_lon,
-        m_routeman.pActiveRouteSegmentBeginPoint->m_lat,
-        m_routeman.pActiveRouteSegmentBeginPoint->m_lon, &brg1, &dist1);
-    vb.x = dist1 * sin(brg1 * PI / 180.);
-    vb.y = dist1 * cos(brg1 * PI / 180.);
-
-    DistanceBearingMercator(m_routeman.pActivePoint->m_lat,
-                            m_routeman.pActivePoint->m_lon, gLat, gLon, &brg2,
-                            &dist2);
-    va.x = dist2 * sin(brg2 * PI / 180.);
-    va.y = dist2 * cos(brg2 * PI / 180.);
-
-    double sdelta = vGetLengthOfNormal(&va, &vb, &vn);  // NM
-    m_routeman.CurrentXTEToActivePoint = sdelta;
-
-    //    Calculate the distance to the arrival line, which is perpendicular to
-    //    the current route segment Taking advantage of the calculated normal
-    //    from current position to route segment vn
-    vector2D vToArriveNormal;
-    vSubtractVectors(&va, &vn, &vToArriveNormal);
-
-    m_routeman.CurrentRangeToActiveNormalCrossing =
-        vVectorMagnitude(&vToArriveNormal);
-
-    //          Compute current segment course
-    //          Using simple Mercater projection
-    double x1, y1, x2, y2;
-    toSM(m_routeman.pActiveRouteSegmentBeginPoint->m_lat,
-         m_routeman.pActiveRouteSegmentBeginPoint->m_lon,
-         m_routeman.pActiveRouteSegmentBeginPoint->m_lat,
-         m_routeman.pActiveRouteSegmentBeginPoint->m_lon, &x1, &y1);
-
-    toSM(m_routeman.pActivePoint->m_lat, m_routeman.pActivePoint->m_lon,
-         m_routeman.pActiveRouteSegmentBeginPoint->m_lat,
-         m_routeman.pActiveRouteSegmentBeginPoint->m_lon, &x2, &y2);
-
-    double e1 = atan2((x2 - x1), (y2 - y1));
-    m_routeman.CurrentSegmentCourse = e1 * 180 / PI;
-    if (m_routeman.CurrentSegmentCourse < 0)
-      m_routeman.CurrentSegmentCourse += 360;
-
-    //      Compute XTE direction
-    double h = atan(vn.y / vn.x);
-    if (vn.x > 0)
-      m_routeman.CourseToRouteSegment = 90. - (h * 180 / PI);
-    else
-      m_routeman.CourseToRouteSegment = 270. - (h * 180 / PI);
-
-    h = m_routeman.CurrentBrgToActivePoint - m_routeman.CourseToRouteSegment;
-    if (h < 0) h = h + 360;
-
-    if (h > 180)
-      m_routeman.XTEDir = 1;
-    else
-      m_routeman.XTEDir = -1;
+    UpdateNavigationState();
 
     // Allow DirectShipToActivePoint line (distance XTE in mm is > 3 (arbitrary)
     // or when active point is the first
@@ -203,12 +138,6 @@ bool RoutemanGui::UpdateProgress() {
     //      Determine Arrival
 
     bool bDidArrival = false;
-
-    // Duplicate points can result in NaN for normal crossing range.
-    if (isnan(m_routeman.CurrentRangeToActiveNormalCrossing)) {
-      m_routeman.CurrentRangeToActiveNormalCrossing =
-          m_routeman.CurrentRngToActivePoint;
-    }
 
     // Special signal:  if ArrivalRadius < 0, NEVER arrive...
     //  Used for MOB auto-created routes.
@@ -312,9 +241,14 @@ void RoutemanGui::DeleteAllTracks() {
 }
 
 void RoutemanGui::DoAdvance() {
-  if (!m_routeman.ActivateNextPoint(m_routeman.pActiveRoute,
-                                    false))  // at the end?
-  {
+  if (m_routeman.ActivateNextPoint(m_routeman.pActiveRoute, false)) {
+    // Publish the new leg immediately, but only after every derived value has
+    // been recomputed for it. This follows the arrival sentence with a
+    // coherent next-leg sentence instead of leaving stale values on the wire
+    // until the next frame timer tick.
+    UpdateNavigationState();
+    m_routeman.UpdateAutopilot();
+  } else {  // at the end?
     Route *pthis_route = m_routeman.pActiveRoute;
     m_routeman.DeactivateRoute(true);  // this is an arrival
 
