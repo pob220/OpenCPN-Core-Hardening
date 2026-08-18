@@ -30,6 +30,7 @@ set(
   ${MODEL_HDR_DIR}/ais_bitstring.h
   ${MODEL_HDR_DIR}/ais_decoder.h
   ${MODEL_HDR_DIR}/ais_defs.h
+  ${MODEL_HDR_DIR}/ais_safety_message.h
   ${MODEL_HDR_DIR}/ais_state_vars.h
   ${MODEL_HDR_DIR}/ais_target_data.h
   ${MODEL_HDR_DIR}/atomic_queue.h

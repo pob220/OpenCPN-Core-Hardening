@@ -1193,6 +1193,9 @@ static bool Parse_VDXBitstring(AisBitstring *bstr,
         nd = wxMin(nd, 967);
         msg_14_text[nd] = 0;
         ptd->MSG_14_text = wxString(msg_14_text, wxConvUTF8);
+        while (ptd->MSG_14_text.EndsWith("@"))
+          ptd->MSG_14_text.RemoveLast();
+        ptd->MSG_14_text.Trim(true).Trim(false);
       }
       parse_result = true;  // so far so good
 
@@ -3304,6 +3307,20 @@ AisError AisDecoder::DecodeN0183(const wxString &str) {
         // The normal Plain-Old AIS target code path....
         bdecode_result =
             Parse_VDXBitstring(&strbit, pTargetData);  // Parse the new data
+      }
+
+      if (bdecode_result && pTargetData->MID == 14 &&
+          !pTargetData->MSG_14_text.IsEmpty()) {
+        AisSafetyMessage message;
+        message.source_mmsi = pTargetData->MMSI;
+        message.text = pTargetData->MSG_14_text.ToStdString();
+        message.received_at = std::time(nullptr);
+        message.source_was_known = !bnewtarget;
+        m_safety_messages.push_back(message);
+        constexpr size_t kMaxSafetyMessageHistory = 100;
+        if (m_safety_messages.size() > kMaxSafetyMessageHistory)
+          m_safety_messages.pop_front();
+        safety_message.Notify(std::make_shared<AisSafetyMessage>(message), "");
       }
 
       // Catch mmsi properties like track, persistent track, follower.

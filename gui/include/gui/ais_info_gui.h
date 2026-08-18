@@ -56,5 +56,6 @@ public:
   ObservableListener ais_wp_listener;
   ObservableListener ais_new_track_listener;
   ObservableListener ais_del_track_listener;
+  ObservableListener ais_safety_message_listener;
 };
 #endif  // ais_info_gui
