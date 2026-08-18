@@ -6,11 +6,13 @@ on:
   push:
     branches:
       - master
+      - hardening/5x-integration
     paths-ignore:
       - 'manual/**'
   pull_request:
     branches:
       - master
+      - hardening/5x-integration
     paths-ignore:
       - 'manual/**'
 
