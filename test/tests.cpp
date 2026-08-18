@@ -18,6 +18,7 @@
 #include <wx/timer.h>
 
 #include <gtest/gtest.h>
+#include <rapidjson/document.h>
 
 #include "ocpn-nlohmann/json.hpp"
 #include "observable/configvar.h"
@@ -91,6 +92,23 @@ auto shared_navaddr_none = std::make_shared<NavAddr>();
 auto shared_navaddr_none2000 = std::make_shared<NavAddr2000>();
 
 wxLogStderr defaultLog;
+
+struct AisDecoderTestAccess {
+  static void HandleSignalK(AisDecoder& decoder, const char* json) {
+    decoder.HandleSignalK(
+        std::make_shared<const SignalkMsg>("", "", json, "test-interface"));
+  }
+
+  static void UpdateItem(AisDecoder& decoder,
+                         const std::shared_ptr<AisTargetData>& target,
+                         const char* json) {
+    rapidjson::Document item;
+    item.Parse(json);
+    ASSERT_FALSE(item.HasParseError());
+    wxString timestamp;
+    decoder.updateItem(target, false, item, timestamp);
+  }
+};
 
 #ifdef _MSC_VER
 int setenv(const char* name, const char* value, bool overwrite) {
@@ -953,6 +971,66 @@ public:
 };
 #endif
 
+class SignalKAisMalformedDeltaApp : public BasicTest {
+public:
+  SignalKAisMalformedDeltaApp() : BasicTest() {}
+
+  void Work() override {
+    auto target = AisTargetDataMaker::GetInstance().GetTargetData();
+    target->MMSI = 123456789;
+    target->SOG = 12.5;
+    target->Lat = 51.0;
+    target->Lon = -1.0;
+    target->NavStatus = MOORED;
+    strncpy(target->ShipName, "unchanged", SHIP_NAME_LEN - 1);
+
+    const char* malformed_items[] = {
+        R"(null)",
+        R"({"path":7,"value":"A"})",
+        R"({"path":"navigation.position","value":null})",
+        R"({"path":"navigation.position","value":{"latitude":"51","longitude":-1}})",
+        R"({"path":"navigation.speedOverGround","value":"fast"})",
+        R"({"path":"design.aisShipType","value":{"id":"cargo"}})",
+        R"({"path":"virtual","value":"true"})",
+        R"({"path":"design.draft","value":4.2})",
+        R"({"path":"sensors.ais.class","value":{"value":"A"}})",
+        R"({"path":"navigation.state","value":3})",
+        R"({"path":"navigation.destination.commonName","value":null})",
+        R"({"path":"sensors.ais.designatedAreaCode","value":"200"})",
+        R"({"path":"environment.date","value":false})",
+        R"({"path":"environment.outside.horizontalVisibility.overRange","value":1})",
+        R"({"path":"","value":{"name":{"nested":"name"}}})",
+        R"({"path":"","value":{"registrations":null}})",
+        R"({"path":"","value":{"communication":{"callsignVhf":9}}})",
+        R"({"path":"","value":{"mmsi":123456789}})",
+    };
+
+    for (const char* item : malformed_items)
+      AisDecoderTestAccess::UpdateItem(*g_pAIS, target, item);
+
+    EXPECT_DOUBLE_EQ(target->SOG, 12.5);
+    EXPECT_DOUBLE_EQ(target->Lat, 51.0);
+    EXPECT_DOUBLE_EQ(target->Lon, -1.0);
+    EXPECT_EQ(target->NavStatus, MOORED);
+    EXPECT_STREQ(target->ShipName, "unchanged");
+    EXPECT_EQ(target->MMSI, 123456789);
+
+    AisDecoderTestAccess::UpdateItem(
+        *g_pAIS, target,
+        R"({"path":"navigation.speedOverGround","value":5.0})");
+    EXPECT_NEAR(target->SOG, 5.0 * 3600.0 / 1852.0, 1e-6);
+
+    // Top-level and update-array values are untrusted as well as individual
+    // path/value items. These inputs previously reached RapidJSON assertions.
+    AisDecoderTestAccess::HandleSignalK(*g_pAIS, "[]");
+    AisDecoderTestAccess::HandleSignalK(*g_pAIS, R"({"self":7})");
+    AisDecoderTestAccess::HandleSignalK(*g_pAIS, R"({"self":"vessels.self"})");
+    AisDecoderTestAccess::HandleSignalK(
+        *g_pAIS,
+        R"({"context":"vessels.urn:mrn:imo:mmsi:123456789","updates":[null,{"timestamp":4,"values":[null,{"path":"sensors.ais.class","value":{}}]}]})");
+  }
+};
+
 class AisDecodeApp : public BasicTest {
 public:
   AisDecodeApp() : BasicTest() {}
@@ -1253,6 +1331,7 @@ TEST(Navmsg, ActiveMessages) { NavMsgApp app; }
 #if API_VERSION_MINOR > 18
 TEST(PluginApi, SignalK) { SignalKApp app; }
 #endif
+TEST(AisSignalK, MalformedDeltaIsIgnored) { SignalKAisMalformedDeltaApp app; }
 
 #ifdef HAVE_UNISTD_H
 TEST(Instance, StdInstanceChk) { StdInstanceTest check; }

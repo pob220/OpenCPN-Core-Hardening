@@ -109,6 +109,8 @@ struct AisDecoderCallbacks {
 };
 
 class AisDecoder : public wxEvtHandler {
+  friend struct AisDecoderTestAccess;
+
 public:
   explicit AisDecoder(const AisDecoderCallbacks &callbacks);
 
