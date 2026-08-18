@@ -359,20 +359,38 @@ bool SendPGN129285(Routeman &routeman, AbstractCommDriver *driver) {
   return (fail_any == 0);
 }
 
+std::vector<unsigned char> autopilot_output::EncodePgn129284(
+    const Pgn129284Data &data) {
+  constexpr double kMetersPerNauticalMile = 1852.0;
+  constexpr double kSecondsPerHour = 3600.0;
+  constexpr double kRadiansPerDegree = PI / 180.0;
+
+  tN2kMsg msg;
+  SetN2kPGN129284(
+      msg, 0xFF, data.distance_to_waypoint_nm * kMetersPerNauticalMile,
+      N2khr_true, false, false, N2kdct_RhumbLine, data.eta_time_seconds,
+      data.eta_date_days,
+      data.bearing_origin_to_destination_degrees * kRadiansPerDegree,
+      data.bearing_position_to_destination_degrees * kRadiansPerDegree, 0, 1,
+      data.destination_latitude_degrees, data.destination_longitude_degrees,
+      data.waypoint_closing_velocity_knots * kMetersPerNauticalMile /
+          kSecondsPerHour);
+  return std::vector<unsigned char>(msg.Data, msg.Data + msg.DataLen);
+}
+
 bool SendPGN129284(Routeman &routeman, AbstractCommDriver *driver) {
   bool fail_any = false;
-  tN2kMsg msg129284;
   RoutePoint *pActivePoint = routeman.GetpActivePoint();
 
   // Calculate closing velocity and ETA
-  double vmg = 0.;
+  double vmg_knots = 0.;
   if (!std::isnan(gCog) && !std::isnan(gSog)) {
     double brg = routeman.GetCurrentBrgToActivePoint();
-    vmg = gSog * cos((brg - gCog) * PI / 180.);
+    vmg_knots = gSog * cos((brg - gCog) * PI / 180.);
   }
   wxTimeSpan tttg_span;
   wxDateTime arrival_time = wxDateTime::Now();
-  if (vmg > 0.) {
+  if (vmg_knots > 0.) {
     double tttg_sec = (routeman.GetCurrentRngToActivePoint() / gSog) * 3600;
     tttg_span = wxTimeSpan::Seconds((long)tttg_sec);
     arrival_time += tttg_span;
@@ -385,30 +403,20 @@ bool SendPGN129284(Routeman &routeman, AbstractCommDriver *driver) {
   double eta_time_seconds = modf(time_days_1979, &eta_time_days);
   int16_t eta_time_days_16 = static_cast<uint16_t>(eta_time_days);
 
-  SetN2kPGN129284(
-      msg129284,
-      0xFF,                                           // SID
-      routeman.GetCurrentRngToActivePoint() * 1852.,  // DistanceToWaypoint
-      N2khr_true,        // tN2kHeadingReference BearingReference
-      false,             // PerpendicularCrossed
-      false,             // ArrivalCircleEntered
-      N2kdct_RhumbLine,  // tN2kDistanceCalculationType CalculationType
-      eta_time_seconds,  // double ETATime,
-      eta_time_days_16,  // int16_t ETADate,
-      routeman.GetCurrentSegmentCourse() * PI /
-          180.,  // BearingOriginToDestinationWaypoint,
-      routeman.GetCurrentBrgToActivePoint() * PI /
-          180.,             // BearingPositionToDestinationWaypoint,
-      0,                    //   uint8_t  OriginWaypointNumber,
-      1,                    //   uint8_t  DestinationWaypointNumber,
-      pActivePoint->m_lat,  //   double DestinationLatitude,
-      pActivePoint->m_lon,  //    double DestinationLongitude,
-      vmg);                 //    double  WaypointClosingVelocity);
+  autopilot_output::Pgn129284Data data;
+  data.distance_to_waypoint_nm = routeman.GetCurrentRngToActivePoint();
+  data.eta_time_seconds = eta_time_seconds;
+  data.eta_date_days = eta_time_days_16;
+  data.bearing_origin_to_destination_degrees =
+      routeman.GetCurrentSegmentCourse();
+  data.bearing_position_to_destination_degrees =
+      routeman.GetCurrentBrgToActivePoint();
+  data.destination_latitude_degrees = pActivePoint->m_lat;
+  data.destination_longitude_degrees = pActivePoint->m_lon;
+  data.waypoint_closing_velocity_knots = vmg_knots;
 
   auto dest_addr = std::make_shared<const NavAddr2000>(driver->iface, 255);
-  std::vector<uint8_t> payload;
-  for (int i = 0; i < msg129284.DataLen; i++)
-    payload.push_back(msg129284.Data[i]);
+  auto payload = autopilot_output::EncodePgn129284(data);
   auto PGN129284 =
       std::make_shared<const Nmea2000Msg>(129284, payload, dest_addr, 6);
   fail_any |= !driver->SendMessage(PGN129284, dest_addr);
