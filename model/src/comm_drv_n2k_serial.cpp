@@ -147,7 +147,7 @@ CommDriverN2KSerial::CommDriverN2KSerial(const ConnectionParams* params,
       m_listener(listener),
       m_stats_timer(*this, 2s),
       m_closing(false) {
-  m_BaudRate = wxString::Format("%i", params->Baudrate), SetSecThreadInActive();
+  m_BaudRate = wxString::Format("%i", params->Baudrate);
   m_manufacturers_code = 0;
   m_got_mfg_code = false;
   this->attributes["canAddress"] = std::string("-1");
@@ -175,9 +175,10 @@ CommDriverN2KSerial::CommDriverN2KSerial(const ConnectionParams* params,
 CommDriverN2KSerial::~CommDriverN2KSerial() { Close(); }
 
 DriverStats CommDriverN2KSerial::GetDriverStats() const {
-  if (m_closing) return m_driver_stats;
+  if (m_closing.load()) return m_driver_stats;
 
 #ifndef ANDROID
+  std::lock_guard lock(m_thread_mutex);
   if (m_pSecondary_Thread)
     return m_pSecondary_Thread->GetStats();
   else
@@ -194,41 +195,46 @@ bool CommDriverN2KSerial::Open() {
 
 #ifndef ANDROID
   //    Kick off the  RX thread
-  SetSecondaryThread(new CommDriverN2KSerialThread(this, comx, m_BaudRate));
+  auto* thread = new CommDriverN2KSerialThread(this, comx, m_BaudRate);
   SetThreadRunFlag(1);
-  GetSecondaryThread()->Run();
+  {
+    std::lock_guard lock(m_thread_mutex);
+    m_pSecondary_Thread = thread;
+  }
+  if (thread->Run() != wxTHREAD_NO_ERROR) {
+    std::lock_guard lock(m_thread_mutex);
+    m_pSecondary_Thread = nullptr;
+    m_Thread_run_flag = -1;
+    delete thread;
+    return false;
+  }
 #endif
 
   return true;
 }
 
 void CommDriverN2KSerial::Close() {
+  if (m_closing.exchange(true)) return;
+
   wxLogMessage(wxString::Format("Closing N2K Driver %s", m_portstring.c_str()));
 
   m_stats_timer.Stop();
-  m_closing = true;
 
-  //    Kill off the Secondary RX Thread if alive
-  if (m_pSecondary_Thread) {
-    if (m_bsec_thread_active)  // Try to be sure thread object is still alive
-    {
-      wxLogMessage("Stopping Secondary Thread");
-
-      m_Thread_run_flag = 0;
-      int tsec = 10;
-      while ((m_Thread_run_flag >= 0) && (tsec--)) wxSleep(1);
-
-      wxString msg;
-      if (m_Thread_run_flag < 0)
-        msg.Printf("Stopped in %d sec.", 10 - tsec);
-      else
-        msg.Printf("Not Stopped after 10 sec.");
-      wxLogMessage(msg);
-    }
-
-    m_pSecondary_Thread = NULL;
-    m_bsec_thread_active = false;
+  CommDriverN2KSerialThread* thread = nullptr;
+  {
+    // Detach the queueing path first. New sends fail while the existing worker
+    // is allowed to finish its current bounded serial operation.
+    std::lock_guard lock(m_thread_mutex);
+    thread = m_pSecondary_Thread;
+    m_pSecondary_Thread = nullptr;
   }
+  if (!thread) return;
+
+  wxLogMessage("Stopping N2K serial worker");
+  m_Thread_run_flag = 0;
+  thread->Wait();
+  delete thread;
+  wxLogMessage("Stopped N2K serial worker");
 }
 static uint64_t PayloadToName(const std::vector<unsigned char>& payload) {
   uint64_t name = 0;
@@ -239,7 +245,7 @@ static uint64_t PayloadToName(const std::vector<unsigned char>& payload) {
 
 bool CommDriverN2KSerial::SendMessage(std::shared_ptr<const NavMsg> msg,
                                       std::shared_ptr<const NavAddr> addr) {
-  if (m_closing) return false;
+  if (m_closing.load()) return false;
   if (!msg) return false;
 
 #ifndef ANDROID
@@ -269,21 +275,24 @@ bool CommDriverN2KSerial::SendMessage(std::shared_ptr<const NavMsg> msg,
   m_listener.Notify(
       std::make_shared<const Nmea2000Msg>(_pgn, msg_payload, GetAddress(name)));
 
-  if (GetSecondaryThread()) {
-    if (IsSecThreadActive()) {
-      int retry = 10;
-      while (retry) {
-        if (GetSecondaryThread()->SetOutMsg(acti_pkg))
-          return true;
-        else
-          retry--;
-      }
-      return false;  // could not send after several tries....
-    } else
-      return false;
+  int retry = 10;
+  while (retry--) {
+    if (QueueOutput(acti_pkg)) return true;
   }
+  return false;  // could not send after several tries....
 #endif
   return true;
+}
+
+bool CommDriverN2KSerial::QueueOutput(
+    const std::vector<unsigned char>& message) {
+#ifndef ANDROID
+  if (m_closing.load()) return false;
+  std::lock_guard lock(m_thread_mutex);
+  return m_pSecondary_Thread && m_pSecondary_Thread->SetOutMsg(message);
+#else
+  return false;
+#endif
 }
 
 void CommDriverN2KSerial::ProcessManagementPacket(
@@ -421,17 +430,15 @@ int CommDriverN2KSerial::SendMgmtMsg(unsigned char* string, size_t string_size,
   bool not_done = true;
   int ntry_outer = 10;
   while (not_done) {
-    if (GetSecondaryThread() && IsSecThreadActive()) {
-      int retry = 10;
-      while (retry) {
-        if (GetSecondaryThread()->SetOutMsg(msg)) {
-          bsent = true;
-          not_done = false;
-          break;
-        } else
-          retry--;
+    int retry = 10;
+    while (!m_closing.load() && retry--) {
+      if (QueueOutput(msg)) {
+        bsent = true;
+        not_done = false;
+        break;
       }
-    } else {
+    }
+    if (!bsent) {
       wxMilliSleep(100);
       if (ntry_outer-- <= 0) not_done = false;
     }
@@ -536,7 +543,7 @@ void CommDriverN2KSerial::AddTxPGN(int pgn) {
 CommDriverN2KSerialThread::CommDriverN2KSerialThread(
     CommDriverN2KSerial* Launcher, const wxString& PortName,
     const wxString& strBaudRate)
-    : m_out_que(OUT_QUEUE_LENGTH) {
+    : wxThread(wxTHREAD_JOINABLE), m_out_que(OUT_QUEUE_LENGTH) {
   m_pParentDriver = Launcher;  // This thread's immediate "parent"
 
   m_PortName = PortName;
@@ -687,8 +694,6 @@ void* CommDriverN2KSerialThread::Entry() {
     SetGatewayOperationMode();
   }
 
-  m_pParentDriver->SetSecThreadActive();  // I am alive
-
   //    The main loop
   static size_t retries = 0;
 
@@ -762,7 +767,6 @@ void* CommDriverN2KSerialThread::Entry() {
 
   // thread_exit:
   CloseComPortPhysical();
-  m_pParentDriver->SetSecThreadInActive();  // I am dead
   m_pParentDriver->m_Thread_run_flag = -1;
 
   std::lock_guard lock(m_stats_mutex);
@@ -794,8 +798,6 @@ void* CommDriverN2KSerialThread::Entry() {
     std::lock_guard lock(m_stats_mutex);
     m_driver_stats.available = true;
   }
-
-  m_pParentDriver->SetSecThreadActive();  // I am alive
 
   //    The main loop
   static size_t retries = 0;
@@ -860,7 +862,6 @@ void* CommDriverN2KSerialThread::Entry() {
 
   // thread_exit:
   CloseComPortPhysical();
-  m_pParentDriver->SetSecThreadInActive();  // I am dead
   m_pParentDriver->m_Thread_run_flag = -1;
 
   return 0;
