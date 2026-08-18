@@ -197,7 +197,6 @@ glTexFactory::glTexFactory(ChartBase *chart, int raster_format) {
 glTexFactory::~glTexFactory() {
   delete m_fs;
 
-  PurgeBackgroundCompressionPool();
   DeleteAllTextures();
   DeleteAllDescriptors();
 
@@ -392,11 +391,6 @@ bool glTexFactory::BackgroundCompressionAsJob() const {
   return g_glTextureManager->AsJob(m_ChartPath);
 }
 
-void glTexFactory::PurgeBackgroundCompressionPool() {
-  //  Purge the "todo" list, and allow any running jobs to complete normally
-  g_glTextureManager->PurgeJobList(m_ChartPath);
-}
-
 void glTexFactory::DeleteSingleTexture(glTextureDescriptor *ptd) {
   if (!ptd->tex_name) return;
 
@@ -584,8 +578,8 @@ bool glTexFactory::BuildTexture(glTextureDescriptor *ptd, int base_level,
     if (GL_COMPRESSED_RGB_FXT1_3DFX == g_raster_format &&
         g_GLOptions.m_bTextureCompression) {
       // this version avoids re-uploading the data
-      g_glTextureManager->ScheduleJob(this, rect, base_level, true, false, true,
-                                      true);
+      g_glTextureManager->ScheduleJob(shared_from_this(), rect, base_level,
+                                      true, false, true, true);
       ptd->FreeMap();
       ptd->nGPU_compressed = GPU_TEXTURE_COMPRESSED;
       b_use_mipmaps = b_use_compressed_mipmaps;
@@ -645,8 +639,9 @@ bool glTexFactory::PrepareTexture(int base_level, const wxRect &rect,
         ptd->nGPU_compressed == GPU_TEXTURE_UNCOMPRESSED) {
       // scheduling at base_level reduces vram usage but is slower overall
       // probably shouldn't be used for caching until it can cache each level
-      g_glTextureManager->ScheduleJob(this, rect, 0 /*base_level*/, true, false,
-                                      true, false);
+      g_glTextureManager->ScheduleJob(shared_from_this(), rect,
+                                      0 /*base_level*/, true, false, true,
+                                      false);
       if (GL_COMPRESSED_RGB_FXT1_3DFX == g_raster_format)
         glBindTexture(GL_TEXTURE_2D, ptd->tex_name);  // reset texture binding
 
