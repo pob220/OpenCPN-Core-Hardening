@@ -26,6 +26,8 @@
 #ifndef SQUISH_H
 #define SQUISH_H
 
+#include <atomic>
+
 //! All squish API functions live in this namespace.
 namespace squish {
 
@@ -222,7 +224,8 @@ void CompressImageRGB( u8 const* rgb, int width, int height, void* blocks, int f
  *
  */
 void CompressImageRGBpow2_Flatten_Throttle_Abort( u8 const* rgb, int width, int height, void* blocks, int flags,
-                                                  bool b_flatten, void (*throttle)(void*), void *throttle_data, volatile bool &b_abort );
+                                                  bool b_flatten, void (*throttle)(void*), void *throttle_data,
+                                                  std::atomic_bool const& b_abort );
 
 // -----------------------------------------------------------------------------
 
@@ -252,4 +255,3 @@ void DecompressImage( u8* rgba, int width, int height, void const* blocks, int f
 } // namespace squish
 
 #endif // ndef SQUISH_H
-
