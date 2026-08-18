@@ -840,7 +840,7 @@ void MyFrame::OnSENCEvtThread(OCPN_BUILDSENC_ThreadEvent &event) {
   }
 }
 
-void MyFrame::StartRebuildChartDatabase() {
+bool MyFrame::StartRebuildChartDatabase() {
   bool b_SetInitialPoint = false;
 
   //   Build the initial chart dir array
@@ -875,8 +875,10 @@ void MyFrame::StartRebuildChartDatabase() {
         _("OpenCPN Chart Update"), line, 100, NULL, wxPD_SMOOTH);
 
     LoadS57();
-    ChartData->Create(ChartDirArray, pprog);
+    return ChartData->Create(ChartDirArray, pprog);
   }
+
+  return false;
 }
 
 // play an arbitrary number of bells by using 1 and 2 bell sounds
@@ -2518,6 +2520,10 @@ void MyFrame::OnToolLeftClick(wxCommandEvent &event) {
 
     case wxID_PREFERENCES:
     case ID_SETTINGS: {
+      if (!g_bDeferredInitDone) {
+        wxLogWarning("Settings requested before application initialization");
+        break;
+      }
       HideTbarTooltip();
       DoSettings();
       break;
@@ -2541,6 +2547,10 @@ void MyFrame::OnToolLeftClick(wxCommandEvent &event) {
     }
 
     case ID_MENU_SETTINGS_BASIC: {
+      if (!g_bDeferredInitDone) {
+        wxLogWarning("Settings requested before application initialization");
+        break;
+      }
 #ifdef __ANDROID__
       androidDisableFullScreen();
       HideTbarTooltip();
@@ -4626,9 +4636,9 @@ void MyFrame::OnInitTimer(wxTimerEvent &event) {
         // Start an async chart database update
         // Arrange for init timer to restart at next point in chain
         m_iInitCount = 1;
-        StartRebuildChartDatabase();
+        const bool rebuild_started = StartRebuildChartDatabase();
         g_NeedDBUpdate = 0;
-        return;
+        if (rebuild_started) return;
       }
 
       break;

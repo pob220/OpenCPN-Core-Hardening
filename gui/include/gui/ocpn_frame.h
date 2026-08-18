@@ -505,7 +505,13 @@ public:
   void UpdateCanvasConfigDescriptors();
   void ScheduleSettingsDialog();
   void ScheduleSettingsDialogNew();
-  static void StartRebuildChartDatabase();
+  /**
+   * Start the initial chart database rebuild when chart directories exist.
+   *
+   * @return true if chart database completion will resume deferred startup;
+   *         false if no rebuild was started and the caller must resume it.
+   */
+  static bool StartRebuildChartDatabase();
   void PositionIENCToolbar();
 
   void InitAppMsgBusListener();
