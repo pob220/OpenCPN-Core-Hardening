@@ -33,6 +33,7 @@
 #include "model/comm_drv_factory.h"
 #include "model/comm_drv_file.h"
 #include "model/comm_drv_loopback.h"
+#include "model/comm_drv_n2k_serial.h"
 #include "model/comm_drv_registry.h"
 #include "model/comm_navmsg_bus.h"
 #include "model/config_vars.h"
@@ -1318,6 +1319,28 @@ TEST(FileDriver, output) {
   ss << f.rdbuf();
   EXPECT_EQ(ss.str(), string("n2000  pgn: 6385516 [  ]"));
 }
+
+#ifndef ANDROID
+TEST(N2kSerial, MissingDeviceJoinsWorkerOnClose) {
+  wxInitializer wx_runtime;
+  ASSERT_TRUE(wx_runtime.IsOk());
+
+  ConnectionParams params;
+  params.Type = SERIAL;
+  params.Protocol = PROTO_NMEA2000;
+  params.Port = "__opencpn_missing_actisense__";
+  params.Baudrate = 115200;
+  params.IOSelect = DS_TYPE_INPUT_OUTPUT;
+  SillyListener listener;
+
+  // This exercises startup failure followed by teardown. The regression is
+  // that Close used to abandon a detached worker after a timeout while that
+  // worker retained a raw pointer to the destroyed driver.
+  CommDriverN2KSerial driver(&params, listener);
+  driver.Close();
+  driver.Close();  // Idempotent teardown is required by registry/destructor use.
+}
+#endif
 
 TEST(Listeners, vector) { ListenerCliApp app; };
 
