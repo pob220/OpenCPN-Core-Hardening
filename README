@@ -2,6 +2,11 @@
 1.  Overview
 ----------------------------------------------------------------------
 
+This fork contains an evidence-led OpenCPN 5.x hardening programme.  See
+HARDENING.md for the exact fixes, review branches, test commands, known
+limitations and package instructions.  The upstream-compatible baseline is
+unchanged on master; the combined test build is hardening/5x-integration.
+
 a.  Opencpn was built with the following objectives in mind.
 
     i.   Intended use as primary navigation interface for vessels
