@@ -3703,7 +3703,9 @@ extern DECL_EXP wxString GetPlugInPath(opencpn_plugin *pplugin);
  *
  * @param full_path Full path to chart file
  * @param b_RefreshCanvas True to refresh display after adding
- * @return Database index of added chart, -1 if failed
+ * @return 1 if the chart was accepted, 0 if it was not added
+ * @note Must be called on OpenCPN's main thread. Calls made while a chart
+ *       database update is already running fail without changing the database.
  */
 extern "C" DECL_EXP int AddChartToDBInPlace(wxString &full_path,
                                             bool b_RefreshCanvas);
@@ -3711,7 +3713,9 @@ extern "C" DECL_EXP int AddChartToDBInPlace(wxString &full_path,
  * Removes a chart from database without full rebuild.
  *
  * @param full_path Full path to chart file to remove
- * @return 0 if successful, -1 if failed
+ * @return 1 if the chart was removed, 0 if it was not found or removal failed
+ * @note Must be called on OpenCPN's main thread. Calls made while a chart
+ *       database update is already running fail without changing the database.
  */
 extern "C" DECL_EXP int RemoveChartFromDBInPlace(wxString &full_path);
 
