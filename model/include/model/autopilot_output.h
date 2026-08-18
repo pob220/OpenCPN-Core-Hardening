@@ -24,8 +24,30 @@
 #ifndef _AUTOPILOTOUTPUT_H__
 #define _AUTOPILOTOUTPUT_H__
 
+#include <cstdint>
+#include <vector>
+
 #include "comm_driver.h"
 #include "model/route.h"
+
+namespace autopilot_output {
+
+/** Values used to encode NMEA 2000 PGN 129284 Navigation Data. */
+struct Pgn129284Data {
+  double distance_to_waypoint_nm = 0.0;
+  double eta_time_seconds = 0.0;
+  int16_t eta_date_days = 0;
+  double bearing_origin_to_destination_degrees = 0.0;
+  double bearing_position_to_destination_degrees = 0.0;
+  double destination_latitude_degrees = 0.0;
+  double destination_longitude_degrees = 0.0;
+  double waypoint_closing_velocity_knots = 0.0;
+};
+
+/** Encode PGN 129284 using the SI units required on the NMEA 2000 wire. */
+std::vector<unsigned char> EncodePgn129284(const Pgn129284Data &data);
+
+}  // namespace autopilot_output
 
 bool UpdateAutopilotN0183(Routeman &routeman);
 bool UpdateAutopilotN2K(Routeman &routeman);
