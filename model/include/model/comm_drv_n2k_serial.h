@@ -26,6 +26,7 @@
 #define _COMMDRIVERN2KSERIAL_H
 
 #include <atomic>
+#include <mutex>
 
 #include <wx/thread.h>
 
@@ -74,19 +75,6 @@ public:
 
   int SetTXPGN(int pgn) override;
 
-  //    Secondary thread life toggle
-  //    Used to inform launching object (this) to determine if the thread can
-  //    be safely called or polled, e.g. wxThread->Destroy();
-  void SetSecThreadActive(void) { m_bsec_thread_active = true; }
-  void SetSecThreadInActive(void) { m_bsec_thread_active = false; }
-  bool IsSecThreadActive() const { return m_bsec_thread_active; }
-
-  void SetSecondaryThread(CommDriverN2KSerialThread* secondary_Thread) {
-    m_pSecondary_Thread = secondary_Thread;
-  }
-  CommDriverN2KSerialThread* GetSecondaryThread() {
-    return m_pSecondary_Thread;
-  }
   void SetThreadRunFlag(int run) { m_Thread_run_flag = run; }
 
   void handle_N2K_SERIAL_RAW(CommDriverN2KSerialEvent& event);
@@ -107,6 +95,7 @@ private:
   int SendMgmtMsg(unsigned char* string, size_t string_size,
                   unsigned char cmd_code, int timeout_msec,
                   bool* response_flag);
+  bool QueueOutput(const std::vector<unsigned char>& message);
 
   bool m_bok;
   std::string m_portstring;
@@ -114,7 +103,7 @@ private:
   int m_handshake;
 
   CommDriverN2KSerialThread* m_pSecondary_Thread;
-  bool m_bsec_thread_active;
+  mutable std::mutex m_thread_mutex;
 
   DriverListener& m_listener;
 
@@ -131,7 +120,7 @@ private:
   StatsTimer m_stats_timer;
   DriverStats m_driver_stats;
   std::vector<int> pgn_tx_list;
-  bool m_closing;
+  std::atomic_bool m_closing;
 };
 
 #endif  // guard
