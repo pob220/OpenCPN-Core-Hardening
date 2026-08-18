@@ -130,7 +130,7 @@ public:
   bool AsJob(wxString const &chart_path) const;
   void PurgeJobList(wxString chart_path = wxEmptyString);
   void ClearJobList();
-  void ClearAllRasterTextures(void);
+  void ClearAllRasterTextures(bool wait_for_jobs = false);
   bool PurgeChartTextures(ChartBase *pc, bool b_purge_factory = false);
   bool TextureCrunch(double factor);
   bool FactoryCrunch(double factor);
@@ -142,6 +142,7 @@ public:
   ChartPathHashTexfactType m_chart_texfactory_hash;
 
 private:
+  void WaitForRunningJobs();
   bool DoJob(JobTicket *pticket);
   bool DoThreadJob(JobTicket *pticket);
   bool StartTopJob();

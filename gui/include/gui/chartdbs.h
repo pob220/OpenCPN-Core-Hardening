@@ -403,6 +403,7 @@ protected:
   bool m_b_busy;
 
 private:
+  void RebuildChartTableIndex();
   bool IsChartDirUsed(const wxString &theDir);
 
   int SearchDirAndAddCharts(wxString &dir_name_base,

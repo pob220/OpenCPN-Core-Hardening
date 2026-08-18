@@ -1236,6 +1236,16 @@ void ChartDatabase::OnEvtThread(OCPN_ChartTableEntryThreadEvent &event) {
   }
 }
 
+void ChartDatabase::RebuildChartTableIndex() {
+  active_chartTable_pathindex.clear();
+  int index = 0;
+  for (const auto &entry : active_chartTable) {
+    active_chartTable_pathindex[entry->GetFullSystemPath()] = index;
+    entry->SetEntryOffset(index++);
+  }
+  m_nentries = active_chartTable.size();
+}
+
 void ChartDatabase::FinalizeChartUpdate() {
   // Scrub CTE list, remove any invalid entries,
   //  as tagged by directory removal
@@ -1244,21 +1254,9 @@ void ChartDatabase::FinalizeChartUpdate() {
                      [](const auto &cte) { return !cte->GetbValid(); }),
       active_chartTable.end());
 
-  size_t d = active_chartTable.size();
-
-  //    And once more, setting the Entry index field
-  active_chartTable_pathindex.clear();
-  int i = 0;
-  for (auto cte : active_chartTable) {
-    active_chartTable_pathindex[cte->GetFullSystemPath()] = i;
-    cte->SetEntryOffset(i);
-    i++;
-  }
-
-  m_nentries = active_chartTable.size();
+  RebuildChartTableIndex();
   bValid = true;
   SetBusy(false);
-  ChartData->SetBusy(false);
 
   // Finalize the dB on disk
   ChartData->SaveBinary(ChartListFileName);
@@ -1813,7 +1811,6 @@ bool ChartDatabase::Update(ArrayOfCDI &dir_array, bool bForce,
 
   bValid = false;  // database is not useable right now...
   SetBusy(true);
-  ChartData->SetBusy(true);
 
   //  Mark all charts provisionally invalid
   for (unsigned int i = 0; i < active_chartTable.size(); i++) {
@@ -2722,11 +2719,7 @@ bool ChartDatabase::AddSingleChart(wxString &ChartFullPath,
     }
   }
 
-  //    Update the Entry index fields
-  for (unsigned int i = 0; i < active_chartTable.size(); i++) {
-    auto &cte_ef = GetChartTableEntry(i);
-    cte_ef.SetEntryOffset(i);
-  }
+  RebuildChartTableIndex();
 
   //  Get a new magic number
   wxString new_magic;
@@ -2771,7 +2764,7 @@ bool ChartDatabase::AddSingleChart(wxString &ChartFullPath,
 
   m_nentries = active_chartTable.size();
 
-  ChartData->UpdateChartDatabaseInplace(NewChartDirArray, false, nullptr);
+  UpdateChartDatabaseInplace(NewChartDirArray, false, nullptr);
   return rv;
 }
 
@@ -2785,15 +2778,14 @@ bool ChartDatabase::RemoveSingleChart(wxString &ChartFullPath) {
       // Fast remove element, order not preserved
       std::swap(active_chartTable[i], active_chartTable.back());
       active_chartTable.pop_back();
+      rv = true;
       break;
     }
   }
 
-  //    Update the EntryOffset fields for the array
-  for (unsigned int i = 0; i < active_chartTable.size(); i++) {
-    auto &pcte = GetChartTableEntry(i);
-    pcte.SetEntryOffset(i);
-  }
+  if (!rv) return false;
+
+  RebuildChartTableIndex();
 
   //  Check and update the dir array
   wxFileName fn(ChartFullPath);
@@ -2821,8 +2813,7 @@ bool ChartDatabase::RemoveSingleChart(wxString &ChartFullPath) {
     m_chartDirs.Add(cdi.fullpath);
   }
 
-  m_nentries = active_chartTable.size();
-  ChartData->UpdateChartDatabaseInplace(m_dir_array, false, nullptr);
+  UpdateChartDatabaseInplace(m_dir_array, false, nullptr);
 
   return rv;
 }
