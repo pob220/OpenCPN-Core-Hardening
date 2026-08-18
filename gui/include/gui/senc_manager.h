@@ -30,6 +30,7 @@
 #include <wx/string.h>
 #include <wx/thread.h>
 
+#include "async_worker_lifecycle.h"
 #include "s57chart.h"
 
 class SENCThreadManager;                       // forward
@@ -127,10 +128,13 @@ public:
 private:
   void UpdateAlertString();
   void NotifyFrame(OCPN_BUILDSENC_ThreadEvent &event);
+  void WorkerFinished();
 
   std::vector<SENCJobTicket *> completing_list;
   wxCriticalSection m_list_mutex;
-  bool m_shutting_down;
+  AsyncWorkerLifecycle m_worker_lifecycle;
+
+  friend class SENCBuildThread;
 };
 
 //----------------------------------------------------------------------------

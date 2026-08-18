@@ -804,6 +804,7 @@ set(GUI_HDRS
     ${GUI_HDR_DIR}/about.h
     ${GUI_HDR_DIR}/abstract_chart.h
     ${GUI_HDR_DIR}/abstract_chart_canv.h
+    ${GUI_HDR_DIR}/async_worker_lifecycle.h
     ${GUI_HDR_DIR}/ais.h
     ${GUI_HDR_DIR}/ais_info_gui.h
     ${GUI_HDR_DIR}/ais_target_alert_dlg.h

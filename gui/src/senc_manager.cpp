@@ -40,10 +40,6 @@
 
 SENCThreadManager *g_SencThreadManager;
 
-namespace {
-constexpr int kThreadWaitSeconds = 5;
-}
-
 //----------------------------------------------------------------------------------
 //      SENCJobTicket Implementation
 //----------------------------------------------------------------------------------
@@ -80,7 +76,7 @@ wxEvent *OCPN_BUILDSENC_ThreadEvent::Clone() const {
 //----------------------------------------------------------------------------------
 //      SENCThreadManager Implementation
 //----------------------------------------------------------------------------------
-SENCThreadManager::SENCThreadManager() : m_shutting_down(false) {
+SENCThreadManager::SENCThreadManager() {
   int nCPU = wxMax(1, wxThread::GetCPUCount());
   if (g_nCPUCount > 0) nCPU = g_nCPUCount;
 
@@ -97,7 +93,9 @@ SENCThreadManager::SENCThreadManager() : m_shutting_down(false) {
 
 SENCThreadManager::~SENCThreadManager() { ClearJobList(); }
 
-bool SENCThreadManager::IsShuttingDown() const { return m_shutting_down; }
+bool SENCThreadManager::IsShuttingDown() const {
+  return m_worker_lifecycle.IsShuttingDown();
+}
 
 int SENCThreadManager::GetRunningJobCount() {
   wxCriticalSectionLocker lock(m_list_mutex);
@@ -131,15 +129,11 @@ void SENCThreadManager::UpdateAlertString() {
 }
 
 void SENCThreadManager::ClearJobList() {
-  m_shutting_down = true;
-
-  wxDateTime end = wxDateTime::Now();
-  end.Add(wxTimeSpan::Seconds(kThreadWaitSeconds));
-
-  while (wxDateTime::Now() < end && GetRunningJobCount() > 0) {
-    wxSleep(1);
-    wxYield();
-  }
+  // Workers borrow both the manager and their ticket. Do not release either
+  // until every detached worker has made its final access. SENC generation can
+  // legitimately exceed the old five-second timeout on slow systems.
+  m_worker_lifecycle.BeginShutdown();
+  m_worker_lifecycle.WaitForWorkers();
 
   std::vector<SENCJobTicket *> tickets_to_delete;
   {
@@ -156,7 +150,7 @@ void SENCThreadManager::ClearJobList() {
 }
 
 SENCThreadStatus SENCThreadManager::ScheduleJob(SENCJobTicket *ticket) {
-  if (m_shutting_down) return THREAD_INACTIVE;
+  if (IsShuttingDown()) return THREAD_INACTIVE;
 
   {
     wxCriticalSectionLocker lock(m_list_mutex);
@@ -175,7 +169,7 @@ SENCThreadStatus SENCThreadManager::ScheduleJob(SENCJobTicket *ticket) {
 }
 
 void SENCThreadManager::StartTopJob() {
-  if (m_shutting_down) return;
+  if (IsShuttingDown()) return;
 
   bool started_job = false;
   do {
@@ -202,9 +196,14 @@ void SENCThreadManager::StartTopJob() {
       if (!startCandidate) break;
 
       SENCBuildThread *thread = new SENCBuildThread(startCandidate, this);
+      if (!m_worker_lifecycle.TryStart()) {
+        delete thread;
+        break;
+      }
       startCandidate->m_status = THREAD_STARTED;
       thread->SetPriority(20);
       if (thread->Run() != wxTHREAD_NO_ERROR) {
+        m_worker_lifecycle.Finish();
         startCandidate->m_status = THREAD_PENDING;
         delete thread;
         break;
@@ -216,6 +215,8 @@ void SENCThreadManager::StartTopJob() {
 
   UpdateAlertString();
 }
+
+void SENCThreadManager::WorkerFinished() { m_worker_lifecycle.Finish(); }
 
 void SENCThreadManager::FinishJob(SENCJobTicket *ticket) {
   {
@@ -316,6 +317,14 @@ SENCBuildThread::SENCBuildThread(SENCJobTicket *ticket,
 }
 
 void *SENCBuildThread::Entry() {
+  // This guard must be the worker's final access to the manager. It lets the
+  // manager wait for all detached workers before deleting their borrowed
+  // tickets and its own event-handler state.
+  struct WorkerFinishedGuard {
+    SENCThreadManager *manager;
+    ~WorkerFinishedGuard() { manager->WorkerFinished(); }
+  } worker_finished{m_manager};
+
   EVENTSENCResult result = SENC_BUILD_DONE_ERROR;
   int stat = -1;
 
