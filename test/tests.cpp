@@ -1079,6 +1079,40 @@ public:
   }
 };
 
+class AisType14App : public BasicTest {
+public:
+  void RunCase() {
+    const char* sentence =
+        "!AIVDM,1,1,,A,>1mg=5@l5T@5V1@E=@,2*0E";
+    constexpr unsigned kMmsi = 123456789;
+
+    std::shared_ptr<const AisSafetyMessage> observed;
+    ObservableListener listener;
+    listener.Listen(g_pAIS->safety_message, this, EVT_FOO);
+    Bind(EVT_FOO, [&](ObservedEvt& event) {
+      observed = obs::UnpackEvtPointer<AisSafetyMessage>(event);
+    });
+
+    EXPECT_EQ(g_pAIS->DecodeN0183(sentence), AIS_NoError);
+    ProcessPendingEvents();
+
+    ASSERT_NE(observed, nullptr);
+    EXPECT_EQ(observed->source_mmsi, kMmsi);
+    EXPECT_EQ(observed->text, "MAYDAY TEST");
+    EXPECT_FALSE(observed->source_was_known);
+
+    const auto& history = g_pAIS->GetSafetyMessages();
+    ASSERT_EQ(history.size(), 1U);
+    EXPECT_EQ(history.back().source_mmsi, kMmsi);
+    EXPECT_EQ(history.back().text, "MAYDAY TEST");
+
+    const auto target = g_pAIS->GetTargetList().find(kMmsi);
+    ASSERT_NE(target, g_pAIS->GetTargetList().end());
+    EXPECT_EQ(target->second->MSG_14_text, "MAYDAY TEST");
+    EXPECT_FALSE(target->second->b_positionOnceValid);
+  }
+};
+
 class ObsTorture : public wxAppConsole {
 public:
   class ObsListener : public wxEvtHandler {
@@ -1361,6 +1395,11 @@ TEST(AIS, Decoding) { AisDecodeApp app; }
 TEST(AIS, AISVDO) { AisVdoApp app; }
 
 TEST(AIS, AISVDM) { AisVdmApp app; }
+
+TEST(AIS, StandaloneType14PublishesSafetyMessage) {
+  AisType14App app;
+  app.RunCase();
+}
 
 TEST(Navmsg, ActiveMessages) { NavMsgApp app; }
 
