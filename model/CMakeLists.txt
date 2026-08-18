@@ -128,6 +128,7 @@ set(
   ${MODEL_HDR_DIR}/route.h
   ${MODEL_HDR_DIR}/routeman.h
   ${MODEL_HDR_DIR}/route_point.h
+  ${MODEL_HDR_DIR}/route_leg_state.h
   ${MODEL_HDR_DIR}/safe_mode.h
   ${MODEL_HDR_DIR}/select.h
   ${MODEL_HDR_DIR}/select_item.h
@@ -234,6 +235,7 @@ set(SRC
   ${MODEL_SRC_DIR}/position_parser.cpp
   ${MODEL_SRC_DIR}/rest_server.cpp
   ${MODEL_SRC_DIR}/route.cpp
+  ${MODEL_SRC_DIR}/route_leg_state.cpp
   ${MODEL_SRC_DIR}/routeman.cpp
   ${MODEL_SRC_DIR}/route_point.cpp
   ${MODEL_SRC_DIR}/safe_mode.cpp
