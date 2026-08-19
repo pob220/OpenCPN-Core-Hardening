@@ -36,6 +36,7 @@
 #include "model/comm_drv_n2k_serial.h"
 #include "model/comm_drv_registry.h"
 #include "model/comm_navmsg_bus.h"
+#include "model/cmdline.h"
 #include "model/config_vars.h"
 #include "model/datetime.h"
 #include "model/ipc_api.h"
@@ -281,6 +282,33 @@ public:
     ProcessPendingEvents();
     EXPECT_EQ(s_result, std::string("bar"));
     EXPECT_EQ(NavAddr::Bus::Plugin, s_bus);
+  }
+};
+
+class PluginPrivateDataPathApp : public BasicTest {
+public:
+  PluginPrivateDataPathApp() : BasicTest() {}
+
+  void Work() override {
+    // Populate the platform's normal/default path first.  This reproduces the
+    // application startup ordering which previously made the legacy pointer
+    // accessor ignore a later --configdir selection.
+    const wxString default_path = g_BasePlatform->DefaultPrivateDataDir();
+    ASSERT_FALSE(default_path.IsEmpty());
+
+    const std::string saved_configdir = g_configdir;
+    const std::string isolated_path =
+        (fs::path(CMAKE_BINARY_DIR) / "plugin-private-data-test").string();
+    g_configdir = isolated_path;
+
+    wxString* plugin_path = g_BasePlatform->GetPrivateDataDirPtr();
+    EXPECT_NE(plugin_path, nullptr);
+    if (plugin_path) {
+      EXPECT_EQ(plugin_path->ToStdString(), isolated_path);
+    }
+    EXPECT_EQ(g_BasePlatform->GetPrivateDataDir().ToStdString(), isolated_path);
+
+    g_configdir = saved_configdir;
   }
 };
 
@@ -1423,6 +1451,10 @@ TEST(IpcClient, Open) { IpcOpen run_test; }
 TEST(Plugin, Basic) { PluginMsgApp app; }
 
 #endif  // __unix__
+
+TEST(PluginApi, PrivateDataPathRespectsConfigDir) {
+  PluginPrivateDataPathApp app;
+}
 
 TEST(FormatTime, Basic) {
   wxTimeSpan span(0, 0, 7200, 0);

@@ -253,8 +253,11 @@ wxString* AbstractPlatform::GetSharedDataDirPtr() {
 }
 
 wxString* AbstractPlatform::GetPrivateDataDirPtr() {
-  if (m_PrivateDataDir.IsEmpty()) GetPrivateDataDir();
-  return &m_PrivateDataDir;
+  // GetPrivateDataDir() may return the command-line configuration directory
+  // instead of m_PrivateDataDir.  Returning m_PrivateDataDir directly caused
+  // legacy plugin API callers to silently write to the default user profile
+  // even when OpenCPN was launched with --configdir.
+  return &GetPrivateDataDir();
 }
 
 wxString& AbstractPlatform::GetSharedDataDir() {
