@@ -47,6 +47,7 @@ set(SRC
   autopilot_output_tests.cpp
   chart_safety_depth_tests.cpp
   chart_safety_service_tests.cpp
+  cm93_dictionary_parser_tests.cpp
   datetime_tests.cpp
   external_api_tests.cpp
   tests.cpp filter_tests.cpp

@@ -45,6 +45,7 @@
 
 #include "chcanv.h"
 #include "cm93.h"
+#include "cm93_dictionary_parser.h"
 #include "detail_slider.h"
 #include "gui_lib.h"
 #include "line_clip.h"
@@ -594,24 +595,14 @@ bool cm93_dictionary::LoadDictionary(const wxString &dictionary_dir) {
 
   for (i = 0; i < nline; i++) {
     line = file.GetLine(i);
-
-    wxStringTokenizer tkz(line, "|");
-    //            while ( tkz.HasMoreTokens() )
-    {
-      //  6 char class name
-      wxString class_name = tkz.GetNextToken();
-
-      //  class number, ascii
-      wxString token = tkz.GetNextToken();
-      long liclass;
-      token.ToLong(&liclass);
-      int iclass = liclass;
-      if (iclass > iclass_max) iclass_max = iclass;
-
-      //  geom type, ascii
-      wxString geo_type = tkz.GetNextToken();
+    int iclass = 0;
+    if (ParseCm93DictionaryRecordIndex(line, 3, &iclass) &&
+        iclass > iclass_max) {
+      iclass_max = iclass;
     }
   }
+
+  if (iclass_max == 0) return false;
 
   m_max_class = iclass_max;
 
@@ -621,22 +612,23 @@ bool cm93_dictionary::LoadDictionary(const wxString &dictionary_dir) {
 
   //    And an array of ints describing the geometry type per class
   m_GeomTypeArray = (int *)malloc((iclass_max + 1) * sizeof(int));
+  if (!m_GeomTypeArray) return false;
+  std::fill_n(m_GeomTypeArray, iclass_max + 1, -1);
 
   //    Iterate over the file, filling in the values
   for (i = 0; i < nline; i++) {
     line = file.GetLine(i);
 
-    wxStringTokenizer tkz(line, "|");
-    //           while ( tkz.HasMoreTokens() )
+    int iclass = 0;
+    if (!ParseCm93DictionaryRecordIndex(line, 3, &iclass)) continue;
+
+    wxStringTokenizer tkz(line, "|\r\n");
     {
       //  6 char class name
       wxString class_name = tkz.GetNextToken();
 
       //  class number, ascii
-      wxString token = tkz.GetNextToken();
-      long liclass;
-      token.ToLong(&liclass);
-      int iclass = liclass;
+      tkz.GetNextToken();
 
       //  geom type, ascii
       wxString geo_type = tkz.GetNextToken();
@@ -690,21 +682,14 @@ bool cm93_dictionary::LoadDictionary(const wxString &dictionary_dir) {
           if (a == 0x0a) break;
         }
 
-        if (!line.StartsWith((const wxChar *)";")) {
-          wxStringTokenizer tkz(line, "|");
-          {
-            //  6 attribute label
-            wxString class_name = tkz.GetNextToken();
-
-            //  attribute number, ascii
-            wxString token = tkz.GetNextToken();
-            long liattr;
-            token.ToLong(&liattr);
-            int iattr = liattr;
-            if (iattr > iattr_max) iattr_max = iattr;
-          }
+        int iattr = 0;
+        if (ParseCm93DictionaryRecordIndex(line, 2, &iattr) &&
+            iattr > iattr_max) {
+          iattr_max = iattr;
         }
       }
+
+      if (iattr_max == 0) return false;
 
       m_max_attr = iattr_max;
 
@@ -717,6 +702,8 @@ bool cm93_dictionary::LoadDictionary(const wxString &dictionary_dir) {
 
       //    And an array of chars describing the attribute value type
       m_ValTypeArray = (char *)malloc((iattr_max + 1) * sizeof(char));
+      if (!m_ValTypeArray) return false;
+      std::fill_n(m_ValTypeArray, iattr_max + 1, '?');
 
       //    Iterate over the file, filling in the values
       while (!filea.Eof()) {
@@ -729,17 +716,15 @@ bool cm93_dictionary::LoadDictionary(const wxString &dictionary_dir) {
           if (a == 0x0a) break;
         }
 
-        if (!line.StartsWith((const wxChar *)";")) {
-          wxStringTokenizer tkz(line, "|");
+        int iattr = 0;
+        if (ParseCm93DictionaryRecordIndex(line, 6, &iattr)) {
+          wxStringTokenizer tkz(line, "|\r\n");
           {
             //  6 char class name
             wxString attr_name = tkz.GetNextToken();
 
             //  class number, ascii
             wxString token = tkz.GetNextToken();
-            long liattr;
-            token.ToLong(&liattr);
-            int iattr = liattr;
 
             m_AttrArray->Insert(attr_name, iattr);
             m_AttrArray->RemoveAt(iattr + 1);
@@ -804,21 +789,14 @@ bool cm93_dictionary::LoadDictionary(const wxString &dictionary_dir) {
             if (a == 0x0a) break;
           }
 
-          if (line[0] != ';') {
-            wxStringTokenizer tkz(line, "|");
-            if (tkz.CountTokens()) {
-              //  6 attribute label
-              wxString class_name = tkz.GetNextToken();
-
-              //  attribute number, ascii
-              wxString token = tkz.GetNextToken();
-              long liattr;
-              token.ToLong(&liattr);
-              int iattr = liattr;
-              if (iattr > iattr_max) iattr_max = iattr;
-            }
+          int iattr = 0;
+          if (ParseCm93DictionaryRecordIndex(line, 3, &iattr) &&
+              iattr > iattr_max) {
+            iattr_max = iattr;
           }
         }
+
+        if (iattr_max == 0) return false;
 
         m_max_attr = iattr_max;
 
@@ -831,7 +809,8 @@ bool cm93_dictionary::LoadDictionary(const wxString &dictionary_dir) {
 
         //    And an array of chars describing the attribute value type
         m_ValTypeArray = (char *)malloc((iattr_max + 1) * sizeof(char));
-        for (int iat = 0; iat < iattr_max + 1; iat++) m_ValTypeArray[iat] = '?';
+        if (!m_ValTypeArray) return false;
+        std::fill_n(m_ValTypeArray, iattr_max + 1, '?');
 
         //    Iterate over the file, filling in the values
         while (!filea.Eof()) {
@@ -844,17 +823,15 @@ bool cm93_dictionary::LoadDictionary(const wxString &dictionary_dir) {
             if (a == 0x0a) break;
           }
 
-          if (line[0] != ';') {
+          int iattr = 0;
+          if (ParseCm93DictionaryRecordIndex(line, 3, &iattr)) {
             wxStringTokenizer tkz(line, "|\r\n");
-            if (tkz.CountTokens() >= 3) {
+            {
               //  6 char class name
               wxString attr_name = tkz.GetNextToken();
 
               //  class number, ascii
               wxString token = tkz.GetNextToken();
-              long liattr;
-              token.ToLong(&liattr);
-              int iattr = liattr;
 
               m_AttrArray->Insert(attr_name, iattr);
               m_AttrArray->RemoveAt(iattr + 1);
