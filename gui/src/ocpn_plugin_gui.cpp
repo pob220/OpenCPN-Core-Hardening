@@ -4456,7 +4456,7 @@ CachedSegmentSafetyRouteMaskTile BuildSegmentSafetyRouteMaskTile(
       "depth_check=%d min_depth_m=%.2f cells=%d clear=%d land=%d drying=%d "
       "shallow=%d unknown_depth=%d no_chart=%d margin=%d summary_flags=%u "
       "base_built=%d clear_shortcut=%d prefix_verify_cells=%d "
-      "prefix_verify_mismatches=%d build_ms=%d",
+      "prefix_verify_mismatches=%d build_ms=%ld",
       lat_tile, lon_tile, mask.group_index, safety_margin_nm,
       check_depth ? 1 : 0, minimum_depth_m, mask.rows * mask.cols,
       mask.clear_count, mask.land_count, mask.drying_count, mask.shallow_count,
