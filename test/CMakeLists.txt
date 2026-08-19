@@ -45,6 +45,7 @@ set(SRC
   actisense_framer_tests.cpp
   async_worker_lifecycle_tests.cpp
   autopilot_output_tests.cpp
+  cm93_dictionary_parser_tests.cpp
   datetime_tests.cpp
   tests.cpp filter_tests.cpp
   navobj_db_transaction_tests.cpp
