@@ -24,6 +24,7 @@ navigation. Back up configuration and navigation data before field testing.
 | Raster texture jobs | #4842, #4983 | Jobs retain shared factory ownership, cancellation is atomic, result buffers are RAII-owned, and destruction drains workers/events. | Full OpenGL build plus lifecycle test seam. macOS cache-pressure testing remains required. |
 | Plug-in chart catalogue | #5170 | Add/remove no longer deletes and replaces global `ChartData` while asynchronous users can retain it; mutation drains dependent work and reindexes the existing object. | Full OpenGL build. A plug-in-driven catalogue stress test remains required. |
 | AIS safety broadcasts | #5069 | Valid type-14 messages are retained independently of position, published as a typed event, and displayed as a warning for any MMSI without activating CPA/SART audio policy. | `AIS.StandaloneType14PublishesSafetyMessage`. |
+| Chart-aware weather routing | local 5.15 integration | Optional, size-versioned native symbols expose authoritative CM93/S57 land, drying and depth evidence as immutable values. The existing plug-in ABI remains intact and routing-specific caches stay in the plug-in. | Real CM93 diagnostic: 91 masks, 146 base tiles, 245,426 classified cells and zero failures; compatible plug-in: 158/158 tests and a successful live host/cache handshake. |
 
 The complete rationale, evidence levels, counterarguments and backlog taxonomy
 are in [the architecture audit](docs/development/open-issue-core-architecture-audit.md).
@@ -31,6 +32,8 @@ The implementation sequence is in
 [the hardening plan](docs/development/core-hardening-implementation-plan.md).
 Exact commits and branch names are in
 [the build manifest](docs/development/hardening-build-manifest.md).
+The chart-service contract, provenance, limits and reproduction evidence are in
+[the chart-aware routing integration note](docs/development/chart-aware-routing-integration.md).
 
 ## Build and deterministic tests
 
@@ -117,6 +120,9 @@ Use a copied profile and synthetic/test inputs.
 10. Replay standalone and target-associated AIS type-14 messages from several
     MMSI classes; verify visible warning text, trimming, acknowledgement, and no
     unexpected audible CPA/SART alarm.
+11. Install the compatible chart-aware weather-routing plug-in, use a copied
+    profile, representative GRIB/polar and explicit minimum depth, and compare
+    the proposed route to the reference build and current official charts.
 
 ## Review model
 
