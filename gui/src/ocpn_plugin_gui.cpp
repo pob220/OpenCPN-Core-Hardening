@@ -77,6 +77,7 @@
 #include "config_mgr.h"
 #include "font_mgr.h"
 #include "gl_chart_canvas.h"
+#include "chart_safety_service.h"
 #include "gui_lib.h"
 #include "navutil.h"
 #include "ocpn_aui_manager.h"
@@ -6549,9 +6550,15 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
         ok && LookupSegmentSafetyRouteMaskTile(request.key, &centre_mask) &&
         centre_mask.clear_count > 0;
     if (useful_to_prefetch_neighbours && !request.force_authoritative_fine) {
+      bool budget_exhausted = false;
       for (int dlat = -1; dlat <= 1; ++dlat) {
         for (int dlon = -1; dlon <= 1; ++dlon) {
           if (dlat == 0 && dlon == 0) continue;
+          if (!ocpn::chart_safety::MayPrefetchNeighbour(timer.Time(),
+                                                        max_milliseconds)) {
+            budget_exhausted = true;
+            break;
+          }
           const long neighbour_lat_tile = request.lat_tile + dlat;
           const long neighbour_lon_tile = request.lon_tile + dlon;
           const double neighbour_min_lat =
@@ -6571,6 +6578,7 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
             ++prefetched_count;
           }
         }
+        if (budget_exhausted) break;
       }
     }
     {
