@@ -24,7 +24,7 @@ navigation. Back up configuration and navigation data before field testing.
 | Raster texture jobs | #4842, #4983 | Jobs retain shared factory ownership, cancellation is atomic, result buffers are RAII-owned, and destruction drains workers/events. | Full OpenGL build plus lifecycle test seam. macOS cache-pressure testing remains required. |
 | Plug-in chart catalogue | #5170 | Add/remove no longer deletes and replaces global `ChartData` while asynchronous users can retain it; mutation drains dependent work and reindexes the existing object. | Full OpenGL build. A plug-in-driven catalogue stress test remains required. |
 | AIS safety broadcasts | #5069 | Valid type-14 messages are retained independently of position, published as a typed event, and displayed as a warning for any MMSI without activating CPA/SART audio policy. | `AIS.StandaloneType14PublishesSafetyMessage`. |
-| Chart-aware weather routing | local 5.15 integration | Optional, size-versioned native symbols expose authoritative CM93/S57 land, drying and depth evidence as immutable values. The existing plug-in ABI remains intact and routing-specific caches stay in the plug-in. | Real CM93 diagnostic: 91 masks, 146 base tiles, 245,426 classified cells and zero failures; compatible plug-in: 158/158 tests and a successful live host/cache handshake. |
+| Chart-aware weather routing | local 5.15 integration | Optional, size-versioned native symbols expose authoritative CM93/S57 land, drying and depth evidence as immutable values. Conservative independent probes recover demonstrable CM93 tile-boundary omissions without treating unknown water as safe; cache identity v3 prevents reuse of older classifications. The existing plug-in ABI remains intact and routing-specific caches stay in the plug-in. | 84/84 core tests and 175/175 plug-in tests pass. Built-in real-chart diagnostics have zero failures. A real xGRIB/polar Holyhead-to-Foyle run at 5 m minimum depth completed six of seven optimized departure candidates and every completed route passed final chart-safety validation. |
 
 The complete rationale, evidence levels, counterarguments and backlog taxonomy
 are in [the architecture audit](docs/development/open-issue-core-architecture-audit.md).
@@ -92,7 +92,7 @@ tested commit before configuring the build tree:
 git clone https://github.com/pob220/xweather_routing_pi.git \
   plugins/weather_routing_pi
 git -C plugins/weather_routing_pi checkout \
-  f6891f8a78f49a59582eb320a67445ad498046f3
+  b411e62ed8059549925b2ec66f986cb1ca586db9
 ```
 
 Build and install both projects into an isolated prefix. The published Arch
@@ -119,7 +119,7 @@ or point it at the only copy of a vessel profile:
 
 ```sh
 tar -C /tmp -xzf \
-  OpenCPN-5.15.0-core-hardening-chart-aware-debug-arch-x86_64.tar.gz
+  OpenCPN-5.15.0-core-hardening-v3-chart-aware-debug-arch-x86_64.tar.gz
 /tmp/opencpn-hardening-install/run-opencpn-hardening.sh
 ```
 
@@ -154,9 +154,10 @@ Use a copied profile and synthetic/test inputs.
 10. Replay standalone and target-associated AIS type-14 messages from several
     MMSI classes; verify visible warning text, trimming, acknowledgement, and no
     unexpected audible CPA/SART alarm.
-11. Install the compatible chart-aware weather-routing plug-in, use a copied
-    profile, representative GRIB/polar and explicit minimum depth, and compare
-    the proposed route to the reference build and current official charts.
+11. Repeat the chart-aware weather-routing acceptance on each target platform
+    with a copied profile, representative GRIB/polar and explicit minimum
+    depth. The Linux reference scenario is now automated and accepted; compare
+    additional proposed routes to current official charts before field use.
 
 ## Review model
 
