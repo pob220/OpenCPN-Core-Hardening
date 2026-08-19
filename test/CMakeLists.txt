@@ -48,6 +48,7 @@ set(SRC
   cm93_dictionary_parser_tests.cpp
   datetime_tests.cpp
   tests.cpp filter_tests.cpp
+  logger_tests.cpp
   navobj_db_transaction_tests.cpp
   navutil_base_tests.cpp
   route_leg_state_tests.cpp
