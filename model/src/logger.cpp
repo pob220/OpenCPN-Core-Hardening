@@ -144,7 +144,7 @@ void CountedLogFilter::Log(const std::string& message) {
   if (m_not_logged < m_count) return;
 
   wxLogGeneric(m_level, message.c_str());
-  wxLogGeneric(m_level, "Previous message suppressed %d times", m_count);
+  wxLogGeneric(m_level, "Previous message suppressed %u times", m_count);
   m_not_logged = 0;
 }
 
@@ -154,7 +154,7 @@ void TimedLogFilter::Log(const std::string& message) {
   if (now - m_last_logged < m_interval) return;
 
   wxLogGeneric(m_level, message.c_str());
-  wxLogGeneric(m_level, "Previous message suppressed %d times", m_not_logged);
+  wxLogGeneric(m_level, "Previous message suppressed %u times", m_not_logged);
   m_not_logged = 0;
   m_last_logged = now;
 }
