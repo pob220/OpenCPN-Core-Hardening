@@ -77,6 +77,7 @@
 #include "config_mgr.h"
 #include "font_mgr.h"
 #include "gl_chart_canvas.h"
+#include "chart_safety_depth.h"
 #include "chart_safety_service.h"
 #include "gui_lib.h"
 #include "navutil.h"
@@ -2450,7 +2451,10 @@ wxString SegmentSafetyChartIdentity() {
     for (size_t j = 0; j < groups.size(); ++j)
       SegmentSafetyHashAdd(&hash, wxString::Format("g%d", groups[j]));
   }
-  return wxString::Format("ocpn-chartdb-v1-%016llx", (unsigned long long)hash);
+  // v2 invalidates raw tiles produced before conservative CM93 DEPARE
+  // boundary recovery. Reusing those v1 tiles would preserve artificial
+  // unknown-depth seams at whole-degree polygon boundaries.
+  return wxString::Format("ocpn-chartdb-v2-%016llx", (unsigned long long)hash);
 }
 
 void SegmentSafetyRefreshPersistentChartIdentity() {
@@ -4868,6 +4872,77 @@ SegmentSafetyPointClass ChartPointSafetyClassAtPreparedCm93(
   return point_class;
 }
 
+ocpn::chart_safety::DepthProbeClass SegmentSafetyDepthProbeClass(
+    SegmentSafetyPointClass point_class) {
+  using ocpn::chart_safety::DepthProbeClass;
+  switch (point_class) {
+    case SEGMENT_SAFETY_POINT_WATER:
+      return DepthProbeClass::kWater;
+    case SEGMENT_SAFETY_POINT_LAND:
+      return DepthProbeClass::kLand;
+    case SEGMENT_SAFETY_POINT_DRYING:
+      return DepthProbeClass::kDrying;
+    case SEGMENT_SAFETY_POINT_NO_DATA:
+    default:
+      return DepthProbeClass::kNoData;
+  }
+}
+
+bool RecoverPreparedCm93BoundaryDepth(
+    cm93compchart* composite, int chart_db_index, double lat, double lon,
+    double resolution, ViewPort* viewport, SegmentSafetyCoreStats* stats,
+    PlugInSegmentSafetyResult* result) {
+  if (!composite || !viewport || !result) return false;
+
+  using ocpn::chart_safety::DepthProbe;
+  std::array<DepthProbe, 4> probes;
+  std::array<PlugInSegmentSafetyResult, 4> probe_results = {};
+  const double offset = resolution * 0.25;
+  const double lat_signs[4] = {-1.0, -1.0, 1.0, 1.0};
+  const double lon_signs[4] = {-1.0, 1.0, -1.0, 1.0};
+  int minimum_probe = -1;
+  double minimum_depth = 0.0;
+
+  for (size_t i = 0; i < probes.size(); ++i) {
+    const double probe_lat = lat + lat_signs[i] * offset;
+    const double probe_lon = lon + lon_signs[i] * offset;
+    cm93chart* chart =
+        composite->GetHighestDetailSafetyChartAt(probe_lat, probe_lon);
+    if (!chart) return false;
+
+    probe_results[i].struct_size = sizeof(probe_results[i]);
+    InitSegmentSafetyResult(&probe_results[i]);
+    PlugInSegmentSafetySource source = PI_SEGMENT_SAFETY_SOURCE_NONE;
+    const SegmentSafetyPointClass point_class =
+        ChartPointSafetyClassAtPreparedCm93(
+            chart, chart_db_index, probe_lat, probe_lon, viewport, &source,
+            stats, &probe_results[i]);
+    probes[i] = {SegmentSafetyDepthProbeClass(point_class),
+                 probe_results[i].has_depth != 0,
+                 probe_results[i].min_depth_m};
+    if (probe_results[i].has_depth &&
+        (minimum_probe < 0 || probe_results[i].min_depth_m < minimum_depth)) {
+      minimum_probe = static_cast<int>(i);
+      minimum_depth = probe_results[i].min_depth_m;
+    }
+  }
+
+  const std::optional<double> recovered =
+      ocpn::chart_safety::ConservativeBoundaryDepth(probes);
+  if (!recovered || minimum_probe < 0) return false;
+
+  result->has_depth = 1;
+  result->min_depth_m = *recovered;
+  result->has_drying = 0;
+  CopySegmentSafetyString(result->depth_source_object,
+                          sizeof(result->depth_source_object),
+                          probe_results[minimum_probe].depth_source_object);
+  CopySegmentSafetyString(result->depth_source_attribute,
+                          sizeof(result->depth_source_attribute),
+                          "DEPARE/DRVAL1 boundary-min");
+  return true;
+}
+
 CachedPointSafetyGridTile BuildSegmentSafetyGridTile(
     double lat, double lon, long lat_tile, long lon_tile,
     SegmentSafetyCoreStats* stats, bool require_depth) {
@@ -4916,6 +4991,8 @@ CachedPointSafetyGridTile BuildSegmentSafetyGridTile(
   int cm93_fallback_cells = 0;
   bool cm93_clear_shortcut = false;
   int cm93_hazard_objects = 0;
+  int cm93_depth_boundary_attempts = 0;
+  int cm93_depth_boundary_recoveries = 0;
   if (ChartData) {
     const double centre_lat =
         tile.min_lat + kSegmentSafetyGridTileDegrees / 2.0;
@@ -5003,6 +5080,15 @@ CachedPointSafetyGridTile BuildSegmentSafetyGridTile(
                                                  stats, &cell_result);
         if (prepared_cm93) ++cm93_fallback_cells;
       }
+      if (require_depth && prepared_cm93 &&
+          point_class == SEGMENT_SAFETY_POINT_WATER &&
+          !cell_result.has_depth) {
+        ++cm93_depth_boundary_attempts;
+        if (RecoverPreparedCm93BoundaryDepth(
+                prepared_cm93, prepared_cm93_db_index, cell_lat, cell_lon,
+                tile.resolution, &prepared_cm93_vp, stats, &cell_result))
+          ++cm93_depth_boundary_recoveries;
+      }
       tile.classes[cell_index] = (unsigned char)point_class;
       uint16_t cell_hazards = SegmentSafetyPointHazardFlags(point_class);
       tile.hazard_flags[cell_index] = cell_hazards;
@@ -5079,7 +5165,9 @@ CachedPointSafetyGridTile BuildSegmentSafetyGridTile(
       "drying=%d unknown=%d build_ms=%d source=%d chart_db_index=%d "
       "chart_scale=%d chart_path=\"%s\" cm93_prepare_ms=%ld "
       "cm93_batch_cells=%d cm93_fallback_cells=%d "
-      "cm93_clear_shortcut=%d cm93_hazard_objects=%d depth_complete=%d",
+      "cm93_clear_shortcut=%d cm93_hazard_objects=%d "
+      "cm93_depth_boundary_attempts=%d cm93_depth_boundary_recoveries=%d "
+      "depth_complete=%d",
       lat_tile, lon_tile, tile.group_index, tile.min_lat,
       tile.min_lat + kSegmentSafetyGridTileDegrees, tile.min_lon,
       tile.min_lon + kSegmentSafetyGridTileDegrees, tile.resolution,
@@ -5087,6 +5175,7 @@ CachedPointSafetyGridTile BuildSegmentSafetyGridTile(
       tile.source, tile.chart_db_index, tile.chart_scale, tile.chart_path,
       cm93_prepare_ms, cm93_batch_cells, cm93_fallback_cells,
       cm93_clear_shortcut ? 1 : 0, cm93_hazard_objects,
+      cm93_depth_boundary_attempts, cm93_depth_boundary_recoveries,
       tile.depth_complete ? 1 : 0);
 
   return tile;
