@@ -84,15 +84,49 @@ macOS OpenGL, Windows driver or hardware-specific issues by themselves.
 
 ## Create a Linux tester package
 
-After a successful complete build:
+The core builds without the optional weather-routing consumer. To reproduce the
+combined chart-aware tester artifact, place the compatible plug-in at the exact
+tested commit before configuring the build tree:
 
 ```sh
-cd build-hardening
-cpack -G TGZ
+git clone https://github.com/pob220/xweather_routing_pi.git \
+  plugins/weather_routing_pi
+git -C plugins/weather_routing_pi checkout \
+  f6891f8a78f49a59582eb320a67445ad498046f3
+```
+
+Build and install both projects into an isolated prefix. The published Arch
+Linux convenience bundle is a Debug build so wxWidgets assertions and debug
+symbols remain available to testers; it is not the CPack Release archive:
+
+```sh
+cmake --install build-hardening --prefix /tmp/opencpn-hardening-install
+cmake --install build-weather-routing \
+  --prefix /tmp/opencpn-hardening-install
+mkdir -p /tmp/opencpn-hardening-install/extra-plugins
+cp /tmp/opencpn-hardening-install/lib/opencpn/libxweather_routing_pi.so \
+  /tmp/opencpn-hardening-install/extra-plugins/
+cp tools/run-hardening-bundle.sh \
+  /tmp/opencpn-hardening-install/run-opencpn-hardening.sh
 ```
 
 Publish the archive together with the commit manifest and test log. The package
-is a developer artifact, not a signed official release.
+is a host-dependent developer artifact, not a signed official release.
+
+The convenience bundle was compiled for the exact `/tmp` prefix. Extract it
+there and use its launcher; do not use `-p`, install it over a working OpenCPN,
+or point it at the only copy of a vessel profile:
+
+```sh
+tar -C /tmp -xzf \
+  OpenCPN-5.15.0-core-hardening-chart-aware-debug-arch-x86_64.tar.gz
+/tmp/opencpn-hardening-install/run-opencpn-hardening.sh
+```
+
+The launcher defaults to a new profile inside the temporary bundle. To test a
+copy of an existing profile, set `OCPN_HARDENING_CONFIG_DIR` to that copied
+directory. The source build above is the reproducible and portable deliverable;
+the binary archive is only a convenience for matching Arch Linux hosts.
 
 ## Manual acceptance checklist
 

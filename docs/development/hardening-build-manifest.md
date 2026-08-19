@@ -80,18 +80,43 @@ equivalent. Compare each topic branch to `master`, not to the integration tip.
 
 ## Linux developer package
 
-The full default target, including bundled plug-ins, was built before CPack.
-The generated artifact is:
+The full Debug target, bundled standard plug-ins and the exact compatible
+weather-routing plug-in were installed into an isolated prefix. Assertions and
+debug symbols are intentionally retained. The generated tester artifact is:
 
 ```text
-opencpn_5.15.0-1_x86_64.tar.gz
-size: 27 MiB
-sha256: ea30af0155ca88afa97f89b603aa0881f4f0db955f77044b6cef6f2960683d5b
+OpenCPN-5.15.0-core-hardening-chart-aware-debug-arch-x86_64.tar.gz
+size: 135 MiB (141,276,245 bytes)
+sha256: 60ecfce4ff08cbe4a35ad6e0c417c31c05a0b24c57905d54e64104788c53092a
 ```
 
-The archive contains `bin/opencpn` and the normal OpenCPN shared data. It was
-created on the audit Linux host and is not a portable, signed or official
-distribution. Prefer rebuilding from the manifest on a matching target.
+The matching plug-in source snapshot is:
+
+```text
+xweather_routing_pi-f6891f8-source.tar.gz
+size: 4.2 MiB
+sha256: afaa3cd4376dc3029a5f753343badebd5c3ec211a9bee52a4928430e323a992f
+```
+
+The binary archive contains `bin/opencpn`, standard bundled plug-ins, the exact
+`libxweather_routing_pi.so`, plug-in translations, boat/polar data and normal
+OpenCPN shared data. Its launcher sets separate library/data search paths and
+uses an isolated profile. This matters because arbitrary third-party plug-ins
+are deliberately not loaded from OpenCPN's system plug-in directory.
+
+The archive was compiled for `/tmp/opencpn-hardening-install` and must be
+extracted with `tar -C /tmp`; it is not generally relocatable. An extracted-tree
+smoke test loaded the packaged weather-routing plug-in, registered its immutable
+tile cache, reported full chart-aware safety, completed real CM93 land/depth and
+final-route cases with zero failures, unregistered the cache and exited zero.
+The full plug-in unit suite separately passed 158/158 tests. A complete GRIB and
+polar routing scenario remains manual acceptance work; the available copied
+profile did not contain the headless scenario group required for that test.
+
+It was created on the audit Arch Linux x86_64 host and is not a portable,
+signed or official distribution. Prefer rebuilding from the manifest on a
+matching target. It must not replace a working vessel installation or be used
+as the sole means of navigation.
 
 This is one Linux build result, not the cross-platform acceptance matrix.
 Windows, macOS, Android/ARM and physical N2K/autopilot testing remain explicit
