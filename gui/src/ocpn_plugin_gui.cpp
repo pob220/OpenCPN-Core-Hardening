@@ -2451,10 +2451,12 @@ wxString SegmentSafetyChartIdentity() {
     for (size_t j = 0; j < groups.size(); ++j)
       SegmentSafetyHashAdd(&hash, wxString::Format("g%d", groups[j]));
   }
-  // v2 invalidates raw tiles produced before conservative CM93 DEPARE
-  // boundary recovery. Reusing those v1 tiles would preserve artificial
-  // unknown-depth seams at whole-degree polygon boundaries.
-  return wxString::Format("ocpn-chartdb-v2-%016llx", (unsigned long long)hash);
+  // v3 invalidates raw tiles produced before CM93 DEPARE boundary recovery
+  // used independent authoritative point selection. The prepared tile view
+  // can itself omit a polygon exactly at a viewport boundary, so using it for
+  // both the original lookup and recovery preserved artificial unknown-depth
+  // seams in v2 tiles.
+  return wxString::Format("ocpn-chartdb-v3-%016llx", (unsigned long long)hash);
 }
 
 void SegmentSafetyRefreshPersistentChartIdentity() {
@@ -4889,10 +4891,9 @@ ocpn::chart_safety::DepthProbeClass SegmentSafetyDepthProbeClass(
 }
 
 bool RecoverPreparedCm93BoundaryDepth(
-    cm93compchart* composite, int chart_db_index, double lat, double lon,
-    double resolution, ViewPort* viewport, SegmentSafetyCoreStats* stats,
+    double lat, double lon, double resolution, SegmentSafetyCoreStats* stats,
     PlugInSegmentSafetyResult* result) {
-  if (!composite || !viewport || !result) return false;
+  if (!result) return false;
 
   using ocpn::chart_safety::DepthProbe;
   std::array<DepthProbe, 4> probes;
@@ -4906,17 +4907,12 @@ bool RecoverPreparedCm93BoundaryDepth(
   for (size_t i = 0; i < probes.size(); ++i) {
     const double probe_lat = lat + lat_signs[i] * offset;
     const double probe_lon = lon + lon_signs[i] * offset;
-    cm93chart* chart =
-        composite->GetHighestDetailSafetyChartAt(probe_lat, probe_lon);
-    if (!chart) return false;
-
     probe_results[i].struct_size = sizeof(probe_results[i]);
     InitSegmentSafetyResult(&probe_results[i]);
     PlugInSegmentSafetySource source = PI_SEGMENT_SAFETY_SOURCE_NONE;
     const SegmentSafetyPointClass point_class =
-        ChartPointSafetyClassAtPreparedCm93(
-            chart, chart_db_index, probe_lat, probe_lon, viewport, &source,
-            stats, &probe_results[i]);
+        ChartPointSafetyClassAtRaw(probe_lat, probe_lon, &source, stats,
+                                   &probe_results[i]);
     probes[i] = {SegmentSafetyDepthProbeClass(point_class),
                  probe_results[i].has_depth != 0,
                  probe_results[i].min_depth_m};
@@ -5084,9 +5080,9 @@ CachedPointSafetyGridTile BuildSegmentSafetyGridTile(
           point_class == SEGMENT_SAFETY_POINT_WATER &&
           !cell_result.has_depth) {
         ++cm93_depth_boundary_attempts;
-        if (RecoverPreparedCm93BoundaryDepth(
-                prepared_cm93, prepared_cm93_db_index, cell_lat, cell_lon,
-                tile.resolution, &prepared_cm93_vp, stats, &cell_result))
+        if (RecoverPreparedCm93BoundaryDepth(cell_lat, cell_lon,
+                                             tile.resolution, stats,
+                                             &cell_result))
           ++cm93_depth_boundary_recoveries;
       }
       tile.classes[cell_index] = (unsigned char)point_class;

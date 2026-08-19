@@ -4659,6 +4659,9 @@ void RunSegmentSafetyDiagnostics() {
       {"Portpatrick depth fixture north", 54.875000, -5.210000},
       {"Strangford Lough drying/nearshore probe", 54.385000, -5.560000},
       {"Holyhead offshore water probe", 53.325000, -4.705000},
+      {"Holyhead routing endpoint", 53.33780167, -4.61454000},
+      {"Holyhead routing unknown-depth sample", 53.35000000, -4.61000000},
+      {"Foyle routing endpoint", 55.21778325, -6.84757615},
       {"Menai Strait channel probe", 53.215000, -4.185000},
       {"Runtime hit point 1", 53.402797, -4.558620},
       {"Runtime hit point 2", 54.458160, -5.481610},
@@ -4849,6 +4852,13 @@ void RunSegmentSafetyDiagnostics() {
        -4.570000, 1.0, PI_SEGMENT_SAFETY_CROSSES_LAND},
       {"Portpatrick offshore deliberately too-deep requirement", 54.825000,
        -5.210000, 54.875000, -5.210000, 250.0, PI_SEGMENT_SAFETY_TOO_SHALLOW},
+      {"Holyhead routing endpoint egress at 5m", 53.33780167, -4.61454000,
+       53.35757936, -4.62341848, 5.0, PI_SEGMENT_SAFETY_SAFE},
+      {"Foyle routing endpoint ingress at 5m", 55.18497803, -6.83744464,
+       55.21778325, -6.84757615, 5.0, PI_SEGMENT_SAFETY_SAFE},
+      {"Holyhead recovered depth-boundary segment at 5m", 53.34746092,
+       -4.61095280, 53.35716619, -4.60734769, 5.0,
+       PI_SEGMENT_SAFETY_SAFE},
   };
   for (size_t i = 0; i < WXSIZEOF(depth_cases); ++i) {
     const SegmentSafetyDepthDiagnosticCase &tc = depth_cases[i];
