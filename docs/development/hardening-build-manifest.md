@@ -4,7 +4,7 @@
 **Repository:** `pob220/OpenCPN-Core-Hardening`  
 **Baseline:** OpenCPN upstream `e87d2234509636d8e534f0278fb1c6ad8463eb2e`  
 **Integration branch:** `hardening/5x-integration`  
-**Integration commit:** `89e25705e8f1c7b180a8d7a8c067d629f391bf4d`
+**Integration commit:** `f87ee79311e62b09983c5006fe474012cf07da3a`
 
 The integration commit above is the production/test state before importing
 this documentation. Later documentation-only commits do not alter the tested
@@ -28,6 +28,12 @@ binary.
 | 12 | `a2bd936dea7d528dc8b02b671304fbde2e9ae530` | #5069 standalone AIS type-14 messages |
 | 13 | `8949efae79d8d33255d5b67bf9ab19e67b1124b3` through `f5b10ac3870f4d905968448d553412256a094d51` | Optional chart-backed land/depth value service, immutable tiles, request servicing and plug-in-owned cache contract |
 | 14 | `89e25705e8f1c7b180a8d7a8c067d629f391bf4d` | Correct wxWidgets route-mask log format for `long` elapsed time |
+| 15 | `2becfdb75` | Keep isolated-profile plug-in discovery independent of user data paths |
+| 16 | `5d41176cc` | Reject malformed CM93 dictionary state safely |
+| 17 | `07f9e0d2b` | Correct wxWidgets chart-service timing format arguments |
+| 18 | `9ab548c99` | Recover CM93 boundary omissions conservatively and invalidate v1 caches |
+| 19 | `a77db92ba` | Honour the caller's segment-safety service time budget |
+| 20 | `f87ee7931` | Recover confirmed CM93 depth seams from four authoritative probes, invalidate v2 caches, and add route-endpoint/seam canaries |
 
 ## Isolated review branches
 
@@ -54,23 +60,32 @@ equivalent. Compare each topic branch to `master`, not to the integration tip.
 
 - CMake Debug configuration, wxGTK 3.2, OpenGL enabled.
 - Complete `opencpn` target compiled and linked with warnings treated as errors.
-- 71/71 tests labelled `deterministic` passed.
-- 71/71 deterministic tests also passed in a separate no-OpenGL AddressSanitizer
-  build. Leak detection was disabled for that run because the execution sandbox
-  blocks LeakSanitizer's ptrace mechanism; this is an ASan result, not an LSan
-  clean bill of health.
+- 84/84 tests labelled `deterministic` passed.
+- The earlier 71-test deterministic subset passed in a separate no-OpenGL
+  AddressSanitizer build. Leak detection was disabled for that run because the
+  execution sandbox blocks LeakSanitizer's ptrace mechanism; this is an ASan
+  result, not an LSan clean bill of health. The 13 subsequently added cases have
+  ordinary Debug coverage but have not all been repeated in that ASan tree.
 - The new standalone type-14 case passed independently before the full suite.
 - Known host-dependent IPC/loopback tests are labelled `integration` and are not
   part of the deterministic result.
 - The exact compatible weather-routing plug-in commit
-  `f6891f8a78f49a59582eb320a67445ad498046f3` built against these headers and
-  passed 158/158 tests.
+  `b411e62ed8059549925b2ec66f986cb1ca586db9` built against these headers and
+  passed 175/175 tests.
 - A live isolated-profile host run loaded that plug-in, registered and later
   unregistered its cache callbacks, and finished the built-in chart safety
   diagnostic with zero failures.
-- A real CM93 2015 diagnostic requested 91 masks, built 146 base tiles,
-  classified 245,426 cells, reused all masks and tiles on the second pass, and
-  passed land and minimum-depth cases with zero failures.
+- Real CM93 diagnostics passed land, minimum-depth, Holyhead/Foyle endpoint and
+  known tile-seam canaries with zero failures. The former seam tile made four
+  independent authoritative probes, recovered all four confirmed-water cells,
+  and left no falsely unknown cells. Direct chart evidence at the diagnostic
+  points was 15 m at Holyhead, 20 m at the seam and 10 m at Foyle.
+- The practical xGRIB/polar acceptance ran seven departure candidates across a
+  +/-3 hour window from Holyhead to the Mouth of Lough Foyle with 5 m minimum
+  depth, 0.4 NM land margin and no 128-hour ceiling. Six candidates completed
+  and all six passed final chart-safety validation. The seventh reached the
+  configured generated-state bound during fallback; the host exited normally.
+  Runtime was 15 minutes 8 seconds on the audit host.
 - 18/18 focused hardening tests passed under AddressSanitizer after the chart
   integration. Leak detection was disabled for the sandbox limitation already
   noted above.
@@ -109,9 +124,26 @@ extracted with `tar -C /tmp`; it is not generally relocatable. An extracted-tree
 smoke test loaded the packaged weather-routing plug-in, registered its immutable
 tile cache, reported full chart-aware safety, completed real CM93 land/depth and
 final-route cases with zero failures, unregistered the cache and exited zero.
-The full plug-in unit suite separately passed 158/158 tests. A complete GRIB and
-polar routing scenario remains manual acceptance work; the available copied
-profile did not contain the headless scenario group required for that test.
+The package listed above predates the v3 CM93 seam correction and plug-in commit
+`b411e62`; it is superseded and must not be distributed as the current candidate.
+The replacement v3 artifact and matching source snapshot are recorded below.
+
+```text
+OpenCPN-5.15.0-core-hardening-v3-chart-aware-debug-arch-x86_64.tar.gz
+size: 135 MiB (141,380,597 bytes)
+sha256: bbdb28d09691685846b8ba67ab2a81f4f2f15a8fcbe65814d50b6688b6a0665e
+
+xweather_routing_pi-b411e62-source.tar.gz
+size: 4.2 MiB (4,355,265 bytes)
+sha256: 8ea933413a57050eef98edf78cb8ca52ca26517d3d06c20946f23fa89043272c
+```
+
+The v3 bundle contains core integration commit
+`f87ee79311e62b09983c5006fe474012cf07da3a` and the weather-routing binary
+from plug-in commit `b411e62ed8059549925b2ec66f986cb1ca586db9`. Its unpacked core executable
+has SHA-256 `641d812fe0ca7ba07717c28166faf09cb3761d07c73b094d7e3b9ff55b8469fb`;
+the preferred `extra-plugins/libxweather_routing_pi.so` has SHA-256
+`7129556755894f860aa5cd076e9491da595f1bb44411d9f78e1b4544241f0576`.
 
 It was created on the audit Arch Linux x86_64 host and is not a portable,
 signed or official distribution. Prefer rebuilding from the manifest on a
