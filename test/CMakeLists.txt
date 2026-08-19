@@ -46,6 +46,7 @@ set(SRC
   async_worker_lifecycle_tests.cpp
   autopilot_output_tests.cpp
   chart_safety_depth_tests.cpp
+  chart_safety_service_tests.cpp
   cm93_dictionary_parser_tests.cpp
   datetime_tests.cpp
   tests.cpp filter_tests.cpp
