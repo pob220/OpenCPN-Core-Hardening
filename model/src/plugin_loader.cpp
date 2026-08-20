@@ -357,7 +357,7 @@ PluginLoader::PluginLoader()
 #ifdef __WXMSW__
       m_found_wxwidgets(false),
 #endif
-      m_on_deactivate_cb([](const PlugInContainer* pic) {}) {
+      m_on_deactivate_cb([](const PlugInContainer* pic) { return true; }) {
 }
 
 bool PluginLoader::IsPlugInAvailable(const wxString& commonName) {
@@ -860,6 +860,13 @@ bool PluginLoader::UpdatePlugIns() {
           wxRect(0, 0, pbm0->GetWidth(), pbm0->GetHeight())));
 
       bret = DeactivatePlugIn(pic);
+      if (!bret) {
+        // A resident service can temporarily pin plugin code while it drains
+        // a cancelled job. Keep the plugin enabled and loaded; a later user
+        // action can retry deactivation once the job is terminal.
+        pic->m_enabled = true;
+        continue;
+      }
       if (pic->m_pplugin) pic->m_destroy_fn(pic->m_pplugin);
       if (pic->m_library.IsLoaded()) pic->m_library.Unload();
       pic->m_pplugin = nullptr;
@@ -876,7 +883,7 @@ bool PluginLoader::DeactivatePlugIn(PlugInContainer* pic) {
   if (pic->m_init_state) {
     wxString msg("PluginLoader: Deactivating PlugIn: ");
     wxLogMessage(msg + pic->m_plugin_file);
-    m_on_deactivate_cb(pic);
+    if (!m_on_deactivate_cb(pic)) return false;
     pic->m_init_state = false;
     pic->m_pplugin->DeInit();
     auto name = pic->m_pplugin->GetCommonName().ToStdString();

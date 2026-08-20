@@ -10,4 +10,11 @@
 /** Live, main-thread adapters for the transport-free external-control API. */
 ocpn::control::ServiceBundle MakeExternalControlServices();
 
+/**
+ * Ask provider jobs to cancel before a plugin is deactivated.
+ * Returns false while provider code is still pinned by an active job; callers
+ * must leave the plugin loaded and permit deactivation to be retried.
+ */
+bool PrepareExternalPlanningProviderUnload(const std::string& plugin_name);
+
 #endif  // GUI_EXTERNAL_CONTROL_GUI_H_

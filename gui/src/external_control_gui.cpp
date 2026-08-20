@@ -7,10 +7,13 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstdint>
+#include <cstring>
 #include <iomanip>
 #include <memory>
 #include <mutex>
 #include <sstream>
+#include <stdexcept>
+#include <unordered_map>
 #include <unordered_set>
 
 #include <wx/log.h>
@@ -30,18 +33,34 @@
 #include "model/routeman.h"
 #include "model/select.h"
 #include "ocpn_plugin.h"
+#include "ocpn-nlohmann/json.hpp"
 
 namespace {
 using namespace ocpn::control;
-constexpr const char* kExternalDraftMarker = "opencpn:external-control:draft:v1";
+constexpr const char* kExternalDraftMarker =
+    "opencpn:external-control:draft:v1";
+constexpr std::size_t kMaximumProviderResultBytes = 32U * 1024U * 1024U;
+constexpr std::size_t kMaximumProviderCandidates = 64;
+constexpr std::size_t kMaximumProviderRoutePoints = 200000;
+
+bool SameRequestedEndpoint(const Coordinate& actual,
+                           const Coordinate& requested) {
+  constexpr double tolerance_degrees = 1e-4;
+  double longitude_delta =
+      std::fabs(actual.longitude_degrees - requested.longitude_degrees);
+  longitude_delta = std::min(longitude_delta, 360.0 - longitude_delta);
+  return std::fabs(actual.latitude_degrees - requested.latitude_degrees) <=
+             tolerance_degrees &&
+         longitude_delta <= tolerance_degrees;
+}
 
 class LiveApplicationEvents final : public BoundedApplicationEventStream {
 public:
   LiveApplicationEvents() : BoundedApplicationEventStream(256) {
-    routes_listener_.Init(GuiEvents::GetInstance().on_routes_update,
-                          [this](ObservedEvt&) {
-      Publish({0, {}, ApplicationEventType::RouteCatalogue, {}});
-    });
+    routes_listener_.Init(
+        GuiEvents::GetInstance().on_routes_update, [this](ObservedEvt&) {
+          Publish({0, {}, ApplicationEventType::RouteCatalogue, {}});
+        });
     BasicNavDataMsg navigation_key;
     navigation_listener_.Init(navigation_key, [this](ObservedEvt&) {
       Publish({0, {}, ApplicationEventType::Navigation, {}});
@@ -49,13 +68,15 @@ public:
     if (g_pRouteMan)
       active_route_listener_.Init(g_pRouteMan->json_msg_evt,
                                   [this](ObservedEvt&) {
-        Publish({0, {}, ApplicationEventType::ActiveRoute,
-                 g_active_route.ToStdString()});
-      });
-    chart_listener_.Init(GuiEvents::GetInstance().on_finalize_chartdbs,
-                         [this](ObservedEvt&) {
-      Publish({0, {}, ApplicationEventType::ChartDatabase, {}});
-    });
+                                    Publish({0,
+                                             {},
+                                             ApplicationEventType::ActiveRoute,
+                                             g_active_route.ToStdString()});
+                                  });
+    chart_listener_.Init(
+        GuiEvents::GetInstance().on_finalize_chartdbs, [this](ObservedEvt&) {
+          Publish({0, {}, ApplicationEventType::ChartDatabase, {}});
+        });
   }
 
   ~LiveApplicationEvents() override { Close(); }
@@ -83,8 +104,10 @@ std::uint64_t Revision(const Route& route) {
 }
 
 RouteSummary Summary(const Route& route) {
-  return {route.GetGUID().ToStdString(), route.GetName().ToStdString(),
-          Revision(route), route.pRoutePointList->size(),
+  return {route.GetGUID().ToStdString(),
+          route.GetName().ToStdString(),
+          Revision(route),
+          route.pRoutePointList->size(),
           route.m_bIsInLayer,
           route.m_RouteDescription == kExternalDraftMarker};
 }
@@ -93,9 +116,9 @@ RouteSnapshot Snapshot(const Route& route) {
   RouteSnapshot result;
   static_cast<RouteSummary&>(result) = Summary(route);
   for (auto* point : *route.pRoutePointList) {
-    result.waypoints.push_back(
-        {point->m_GUID.ToStdString(), point->GetName().ToStdString(),
-         {point->m_lat, point->m_lon}});
+    result.waypoints.push_back({point->m_GUID.ToStdString(),
+                                point->GetName().ToStdString(),
+                                {point->m_lat, point->m_lon}});
   }
   return result;
 }
@@ -106,7 +129,8 @@ public:
     ReadinessSnapshot result;
     result.ready = wxThread::IsMain() && pRouteList && g_pRouteMan;
     result.closing = false;
-    if (!result.ready) result.unavailable_capabilities.push_back("routes.query.v1");
+    if (!result.ready)
+      result.unavailable_capabilities.push_back("routes.query.v1");
     char identity[256] = {};
     if (!PlugIn_GetSegmentSafetyChartIdentity(identity, sizeof(identity)))
       result.unavailable_capabilities.push_back("chart-safety.v1");
@@ -119,9 +143,11 @@ public:
   Result<NavigationSnapshot> GetSnapshot() const override {
     if (!wxThread::IsMain())
       return Result<NavigationSnapshot>::FromError(
-          "thread_affinity", "Navigation snapshots require the application thread");
+          "thread_affinity",
+          "Navigation snapshots require the application thread");
     NavigationSnapshot result;
-    result.position_valid = bGPSValid && std::isfinite(gLat) && std::isfinite(gLon);
+    result.position_valid =
+        bGPSValid && std::isfinite(gLat) && std::isfinite(gLon);
     result.stale = !bGPSValid;
     result.source = "OpenCPN consolidated navigation state";
     result.receipt_time = Clock::now();
@@ -148,7 +174,8 @@ public:
 
   Result<RouteSnapshot> GetRoute(const std::string& guid) const override {
     if (!wxThread::IsMain() || !g_pRouteMan)
-      return Result<RouteSnapshot>::FromError("not_ready", "Route manager is not ready");
+      return Result<RouteSnapshot>::FromError("not_ready",
+                                              "Route manager is not ready");
     const auto* route = g_pRouteMan->FindRouteByGUID(guid);
     if (!route)
       return Result<RouteSnapshot>::FromError("not_found", "Route not found");
@@ -157,8 +184,8 @@ public:
 
   Result<ActiveRouteSnapshot> GetActiveRoute() const override {
     if (!wxThread::IsMain() || !g_pRouteMan)
-      return Result<ActiveRouteSnapshot>::FromError("not_ready",
-                                                   "Route manager is not ready");
+      return Result<ActiveRouteSnapshot>::FromError(
+          "not_ready", "Route manager is not ready");
     ActiveRouteSnapshot result;
     const auto* route = g_pRouteMan->GetpActiveRoute();
     if (!route) return Result<ActiveRouteSnapshot>::FromValue(result);
@@ -201,9 +228,8 @@ Result<Route*> BuildDraftRoute(const RouteMutation& mutation,
   std::unordered_set<std::string> guids;
   for (const auto& waypoint : mutation.waypoints) {
     auto* point = new RoutePoint(
-        waypoint.position.latitude_degrees,
-        waypoint.position.longitude_degrees, g_default_wp_icon, waypoint.name,
-        waypoint.guid, false);
+        waypoint.position.latitude_degrees, waypoint.position.longitude_degrees,
+        g_default_wp_icon, waypoint.name, waypoint.guid, false);
     const auto guid = point->m_GUID.ToStdString();
     if (!guids.insert(guid).second ||
         (pWayPointMan && pWayPointMan->FindRoutePointByGUID(guid))) {
@@ -231,7 +257,8 @@ public:
       const RouteMutation& mutation, const std::string& command_id) override {
     if (!Ready()) return NotReady<RouteCommandResult>();
     auto built = BuildDraftRoute(mutation, std::nullopt);
-    if (built.error) return Result<RouteCommandResult>{std::nullopt, built.error};
+    if (built.error)
+      return Result<RouteCommandResult>{std::nullopt, built.error};
     auto* route = *built.value;
     if (!NavObj_dB::GetInstance().InsertRoute(route)) {
       NavObj_dB::GetInstance().DeleteRoute(route);
@@ -240,25 +267,29 @@ public:
           "persistence_failed", "Draft route could not be persisted");
     }
     RegisterDraftRoute(route);
-    wxLogMessage("External control audit: command=%s action=create-draft route=%s",
-                 command_id, route->m_GUID);
+    wxLogMessage(
+        "External control audit: command=%s action=create-draft route=%s",
+        command_id, route->m_GUID);
     return Result<RouteCommandResult>::FromValue(
         {command_id, Snapshot(*route), true, {}});
   }
 
-  Result<RouteCommandResult> Update(
-      const std::string& guid, std::uint64_t expected_revision,
-      const RouteMutation& mutation, const std::string& command_id) override {
+  Result<RouteCommandResult> Update(const std::string& guid,
+                                    std::uint64_t expected_revision,
+                                    const RouteMutation& mutation,
+                                    const std::string& command_id) override {
     if (!Ready()) return NotReady<RouteCommandResult>();
     auto* current = g_pRouteMan->FindRouteByGUID(guid);
     if (!current)
-      return Result<RouteCommandResult>::FromError("not_found", "Route not found");
+      return Result<RouteCommandResult>::FromError("not_found",
+                                                   "Route not found");
     if (current->m_bIsInLayer)
-      return Result<RouteCommandResult>::FromError("layer_owned",
-                                                   "Layer routes cannot be edited");
+      return Result<RouteCommandResult>::FromError(
+          "layer_owned", "Layer routes cannot be edited");
     if (current->m_RouteDescription != kExternalDraftMarker)
       return Result<RouteCommandResult>::FromError(
-          "invalid_route", "Only external-control draft routes can be replaced");
+          "invalid_route",
+          "Only external-control draft routes can be replaced");
     if (g_pRouteMan->GetpActiveRoute() == current)
       return Result<RouteCommandResult>::FromError(
           "active_route", "Deactivate the route before updating it");
@@ -267,7 +298,8 @@ public:
           "conflict", "Route revision does not match expectedRevision");
 
     auto built = BuildDraftRoute(mutation, guid);
-    if (built.error) return Result<RouteCommandResult>{std::nullopt, built.error};
+    if (built.error)
+      return Result<RouteCommandResult>{std::nullopt, built.error};
     auto* replacement = *built.value;
     if (!NavObj_dB::GetInstance().UpdateRoute(replacement)) {
       DestroyUnregisteredRoute(replacement);
@@ -277,7 +309,8 @@ public:
 
     pSelect->DeleteAllSelectableRouteSegments(current);
     pSelect->DeleteAllSelectableRoutePoints(current);
-    const auto found = std::find(pRouteList->begin(), pRouteList->end(), current);
+    const auto found =
+        std::find(pRouteList->begin(), pRouteList->end(), current);
     if (found != pRouteList->end()) *found = replacement;
     for (auto* point : *replacement->pRoutePointList)
       pWayPointMan->AddRoutePoint(point);
@@ -290,22 +323,24 @@ public:
     current->pRoutePointList->clear();
     delete current;
     GuiEvents::GetInstance().on_routes_update.Notify();
-    wxLogMessage("External control audit: command=%s action=update-draft route=%s",
-                 command_id, replacement->m_GUID);
+    wxLogMessage(
+        "External control audit: command=%s action=update-draft route=%s",
+        command_id, replacement->m_GUID);
     return Result<RouteCommandResult>::FromValue(
         {command_id, Snapshot(*replacement), true, {}});
   }
 
-  Result<RouteCommandResult> Delete(
-      const std::string& guid, std::uint64_t expected_revision,
-      const std::string& command_id) override {
+  Result<RouteCommandResult> Delete(const std::string& guid,
+                                    std::uint64_t expected_revision,
+                                    const std::string& command_id) override {
     if (!Ready()) return NotReady<RouteCommandResult>();
     auto* route = g_pRouteMan->FindRouteByGUID(guid);
     if (!route)
-      return Result<RouteCommandResult>::FromError("not_found", "Route not found");
+      return Result<RouteCommandResult>::FromError("not_found",
+                                                   "Route not found");
     if (route->m_bIsInLayer)
-      return Result<RouteCommandResult>::FromError("layer_owned",
-                                                   "Layer routes cannot be deleted");
+      return Result<RouteCommandResult>::FromError(
+          "layer_owned", "Layer routes cannot be deleted");
     if (Revision(*route) != expected_revision)
       return Result<RouteCommandResult>::FromError(
           "conflict", "Route revision does not match expectedRevision");
@@ -316,8 +351,9 @@ public:
       return Result<RouteCommandResult>::FromError(
           "command_failed", "Route manager rejected deletion");
     GuiEvents::GetInstance().on_routes_update.Notify();
-    wxLogMessage("External control audit: command=%s action=delete-route route=%s",
-                 command_id, guid);
+    wxLogMessage(
+        "External control audit: command=%s action=delete-route route=%s",
+        command_id, guid);
     return Result<RouteCommandResult>::FromValue(
         {command_id, std::nullopt, true, {}});
   }
@@ -328,10 +364,11 @@ public:
     if (!Ready()) return NotReady<RouteCommandResult>();
     auto* route = g_pRouteMan->FindRouteByGUID(guid);
     if (!route)
-      return Result<RouteCommandResult>::FromError("not_found", "Route not found");
+      return Result<RouteCommandResult>::FromError("not_found",
+                                                   "Route not found");
     if (route->GetnPoints() < 2)
-      return Result<RouteCommandResult>::FromError("invalid_route",
-                                                   "Route has fewer than two points");
+      return Result<RouteCommandResult>::FromError(
+          "invalid_route", "Route has fewer than two points");
     RoutePoint* start = nullptr;
     if (waypoint_guid) {
       start = route->GetPoint(*waypoint_guid);
@@ -342,17 +379,22 @@ public:
     if (g_pRouteMan->GetpActiveRoute() == route &&
         (!start || g_pRouteMan->GetpActivePoint() == start)) {
       return Result<RouteCommandResult>::FromValue(
-          {command_id, Snapshot(*route), false,
+          {command_id,
+           Snapshot(*route),
+           false,
            {"Route was already active at the requested waypoint"}});
     }
     if (g_pRouteMan->GetpActiveRoute()) g_pRouteMan->DeactivateRoute();
     if (!g_pRouteMan->ActivateRoute(route, start))
       return Result<RouteCommandResult>::FromError(
           "command_failed", "Route manager rejected activation");
-    wxLogMessage("External control audit: command=%s action=activate-route route=%s",
-                 command_id, guid);
+    wxLogMessage(
+        "External control audit: command=%s action=activate-route route=%s",
+        command_id, guid);
     return Result<RouteCommandResult>::FromValue(
-        {command_id, Snapshot(*route), true,
+        {command_id,
+         Snapshot(*route),
+         true,
          {"Route activation may affect configured navigation outputs"}});
   }
 
@@ -373,7 +415,8 @@ public:
 
 private:
   bool Ready() const {
-    return wxThread::IsMain() && pRouteList && pWayPointMan && pSelect && g_pRouteMan;
+    return wxThread::IsMain() && pRouteList && pWayPointMan && pSelect &&
+           g_pRouteMan;
   }
 
   template <typename T>
@@ -421,7 +464,8 @@ ChartSafetyDecision Decision(int status) {
 class LiveChartSafety final : public ChartSafetyQuery {
 public:
   Result<ChartSafetyResult> ValidatePoint(
-      const Coordinate& point, const ChartSafetyConstraints& constraints) override {
+      const Coordinate& point,
+      const ChartSafetyConstraints& constraints) override {
     return ValidateSegment(point, point, constraints);
   }
 
@@ -449,11 +493,10 @@ public:
     }
     ChartSafetyResult result;
     result.decision = Decision(raw.status);
-    result.authority =
-        raw.source == PI_SEGMENT_SAFETY_SOURCE_GSHHS_FALLBACK
-            ? ChartSafetyAuthority::Fallback
-            : (raw.source == PI_SEGMENT_SAFETY_SOURCE_NONE
-                   ? ChartSafetyAuthority::Unknown
+    result.authority = raw.source == PI_SEGMENT_SAFETY_SOURCE_GSHHS_FALLBACK
+                           ? ChartSafetyAuthority::Fallback
+                           : (raw.source == PI_SEGMENT_SAFETY_SOURCE_NONE
+                                  ? ChartSafetyAuthority::Unknown
                    : ChartSafetyAuthority::Authoritative);
     result.cause_code = StatusCode(raw.status);
     result.constraints = constraints;
@@ -481,7 +524,8 @@ public:
       }
       if (segment.value->authority != ChartSafetyAuthority::Authoritative)
         aggregate.authority = segment.value->authority;
-      aggregate.chart_database_identity = segment.value->chart_database_identity;
+      aggregate.chart_database_identity =
+          segment.value->chart_database_identity;
     }
     return Result<ChartSafetyResult>::FromValue(std::move(aggregate));
   }
@@ -516,8 +560,8 @@ public:
     auto state = std::make_shared<QueryState>();
     auto safety = safety_;
     wxTheApp->CallAfter([state, safety, request] {
-      auto answer =
-          safety->ValidateSegment(request.start, request.destination, request.safety);
+      auto answer = safety->ValidateSegment(request.start, request.destination,
+                                            request.safety);
       {
         std::lock_guard<std::mutex> lock(state->mutex);
         state->result = std::move(answer);
@@ -546,8 +590,8 @@ public:
     report_progress(0.9);
     PlanningResult result;
     result.draft_route.name = "Chart-validated direct route";
-    result.draft_route.waypoints = {
-        {"", "Start", request.start}, {"", "Destination", request.destination}};
+    result.draft_route.waypoints = {{"", "Start", request.start},
+                                    {"", "Destination", request.destination}};
     result.input_provenance = {
         "OpenCPN chart-safety service",
         "direct segment; no weather or current optimization"};
@@ -563,7 +607,322 @@ private:
   std::shared_ptr<ChartSafetyQuery> safety_;
 };
 
+Result<ChartSafetyResult> ValidateProviderRoute(
+    const std::shared_ptr<ChartSafetyQuery>& safety,
+    const std::vector<Coordinate>& route,
+    const ChartSafetyConstraints& constraints,
+    const PlanningCancellation& cancellation) {
+  if (!wxTheApp)
+    return Result<ChartSafetyResult>::FromError(
+        "not_ready", "OpenCPN application executor is unavailable");
+  struct QueryState {
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool complete = false;
+    Result<ChartSafetyResult> result;
+  };
+  auto state = std::make_shared<QueryState>();
+  wxTheApp->CallAfter([state, safety, route, constraints] {
+    auto answer = safety->ValidateRoute(route, constraints);
+    {
+      std::lock_guard<std::mutex> lock(state->mutex);
+      state->result = std::move(answer);
+      state->complete = true;
+    }
+    state->changed.notify_all();
+  });
+  std::unique_lock<std::mutex> lock(state->mutex);
+  while (!state->complete) {
+    if (cancellation.IsCancellationRequested())
+      return Result<ChartSafetyResult>::FromError(
+          "cancelled", "Planning was cancelled during final chart validation");
+    state->changed.wait_for(lock, std::chrono::milliseconds(50));
+  }
+  return std::move(state->result);
+}
+
+class PluginPlanningProvider final : public PlanningProvider {
+public:
+  PluginPlanningProvider(std::string plugin_name,
+                         const PlugInPlanningProviderV1& provider,
+                         std::shared_ptr<ChartSafetyQuery> safety)
+      : plugin_name_(std::move(plugin_name)),
+        capability_(provider.capability),
+        display_name_(provider.display_name ? provider.display_name
+                                            : provider.capability),
+        context_(provider.provider_context),
+        run_(provider.run),
+        safety_(std::move(safety)) {}
+
+  std::string Capability() const override { return capability_; }
+
+  Result<PlanningResult> Run(
+      const PlanningRequest& request, const PlanningCancellation& cancellation,
+      const std::function<void(double)>& report_progress) override {
+    using nlohmann::json;
+    json encoded = {
+        {"schemaVersion", 1},
+        {"providerCapability", request.provider_capability},
+        {"start",
+         {{"latitudeDegrees", request.start.latitude_degrees},
+          {"longitudeDegrees", request.start.longitude_degrees}}},
+        {"destination",
+         {{"latitudeDegrees", request.destination.latitude_degrees},
+          {"longitudeDegrees", request.destination.longitude_degrees}}},
+        {"minimumDepthMeters", request.safety.minimum_depth_meters},
+        {"landMarginNauticalMiles", request.safety.land_margin_nautical_miles},
+        {"vesselIdentity", request.vessel_identity},
+        {"polarIdentity", request.polar_identity},
+        {"weatherDatasetIdentity", request.weather_dataset_identity},
+        {"currentDatasetIdentity", request.current_dataset_identity},
+        {"horizonHours", request.horizon.count()},
+        {"allowClimatologyFallback", request.allow_climatology_fallback},
+        {"effortLimit", request.effort_limit},
+        {"departureWindowBeforeMinutes",
+         request.departure_window_before_minutes},
+        {"departureWindowAfterMinutes", request.departure_window_after_minutes},
+        {"departureStepMinutes", request.departure_step_minutes},
+        {"concurrentRoutes", request.concurrent_routes},
+        {"routingEffortPercent", request.routing_effort_percent}};
+    if (request.departure_time)
+      encoded["departureEpochSeconds"] =
+          std::chrono::duration_cast<std::chrono::seconds>(
+              request.departure_time->time_since_epoch())
+              .count();
+
+    const char* output = nullptr;
+    const char* error_code = nullptr;
+    const char* error_message = nullptr;
+    const int ok = run_(
+        context_, encoded.dump().c_str(),
+        [](void* value) {
+          return static_cast<const PlanningCancellation*>(value)
+                         ->IsCancellationRequested()
+                     ? 1
+                     : 0;
+        },
+        const_cast<PlanningCancellation*>(&cancellation),
+        [](void* value, double progress) {
+          (*static_cast<std::function<void(double)>*>(value))(
+              std::max(0.0, std::min(0.85, progress * 0.85)));
+        },
+        const_cast<std::function<void(double)>*>(&report_progress), &output,
+        &error_code, &error_message);
+    if (!ok)
+      return Result<PlanningResult>::FromError(
+          error_code && *error_code ? error_code : "provider_failed",
+          error_message && *error_message ? error_message
+                                          : "Plugin planning provider failed");
+    if (!output)
+      return Result<PlanningResult>::FromError(
+          "invalid_provider_result", "Plugin returned no planning result");
+    const std::size_t output_size =
+        strnlen(output, kMaximumProviderResultBytes + 1);
+    if (output_size > kMaximumProviderResultBytes)
+      return Result<PlanningResult>::FromError(
+          "provider_result_too_large",
+          "Plugin planning result exceeds the configured safety bound");
+
+    json result_json;
+    try {
+      result_json = json::parse(output, output + output_size);
+    } catch (const json::exception&) {
+      return Result<PlanningResult>::FromError(
+          "invalid_provider_result", "Plugin returned malformed result JSON");
+    }
+    if (!result_json.is_object() || !result_json.contains("candidates") ||
+        !result_json["candidates"].is_array())
+      return Result<PlanningResult>::FromError(
+          "invalid_provider_result", "Plugin result has no candidate array");
+    if (result_json["candidates"].size() > kMaximumProviderCandidates)
+      return Result<PlanningResult>::FromError(
+          "invalid_provider_result",
+          "Plugin result contains too many route candidates");
+
+    std::vector<RouteMutation> complete;
+    std::size_t total_route_points = 0;
+    try {
+      for (const auto& candidate : result_json["candidates"]) {
+        if (candidate.value("state", std::string()) != "complete" ||
+            candidate.value("finalSafety", std::string()) != "pass" ||
+            !candidate.contains("route") || !candidate["route"].is_array() ||
+            candidate["route"].size() < 2)
+          continue;
+        total_route_points += candidate["route"].size();
+        if (total_route_points > kMaximumProviderRoutePoints)
+          throw std::length_error("too many route points");
+        RouteMutation route;
+        const int offset = candidate.value("offsetMinutes", 0);
+        route.name =
+            display_name_ + " route" +
+            (offset == 0 ? std::string()
+                         : " (departure " +
+                               (offset > 0 ? std::string("+") : std::string()) +
+                               std::to_string(offset) + " min)");
+        std::size_t index = 0;
+        for (const auto& point : candidate["route"]) {
+          const double latitude = point.at("latitudeDegrees").get<double>();
+          const double longitude = point.at("longitudeDegrees").get<double>();
+          if (!std::isfinite(latitude) || !std::isfinite(longitude) ||
+              latitude < -90.0 || latitude > 90.0 || longitude < -180.0 ||
+              longitude > 180.0)
+            throw std::domain_error("invalid coordinate");
+          route.waypoints.push_back(
+              {"",
+               index == 0 ? "Start"
+                          : (index + 1 == candidate["route"].size()
+                                 ? "Destination"
+                                 : "Route point " + std::to_string(index)),
+               {latitude, longitude}});
+          ++index;
+        }
+        if (!SameRequestedEndpoint(route.waypoints.front().position,
+                                   request.start) ||
+            !SameRequestedEndpoint(route.waypoints.back().position,
+                                   request.destination))
+          throw std::domain_error("route endpoints do not match request");
+        complete.push_back(std::move(route));
+      }
+    } catch (const std::exception&) {
+      return Result<PlanningResult>::FromError(
+          "invalid_provider_result", "Plugin result contains invalid geometry");
+    }
+    if (complete.empty())
+      return Result<PlanningResult>::FromError(
+          result_json.value("failureReason", std::string("no_route")),
+          "Plugin did not return a complete chart-safe route");
+
+    std::vector<Coordinate> geometry;
+    for (const auto& point : complete.front().waypoints)
+      geometry.push_back(point.position);
+    report_progress(0.9);
+    auto final_safety =
+        ValidateProviderRoute(safety_, geometry, request.safety, cancellation);
+    if (final_safety.error)
+      return Result<PlanningResult>{std::nullopt, final_safety.error};
+    if (final_safety.value->decision != ChartSafetyDecision::Pass ||
+        final_safety.value->authority != ChartSafetyAuthority::Authoritative)
+      return Result<PlanningResult>::FromError(
+          final_safety.value->cause_code.empty()
+              ? "final_chart_validation_failed"
+              : final_safety.value->cause_code,
+          "Provider route failed independent authoritative chart validation");
+
+    PlanningResult result;
+    result.draft_route = std::move(complete.front());
+    for (std::size_t index = 1; index < complete.size(); ++index) {
+      std::vector<Coordinate> alternative_geometry;
+      for (const auto& point : complete[index].waypoints)
+        alternative_geometry.push_back(point.position);
+      auto alternative_safety = ValidateProviderRoute(
+          safety_, alternative_geometry, request.safety, cancellation);
+      if (alternative_safety.error) {
+        if (alternative_safety.error->code == "cancelled")
+          return Result<PlanningResult>{std::nullopt,
+                                        alternative_safety.error};
+        result.warnings.push_back(
+            "An alternative route was omitted because chart validation "
+            "could not complete");
+        continue;
+      }
+      if (alternative_safety.value->decision != ChartSafetyDecision::Pass ||
+          alternative_safety.value->authority !=
+              ChartSafetyAuthority::Authoritative) {
+        result.warnings.push_back(
+            "An alternative route was omitted after authoritative chart "
+            "validation");
+        continue;
+      }
+      result.alternatives.push_back(std::move(complete[index]));
+    }
+    result.input_provenance = {plugin_name_ + ": " + display_name_};
+    if (!request.polar_identity.empty())
+      result.input_provenance.push_back("polar:" + request.polar_identity);
+    if (!request.weather_dataset_identity.empty())
+      result.input_provenance.push_back("weather:" +
+                                        request.weather_dataset_identity);
+    if (!request.current_dataset_identity.empty())
+      result.input_provenance.push_back("currents:" +
+                                        request.current_dataset_identity);
+    result.chart_database_identity =
+        final_safety.value->chart_database_identity;
+    result.final_safety = *final_safety.value;
+    result.warnings.push_back(
+        "Result is an external-control draft and is not activated");
+    report_progress(1.0);
+    return Result<PlanningResult>::FromValue(std::move(result));
+  }
+
+private:
+  std::string plugin_name_;
+  std::string capability_;
+  std::string display_name_;
+  void* context_;
+  PlugInPlanningRunV1 run_;
+  std::shared_ptr<ChartSafetyQuery> safety_;
+};
+
+struct PluginPlanningRegistry {
+  std::mutex mutex;
+  std::weak_ptr<PlanningJobService> planning;
+  std::weak_ptr<ChartSafetyQuery> safety;
+  std::unordered_map<std::string, std::vector<std::string>> capabilities;
+};
+
+PluginPlanningRegistry& PlanningRegistry() {
+  static PluginPlanningRegistry registry;
+  return registry;
+}
+
 }  // namespace
+
+extern "C" bool PlugIn_RegisterPlanningProviderV1(
+    const char* plugin_name, const PlugInPlanningProviderV1* provider) {
+  if (!plugin_name || !*plugin_name || !provider ||
+      provider->struct_size < sizeof(PlugInPlanningProviderV1) ||
+      !provider->capability || !*provider->capability || !provider->run)
+    return false;
+  const std::string capability(provider->capability);
+  if (capability.size() > 128 || capability.rfind("route-planning.", 0) != 0)
+    return false;
+  auto& registry = PlanningRegistry();
+  std::lock_guard<std::mutex> lock(registry.mutex);
+  auto planning = registry.planning.lock();
+  auto safety = registry.safety.lock();
+  if (!planning || !safety) return false;
+  auto adapter = std::make_shared<PluginPlanningProvider>(
+      plugin_name, *provider, std::move(safety));
+  if (!planning->RegisterProvider(std::move(adapter))) return false;
+  registry.capabilities[plugin_name].push_back(capability);
+  wxLogMessage("Plugin %s registered external planning provider %s",
+               plugin_name, capability);
+  return true;
+}
+
+extern "C" bool PlugIn_UnregisterPlanningProvidersV1(const char* plugin_name) {
+  return plugin_name && PrepareExternalPlanningProviderUnload(plugin_name);
+}
+
+bool PrepareExternalPlanningProviderUnload(const std::string& plugin_name) {
+  auto& registry = PlanningRegistry();
+  std::lock_guard<std::mutex> lock(registry.mutex);
+  const auto found = registry.capabilities.find(plugin_name);
+  if (found == registry.capabilities.end()) return true;
+  auto planning = registry.planning.lock();
+  if (!planning) {
+    registry.capabilities.erase(found);
+    return true;
+  }
+  bool drained = true;
+  for (const auto& capability : found->second)
+    if (!planning->UnregisterProvider(capability)) drained = false;
+  if (drained) {
+    registry.capabilities.erase(found);
+    wxLogMessage("Plugin %s unregistered all external planning providers",
+                 plugin_name);
+  }
+  return drained;
+}
 
 ocpn::control::ServiceBundle MakeExternalControlServices() {
   auto events = std::make_shared<LiveApplicationEvents>();
@@ -571,8 +930,18 @@ ocpn::control::ServiceBundle MakeExternalControlServices() {
   auto chart_safety = std::make_shared<LiveChartSafety>();
   planning->RegisterProvider(
       std::make_shared<ChartDirectPlanningProvider>(chart_safety));
-  return {std::make_shared<LiveReadiness>(), std::make_shared<LiveNavigation>(),
-          std::make_shared<LiveRoutes>(), std::make_shared<LiveRouteCommands>(),
-          std::move(chart_safety), std::move(events),
+  {
+    auto& registry = PlanningRegistry();
+    std::lock_guard<std::mutex> lock(registry.mutex);
+    registry.planning = planning;
+    registry.safety = chart_safety;
+    registry.capabilities.clear();
+  }
+  return {std::make_shared<LiveReadiness>(),
+          std::make_shared<LiveNavigation>(),
+          std::make_shared<LiveRoutes>(),
+          std::make_shared<LiveRouteCommands>(),
+          std::move(chart_safety),
+          std::move(events),
           std::move(planning)};
 }

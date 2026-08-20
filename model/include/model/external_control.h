@@ -201,15 +201,15 @@ public:
   virtual ~RouteCommandService() = default;
   virtual Result<RouteCommandResult> CreateDraft(
       const RouteMutation& route, const std::string& command_id) = 0;
-  virtual Result<RouteCommandResult> Update(
-      const std::string& guid, std::uint64_t expected_revision,
-      const RouteMutation& route, const std::string& command_id) = 0;
-  virtual Result<RouteCommandResult> Delete(
-      const std::string& guid, std::uint64_t expected_revision,
-      const std::string& command_id) = 0;
+  virtual Result<RouteCommandResult> Update(const std::string& guid,
+                                            std::uint64_t expected_revision,
+                                            const RouteMutation& route,
+                                            const std::string& command_id) = 0;
+  virtual Result<RouteCommandResult> Delete(const std::string& guid,
+                                            std::uint64_t expected_revision,
+                                            const std::string& command_id) = 0;
   virtual Result<RouteCommandResult> Activate(
-      const std::string& guid,
-      const std::optional<std::string>& waypoint_guid,
+      const std::string& guid, const std::optional<std::string>& waypoint_guid,
       const std::string& command_id) = 0;
   virtual Result<RouteCommandResult> Deactivate(
       const std::string& command_id) = 0;
@@ -243,6 +243,11 @@ struct PlanningRequest {
   std::chrono::hours horizon{240};
   bool allow_climatology_fallback = false;
   std::uint64_t effort_limit = 1000000;
+  int departure_window_before_minutes = 0;
+  int departure_window_after_minutes = 0;
+  int departure_step_minutes = 60;
+  int concurrent_routes = 1;
+  int routing_effort_percent = 100;
 };
 
 struct PlanningResult {
@@ -289,12 +294,12 @@ public:
   virtual std::vector<std::string> ProviderCapabilities() const = 0;
   virtual Result<PlanningJobSnapshot> Submit(const PlanningRequest& request,
                                              const std::string& owner_id) = 0;
-  virtual Result<PlanningJobSnapshot> Get(const std::string& id,
-                                          const std::string& owner_id) const = 0;
+  virtual Result<PlanningJobSnapshot> Get(
+      const std::string& id, const std::string& owner_id) const = 0;
   virtual Result<PlanningJobSnapshot> Cancel(const std::string& id,
                                              const std::string& owner_id) = 0;
-  virtual Result<PlanningResult> GetResult(const std::string& id,
-                                           const std::string& owner_id) const = 0;
+  virtual Result<PlanningResult> GetResult(
+      const std::string& id, const std::string& owner_id) const = 0;
   virtual void Shutdown() = 0;
 };
 

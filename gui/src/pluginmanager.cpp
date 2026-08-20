@@ -87,6 +87,7 @@
 #include <wx/zstream.h>
 
 #include "config.h"
+#include "external_control_gui.h"
 #include "pluginmanager.h"
 
 #include "o_sound/o_sound.h"
@@ -1024,7 +1025,7 @@ void PlugInManager::HandlePluginLoaderEvents() {
   loader->SetOnActivateCb(
       [&](const PlugInContainer* pic) { OnPluginActivate(pic); });
   loader->SetOnDeactivateCb(
-      [&](const PlugInContainer* pic) { OnPluginDeactivate(pic); });
+      [&](const PlugInContainer* pic) { return OnPluginDeactivate(pic); });
 
   evt_pluglist_change_listener.Listen(loader->evt_pluglist_change, this,
                                       EVT_PLUGLIST_CHANGE);
@@ -1153,9 +1154,16 @@ void PlugInManager::OnPluginActivate(const PlugInContainer* pic) {
 #endif
 }
 
-void PlugInManager::OnPluginDeactivate(const PlugInContainer* pic) {
+bool PlugInManager::OnPluginDeactivate(const PlugInContainer* pic) {
   // Remove possible event callbacks
   auto name = pic->m_pplugin->GetCommonName().ToStdString();
+  if (!PrepareExternalPlanningProviderUnload(name)) {
+    wxLogWarning(
+        "Plugin %s remains loaded while external planning jobs cancel; "
+        "retry disabling it after the jobs reach a terminal state",
+        name);
+    return false;
+  }
   auto api_impl = dynamic_cast<Api122Impl*>(wxTheApp);
   assert(api_impl && "wxTheApp does not implement Api122Impl");
   api_impl->RegisterApiEventCallback(name, nullptr);
@@ -1183,6 +1191,7 @@ void PlugInManager::OnPluginDeactivate(const PlugInContainer* pic) {
       delete pimis;
     }
   }
+  return true;
 }
 
 bool PlugInManager::IsAnyPlugInChartEnabled() {

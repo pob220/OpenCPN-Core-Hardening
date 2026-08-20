@@ -310,7 +310,7 @@ private:
 
   void ProcessLateInit(const PlugInContainer* pic);
   void OnPluginActivate(const PlugInContainer* pic);
-  void OnPluginDeactivate(const PlugInContainer* pic);
+  bool OnPluginDeactivate(const PlugInContainer* pic);
   void HandlePluginLoaderEvents();
   void HandlePluginHandlerEvents();
 

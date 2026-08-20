@@ -219,7 +219,7 @@ public:
   }
 
   /** Callback invoked in late stage on deactivating a plugin. */
-  void SetOnDeactivateCb(std::function<void(const PlugInContainer*)> cb) {
+  void SetOnDeactivateCb(std::function<bool(const PlugInContainer*)> cb) {
     m_on_deactivate_cb = cb;
   }
   /** Display the preferences dialog for a plugin. */
@@ -306,7 +306,7 @@ private:
 
   const wxBitmap* m_default_plugin_icon;
   std::function<void(const PlugInContainer*)> m_on_activate_cb;
-  std::function<void(const PlugInContainer*)> m_on_deactivate_cb;
+  std::function<bool(const PlugInContainer*)> m_on_deactivate_cb;
 
   std::vector<LoadError> load_errors;
 };

@@ -3649,8 +3649,8 @@ typedef int (*PlugInSegmentSafetyTileCacheLookupFn)(
     PlugInSegmentSafetyTile *tile);
 typedef void (*PlugInSegmentSafetyTileCacheStoreFn)(
     void *context, const PlugInSegmentSafetyTile *tile);
-typedef void (*PlugInSegmentSafetyTileCacheIdentityFn)(
-    void *context, const char *identity);
+typedef void (*PlugInSegmentSafetyTileCacheIdentityFn)(void *context,
+                                                       const char *identity);
 
 struct PlugInSegmentSafetyTileCacheCallbacks {
   int struct_size;
@@ -3724,8 +3724,8 @@ extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyGrid(
     PlugInSegmentSafetyResult *result);
 
 extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyGridForSegment(
-    double lat1, double lon1, double lat2, double lon2,
-    double safety_margin_nm, PlugInSegmentSafetyResult *result);
+    double lat1, double lon1, double lat2, double lon2, double safety_margin_nm,
+    PlugInSegmentSafetyResult *result);
 
 extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyRouteMask(
     double min_lat, double min_lon, double max_lat, double max_lon,
@@ -3734,8 +3734,7 @@ extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyRouteMask(
 
 extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyRouteMaskForSegment(
     double lat1, double lon1, double lat2, double lon2,
-    double corridor_margin_nm,
-    const PlugInSegmentSafetyOptions *options,
+    double corridor_margin_nm, const PlugInSegmentSafetyOptions *options,
     PlugInSegmentSafetyResult *result);
 
 /**
@@ -3747,8 +3746,8 @@ extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyRouteMaskForSegment(
  * main thread; worker threads may subsequently read the published masks.
  */
 extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyRouteMaskForPolylines(
-    const double *latitudes, const double *longitudes,
-    const int *point_counts, int polyline_count, double corridor_margin_nm,
+    const double *latitudes, const double *longitudes, const int *point_counts,
+    int polyline_count, double corridor_margin_nm,
     const PlugInSegmentSafetyOptions *options,
     PlugInSegmentSafetyResult *result);
 // As above, with a deterministic halo measured in fine route-mask tiles.
@@ -3756,9 +3755,9 @@ extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyRouteMaskForPolylines(
 // expansion.  A value of one adds exactly the neighbouring tile ring.
 extern "C" DECL_EXP bool
 PlugIn_PrewarmSegmentSafetyRouteMaskForPolylinesWithTileHalo(
-    const double *latitudes, const double *longitudes,
-    const int *point_counts, int polyline_count, double corridor_margin_nm,
-    int fine_tile_halo, const PlugInSegmentSafetyOptions *options,
+    const double *latitudes, const double *longitudes, const int *point_counts,
+    int polyline_count, double corridor_margin_nm, int fine_tile_halo,
+    const PlugInSegmentSafetyOptions *options,
     PlugInSegmentSafetyResult *result);
 
 /**
@@ -7747,5 +7746,40 @@ public:
   virtual void RegisterApiEventCallback(
       const std::string &, std::function<void(HostApi122::EventType what)>) = 0;
 };
+
+/*
+ * Optional external route-planning provider ABI.
+ *
+ * This is deliberately separate from the numbered opencpn_plugin class ABI:
+ * plugins compiled for older hosts may resolve the exported registration
+ * function dynamically and simply omit the capability when it is absent.
+ * Callback strings remain owned by the plugin and need only remain valid
+ * until the callback is invoked again for the same context; the host copies
+ * them immediately.
+ */
+#define OCPN_HAVE_PLANNING_PROVIDER_V1 1
+
+typedef int (*PlugInPlanningCancelledV1)(void *cancellation_context);
+typedef void (*PlugInPlanningProgressV1)(void *progress_context,
+                                         double progress);
+typedef int (*PlugInPlanningRunV1)(
+    void *provider_context, const char *request_json,
+    PlugInPlanningCancelledV1 is_cancelled, void *cancellation_context,
+    PlugInPlanningProgressV1 report_progress, void *progress_context,
+    const char **result_json, const char **error_code,
+    const char **error_message);
+
+struct PlugInPlanningProviderV1 {
+  std::size_t struct_size;
+  const char *capability;
+  const char *display_name;
+  void *provider_context;
+  PlugInPlanningRunV1 run;
+};
+
+extern "C" DECL_EXP bool PlugIn_RegisterPlanningProviderV1(
+    const char *plugin_name, const PlugInPlanningProviderV1 *provider);
+extern "C" DECL_EXP bool PlugIn_UnregisterPlanningProvidersV1(
+    const char *plugin_name);
 
 #endif  //_PLUGIN_H_

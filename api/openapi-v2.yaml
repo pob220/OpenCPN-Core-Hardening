@@ -471,6 +471,15 @@ components:
         allowClimatologyFallback: {type: boolean, default: false}
         effortLimit: {type: integer, minimum: 1, maximum: 1000000000,
                       default: 1000000}
+        departureWindowBeforeMinutes: {type: integer, minimum: 0,
+                                       maximum: 10080, default: 0}
+        departureWindowAfterMinutes: {type: integer, minimum: 0,
+                                      maximum: 10080, default: 0}
+        departureStepMinutes: {type: integer, minimum: 1, maximum: 1440,
+                               default: 60}
+        concurrentRoutes: {type: integer, minimum: 1, maximum: 16, default: 1}
+        routingEffortPercent: {type: integer, minimum: 10, maximum: 400,
+                               default: 100}
     PlanningJob:
       type: object
       required: [id, providerCapability, state, progress,

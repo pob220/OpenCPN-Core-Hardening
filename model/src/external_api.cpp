@@ -21,8 +21,7 @@ using json = nlohmann::json;
 
 HttpResponse JsonResponse(int status, const json& body) {
   return {status,
-          {{"Content-Type", "application/json"},
-           {"Cache-Control", "no-store"}},
+          {{"Content-Type", "application/json"}, {"Cache-Control", "no-store"}},
           body.dump() + "\n"};
 }
 
@@ -33,9 +32,9 @@ HttpResponse Error(int status, const std::string& code,
 }
 
 std::string Lower(std::string value) {
-  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
+  std::transform(
+      value.begin(), value.end(), value.begin(),
+      [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   return value;
 }
 
@@ -58,8 +57,8 @@ std::string TokenDigest(const std::string& token) {
 }
 
 bool IsLoopback(const std::string& address) {
-  return address == "127.0.0.1" || address == "::1" ||
-         address == "[::1]" || address.rfind("127.", 0) == 0;
+  return address == "127.0.0.1" || address == "::1" || address == "[::1]" ||
+         address.rfind("127.", 0) == 0;
 }
 
 HttpResponse RequireScope(const TokenAuthorizer::Principal& principal,
@@ -102,12 +101,9 @@ json CoordinateJson(const Coordinate& coordinate) {
 }
 
 json RouteSummaryJson(const RouteSummary& route) {
-  return {{"guid", route.guid},
-          {"name", route.name},
-          {"revision", route.revision},
-          {"waypointCount", route.waypoint_count},
-          {"isLayer", route.is_layer},
-          {"isDraft", route.is_draft}};
+  return {{"guid", route.guid},         {"name", route.name},
+          {"revision", route.revision}, {"waypointCount", route.waypoint_count},
+          {"isLayer", route.is_layer},  {"isDraft", route.is_draft}};
 }
 
 json RouteJson(const RouteSnapshot& route) {
@@ -207,8 +203,7 @@ bool ValidCoordinate(const Coordinate& point) {
   return std::isfinite(point.latitude_degrees) &&
          std::isfinite(point.longitude_degrees) &&
          point.latitude_degrees >= -90.0 && point.latitude_degrees <= 90.0 &&
-         point.longitude_degrees >= -180.0 &&
-         point.longitude_degrees <= 180.0;
+         point.longitude_degrees >= -180.0 && point.longitude_degrees <= 180.0;
 }
 
 Result<Coordinate> ParseCoordinate(const json& value) {
@@ -216,8 +211,8 @@ Result<Coordinate> ParseCoordinate(const json& value) {
     Coordinate coordinate{value.at("latitudeDegrees").get<double>(),
                           value.at("longitudeDegrees").get<double>()};
     if (!ValidCoordinate(coordinate)) {
-      return Result<Coordinate>::FromError("invalid_coordinate",
-                                         "Coordinate is outside WGS84 bounds");
+      return Result<Coordinate>::FromError(
+          "invalid_coordinate", "Coordinate is outside WGS84 bounds");
     }
     return Result<Coordinate>::FromValue(coordinate);
   } catch (const json::exception&) {
@@ -237,20 +232,23 @@ Result<ChartSafetyConstraints> ParseConstraints(const json& body) {
         !std::isfinite(constraints.land_margin_nautical_miles) ||
         constraints.land_margin_nautical_miles < 0.0) {
       return Result<ChartSafetyConstraints>::FromError(
-          "invalid_constraints", "Safety constraints must be finite and non-negative");
+          "invalid_constraints",
+          "Safety constraints must be finite and non-negative");
     }
     return Result<ChartSafetyConstraints>::FromValue(constraints);
   } catch (const json::exception&) {
     return Result<ChartSafetyConstraints>::FromError(
-        "invalid_constraints", "minimumDepthMeters is required and must be numeric");
+        "invalid_constraints",
+        "minimumDepthMeters is required and must be numeric");
   }
 }
 
 HttpResponse ChartResultResponse(const ChartSafetyResult& result) {
-  json body = {{"decision", DecisionText(result.decision)},
-               {"authority", AuthorityText(result.authority)},
-               {"causeCode", result.cause_code},
-               {"chartDatabaseIdentity", result.chart_database_identity},
+  json body = {
+      {"decision", DecisionText(result.decision)},
+      {"authority", AuthorityText(result.authority)},
+      {"causeCode", result.cause_code},
+      {"chartDatabaseIdentity", result.chart_database_identity},
                {"constraints",
                 {{"minimumDepthMeters", result.constraints.minimum_depth_meters},
                  {"landMarginNauticalMiles",
@@ -324,17 +322,17 @@ json PlanningJobJson(const PlanningJobSnapshot& job) {
                  {"cancellationRequested", job.cancellation_requested},
                  {"submittedTimeUtc", Iso8601(job.submitted_time)},
                  {"updatedTimeUtc", Iso8601(job.updated_time)}};
-  result["error"] = job.error
-                        ? json{{"code", job.error->code},
-                               {"message", job.error->message}}
-                        : json(nullptr);
+  result["error"] = job.error ? json{{"code", job.error->code},
+                                     {"message", job.error->message}}
+                              : json(nullptr);
   return result;
 }
 
 Result<PlanningRequest> ParsePlanningRequest(const json& body) {
   try {
     PlanningRequest request;
-    request.provider_capability = body.at("providerCapability").get<std::string>();
+    request.provider_capability =
+        body.at("providerCapability").get<std::string>();
     const auto start = ParseCoordinate(body.at("start"));
     const auto destination = ParseCoordinate(body.at("destination"));
     if (start.error)
@@ -354,7 +352,8 @@ Result<PlanningRequest> ParsePlanningRequest(const json& body) {
             "departureTimeUtc must be an ISO 8601 UTC timestamp ending in Z");
       request.departure_time = *parsed_time;
     }
-    request.safety.minimum_depth_meters = body.at("minimumDepthMeters").get<double>();
+    request.safety.minimum_depth_meters =
+        body.at("minimumDepthMeters").get<double>();
     request.safety.land_margin_nautical_miles =
         body.value("landMarginNauticalMiles", 0.0);
     request.vessel_identity = body.value("vesselIdentity", std::string());
@@ -367,20 +366,38 @@ Result<PlanningRequest> ParsePlanningRequest(const json& body) {
     request.allow_climatology_fallback =
         body.value("allowClimatologyFallback", false);
     request.effort_limit = body.value("effortLimit", std::uint64_t{1000000});
+    request.departure_window_before_minutes =
+        body.value("departureWindowBeforeMinutes", 0);
+    request.departure_window_after_minutes =
+        body.value("departureWindowAfterMinutes", 0);
+    request.departure_step_minutes = body.value("departureStepMinutes", 60);
+    request.concurrent_routes = body.value("concurrentRoutes", 1);
+    request.routing_effort_percent = body.value("routingEffortPercent", 100);
     if (request.provider_capability.empty() ||
         !std::isfinite(request.safety.minimum_depth_meters) ||
         request.safety.minimum_depth_meters < 0.0 ||
         !std::isfinite(request.safety.land_margin_nautical_miles) ||
         request.safety.land_margin_nautical_miles < 0.0 ||
         request.horizon.count() <= 0 || request.horizon.count() > 24 * 365 ||
-        request.effort_limit == 0 || request.effort_limit > 1000000000ULL)
+        request.effort_limit == 0 || request.effort_limit > 1000000000ULL ||
+        request.departure_window_before_minutes < 0 ||
+        request.departure_window_before_minutes > 7 * 24 * 60 ||
+        request.departure_window_after_minutes < 0 ||
+        request.departure_window_after_minutes > 7 * 24 * 60 ||
+        request.departure_step_minutes <= 0 ||
+        request.departure_step_minutes > 24 * 60 ||
+        request.concurrent_routes <= 0 || request.concurrent_routes > 16 ||
+        request.routing_effort_percent < 10 ||
+        request.routing_effort_percent > 400)
       return Result<PlanningRequest>::FromError(
-          "invalid_planning_request", "Planning constraints are outside limits");
+          "invalid_planning_request",
+          "Planning constraints are outside limits");
     return Result<PlanningRequest>::FromValue(std::move(request));
   } catch (const json::exception&) {
     return Result<PlanningRequest>::FromError(
         "invalid_planning_request",
-        "Planning requires providerCapability, start, destination and minimumDepthMeters");
+        "Planning requires providerCapability, start, destination and "
+        "minimumDepthMeters");
   }
 }
 
@@ -389,7 +406,8 @@ json PlanningResultJson(const PlanningResult& result) {
     json output = {{"name", value.name}, {"waypoints", json::array()}};
     for (const auto& waypoint : value.waypoints)
       output["waypoints"].push_back(
-          {{"guid", waypoint.guid}, {"name", waypoint.name},
+          {{"guid", waypoint.guid},
+           {"name", waypoint.name},
            {"position", CoordinateJson(waypoint.position)}});
     return output;
   };
@@ -420,8 +438,7 @@ void TokenAuthorizer::Put(std::string token, Principal principal) {
   PutDigest(TokenDigest(token), std::move(principal));
 }
 
-void TokenAuthorizer::PutDigest(std::string token_sha256,
-                                Principal principal) {
+void TokenAuthorizer::PutDigest(std::string token_sha256, Principal principal) {
   std::lock_guard<std::mutex> lock(mutex_);
   tokens_[Lower(std::move(token_sha256))] = std::move(principal);
 }
@@ -453,14 +470,16 @@ HttpResponse ExternalApiRouter::Handle(const HttpRequest& request) const {
     return Error(403, "loopback_required",
                  "LAN access is disabled for the external control API");
   if (request.body.size() > options_.maximum_body_bytes)
-    return Error(413, "request_too_large", "Request body exceeds configured limit");
+    return Error(413, "request_too_large",
+                 "Request body exceeds configured limit");
 
   const auto authorization = Header(request, "Authorization");
   constexpr const char* prefix = "Bearer ";
   if (!authorization || authorization->rfind(prefix, 0) != 0)
     return Error(401, "authentication_required", "A Bearer token is required");
   if (!authorizer_)
-    return Error(503, "authentication_unavailable", "Token service is unavailable");
+    return Error(503, "authentication_unavailable",
+                 "Token service is unavailable");
   const auto principal = authorizer_->Authenticate(authorization->substr(7));
   if (!principal)
     return Error(401, "invalid_token", "Bearer token is invalid or revoked");
@@ -498,7 +517,8 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
   }
   if (request.method == "GET" && path == "/api/v2/events") {
     if (!services_.events)
-      return Error(503, "capability_unavailable", "Event service is unavailable");
+      return Error(503, "capability_unavailable",
+                   "Event service is unavailable");
     std::uint32_t allowed_mask = EventBit(ApplicationEventType::Readiness);
     if (HasScope(principal, "navigation:read"))
       allowed_mask |= EventBit(ApplicationEventType::Navigation) |
@@ -518,18 +538,17 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
                     {"schemaVersion", 1}};
     if (services_.readiness) {
       const auto state = services_.readiness->GetReadiness();
-      payload["readiness"] = {{"ready", state.ready},
-                              {"closing", state.closing},
-                              {"unavailableCapabilities",
-                               state.unavailable_capabilities}};
+      payload["readiness"] = {
+          {"ready", state.ready},
+          {"closing", state.closing},
+          {"unavailableCapabilities", state.unavailable_capabilities}};
     }
     if (services_.navigation && HasScope(principal, "navigation:read")) {
       const auto state = services_.navigation->GetSnapshot();
       if (state.value) {
-        payload["navigation"] = {
-            {"positionValid", state.value->position_valid},
-            {"stale", state.value->stale},
-            {"source", state.value->source}};
+        payload["navigation"] = {{"positionValid", state.value->position_valid},
+                                 {"stale", state.value->stale},
+                                 {"source", state.value->source}};
         payload["navigation"]["position"] =
             state.value->position ? CoordinateJson(*state.value->position)
                                   : json(nullptr);
@@ -544,11 +563,11 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
       }
       const auto active = services_.routes->GetActiveRoute();
       if (active.value)
-        payload["activeRoute"] = {{"active", active.value->active},
-                                  {"routeGuid", active.value->route_guid},
-                                  {"activeWaypointGuid",
-                                   active.value->active_waypoint_guid},
-                                  {"activeLegIndex", active.value->active_leg_index}};
+        payload["activeRoute"] = {
+            {"active", active.value->active},
+            {"routeGuid", active.value->route_guid},
+            {"activeWaypointGuid", active.value->active_waypoint_guid},
+            {"activeLegIndex", active.value->active_leg_index}};
     }
     return {101,
             {{"X-OpenCPN-Event-Cursor", std::to_string(sequence)},
@@ -562,7 +581,8 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
         denied.status != 500)
       return denied;
     if (!services_.planning)
-      return Error(503, "capability_unavailable", "Planning service is unavailable");
+      return Error(503, "capability_unavailable",
+                   "Planning service is unavailable");
     const auto key = Header(request, "Idempotency-Key");
     if (!key || key->empty() || key->size() > 128)
       return Error(400, "idempotency_key_required",
@@ -576,16 +596,19 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
     const auto parsed = ParsePlanningRequest(body);
     if (parsed.error) return ServiceFailure(*parsed.error);
     const std::string cache_key = principal.id + ":" + *key;
-    const std::string fingerprint = request.method + "\n" + path + "\n" + request.body;
+    const std::string fingerprint =
+        request.method + "\n" + path + "\n" + request.body;
     std::lock_guard<std::mutex> lock(idempotency_mutex_);
     if (const auto found = idempotency_results_.find(cache_key);
         found != idempotency_results_.end()) {
       if (found->second.first != fingerprint)
-        return Error(409, "idempotency_conflict",
-                     "Idempotency-Key was already used for a different command");
+        return Error(
+            409, "idempotency_conflict",
+            "Idempotency-Key was already used for a different command");
       return found->second.second;
     }
-    const auto submitted = services_.planning->Submit(*parsed.value, principal.id);
+    const auto submitted =
+        services_.planning->Submit(*parsed.value, principal.id);
     if (submitted.error) return ServiceFailure(*submitted.error);
     auto response = JsonResponse(202, PlanningJobJson(*submitted.value));
     idempotency_results_[cache_key] = {fingerprint, response};
@@ -596,10 +619,12 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
         denied.status != 500)
       return denied;
     if (!services_.planning)
-      return Error(503, "capability_unavailable", "Planning service is unavailable");
+      return Error(503, "capability_unavailable",
+                   "Planning service is unavailable");
     auto suffix = path.substr(std::char_traits<char>::length(planning_prefix));
     const bool result_request =
-        suffix.size() > 7 && suffix.compare(suffix.size() - 7, 7, "/result") == 0;
+        suffix.size() > 7 &&
+        suffix.compare(suffix.size() - 7, 7, "/result") == 0;
     if (result_request) suffix.resize(suffix.size() - 7);
     if (suffix.empty() || suffix.find('/') != std::string::npos)
       return Error(404, "not_found", "No matching planning endpoint");
@@ -621,19 +646,21 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
   }
   if (request.method == "GET" && path == "/api/v2/readiness") {
     if (!services_.readiness)
-      return Error(503, "capability_unavailable", "Readiness service is unavailable");
+      return Error(503, "capability_unavailable",
+                   "Readiness service is unavailable");
     const auto state = services_.readiness->GetReadiness();
-    return JsonResponse(200, {{"ready", state.ready},
-                              {"closing", state.closing},
-                              {"unavailableCapabilities",
-                               state.unavailable_capabilities}});
+    return JsonResponse(
+        200, {{"ready", state.ready},
+              {"closing", state.closing},
+              {"unavailableCapabilities", state.unavailable_capabilities}});
   }
   if (request.method == "GET" && path == "/api/v2/navigation") {
     if (const auto denied = RequireScope(principal, "navigation:read");
         denied.status != 500)
       return denied;
     if (!services_.navigation)
-      return Error(503, "capability_unavailable", "Navigation service is unavailable");
+      return Error(503, "capability_unavailable",
+                   "Navigation service is unavailable");
     const auto result = services_.navigation->GetSnapshot();
     if (result.error) return ServiceFailure(*result.error);
     const auto& snapshot = *result.value;
@@ -641,8 +668,10 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
                  {"stale", snapshot.stale},
                  {"source", snapshot.source},
                  {"receiptTimeUtc", Iso8601(snapshot.receipt_time)}};
-    body["position"] = snapshot.position ? CoordinateJson(*snapshot.position) : json(nullptr);
-    body["courseOverGroundDegreesTrue"] = snapshot.course_over_ground_degrees_true;
+    body["position"] =
+        snapshot.position ? CoordinateJson(*snapshot.position) : json(nullptr);
+    body["courseOverGroundDegreesTrue"] =
+        snapshot.course_over_ground_degrees_true;
     body["speedOverGroundKnots"] = snapshot.speed_over_ground_knots;
     body["headingDegreesTrue"] = snapshot.heading_degrees_true;
     body["magneticVariationDegrees"] = snapshot.magnetic_variation_degrees;
@@ -660,11 +689,13 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
         denied.status != 500)
       return denied;
     if (!services_.routes)
-      return Error(503, "capability_unavailable", "Route service is unavailable");
+      return Error(503, "capability_unavailable",
+                   "Route service is unavailable");
     const auto result = services_.routes->ListRoutes();
     if (result.error) return ServiceFailure(*result.error);
     json routes = json::array();
-    for (const auto& route : *result.value) routes.push_back(RouteSummaryJson(route));
+    for (const auto& route : *result.value)
+      routes.push_back(RouteSummaryJson(route));
     return JsonResponse(200, {{"routes", routes}});
   }
   if (services_.route_commands &&
@@ -681,14 +712,16 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
         denied.status != 500)
       return denied;
     if (!services_.routes)
-      return Error(503, "capability_unavailable", "Route service is unavailable");
+      return Error(503, "capability_unavailable",
+                   "Route service is unavailable");
     const auto result = services_.routes->GetActiveRoute();
     if (result.error) return ServiceFailure(*result.error);
     const auto& active = *result.value;
-    return JsonResponse(200, {{"active", active.active},
-                              {"routeGuid", active.route_guid},
-                              {"activeWaypointGuid", active.active_waypoint_guid},
-                              {"activeLegIndex", active.active_leg_index},
+    return JsonResponse(200,
+                        {{"active", active.active},
+                         {"routeGuid", active.route_guid},
+                         {"activeWaypointGuid", active.active_waypoint_guid},
+                         {"activeLegIndex", active.active_leg_index},
                               {"routeRevision", active.route_revision}});
   }
   constexpr const char* route_prefix = "/api/v2/routes/";
@@ -698,7 +731,8 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
         denied.status != 500)
       return denied;
     if (!services_.routes)
-      return Error(503, "capability_unavailable", "Route service is unavailable");
+      return Error(503, "capability_unavailable",
+                   "Route service is unavailable");
     const auto result = services_.routes->GetRoute(
         path.substr(std::char_traits<char>::length(route_prefix)));
     if (result.error) return ServiceFailure(*result.error);
@@ -715,7 +749,8 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
         denied.status != 500)
       return denied;
     if (!services_.chart_safety)
-      return Error(503, "capability_unavailable", "Chart safety service is unavailable");
+      return Error(503, "capability_unavailable",
+                   "Chart safety service is unavailable");
     json body;
     try {
       body = json::parse(request.body);
@@ -727,16 +762,18 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
 
     if (path == "/api/v2/chart-safety/validate-point") {
       const auto point = ParseCoordinate(body.value("point", json::object()));
-      if (point.error) return Error(400, point.error->code, point.error->message);
-      const auto result = services_.chart_safety->ValidatePoint(*point.value,
-                                                                 *constraints.value);
+      if (point.error)
+        return Error(400, point.error->code, point.error->message);
+      const auto result = services_.chart_safety->ValidatePoint(
+          *point.value, *constraints.value);
       if (result.error) return ServiceFailure(*result.error);
       return ChartResultResponse(*result.value);
     }
     if (path == "/api/v2/chart-safety/validate-segment") {
       const auto start = ParseCoordinate(body.value("start", json::object()));
       const auto end = ParseCoordinate(body.value("end", json::object()));
-      if (start.error) return Error(400, start.error->code, start.error->message);
+      if (start.error)
+        return Error(400, start.error->code, start.error->message);
       if (end.error) return Error(400, end.error->code, end.error->message);
       const auto result = services_.chart_safety->ValidateSegment(
           *start.value, *end.value, *constraints.value);
@@ -747,15 +784,19 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
     try {
       for (const auto& value : body.at("route")) {
         const auto point = ParseCoordinate(value);
-        if (point.error) return Error(400, point.error->code, point.error->message);
+        if (point.error)
+          return Error(400, point.error->code, point.error->message);
         route.push_back(*point.value);
       }
     } catch (const json::exception&) {
-      return Error(400, "invalid_route", "route must be an array of coordinates");
+      return Error(400, "invalid_route",
+                   "route must be an array of coordinates");
     }
     if (route.size() < 2)
-      return Error(400, "invalid_route", "A route requires at least two coordinates");
-    const auto result = services_.chart_safety->ValidateRoute(route, *constraints.value);
+      return Error(400, "invalid_route",
+                   "A route requires at least two coordinates");
+    const auto result =
+        services_.chart_safety->ValidateRoute(route, *constraints.value);
     if (result.error) return ServiceFailure(*result.error);
     return ChartResultResponse(*result.value);
   }
@@ -771,15 +812,16 @@ HttpResponse ExternalApiRouter::ReadEvents(std::uint64_t after_sequence,
   const auto batch = services_.events->ReadAfter(after_sequence, maximum);
   json events = json::array();
   for (const auto& event : batch.events) {
-    if ((type_mask & EventBit(event.type)) != 0) events.push_back(EventJson(event));
+    if ((type_mask & EventBit(event.type)) != 0)
+      events.push_back(EventJson(event));
   }
   const auto count = events.size();
-  auto response = JsonResponse(200, {{"type", "events"},
-                                     {"gap", batch.gap},
-                                     {"oldestAvailableSequence",
-                                      batch.oldest_available_sequence},
-                                     {"latestSequence", batch.latest_sequence},
-                                     {"events", std::move(events)}});
+  auto response = JsonResponse(
+      200, {{"type", "events"},
+            {"gap", batch.gap},
+            {"oldestAvailableSequence", batch.oldest_available_sequence},
+            {"latestSequence", batch.latest_sequence},
+            {"events", std::move(events)}});
   response.headers["X-OpenCPN-Event-Count"] = std::to_string(count);
   response.headers["X-OpenCPN-Event-Cursor"] =
       std::to_string(batch.latest_sequence);
@@ -796,7 +838,8 @@ Result<std::uint32_t> ExternalApiRouter::ParseEventSubscription(
       const auto type = ParseEventType(value.get<std::string>());
       if (!type)
         return Result<std::uint32_t>::FromError(
-            "invalid_subscription", "Subscription contains an unknown event type");
+            "invalid_subscription",
+            "Subscription contains an unknown event type");
       mask |= EventBit(*type);
     }
     return Result<std::uint32_t>::FromValue(mask);
@@ -831,7 +874,8 @@ HttpResponse ExternalApiRouter::HandleRouteCommand(
     return Error(400, "idempotency_key_required",
                  "Idempotency-Key must contain 1 to 128 characters");
   const std::string cache_key = principal.id + ":" + *key;
-  const std::string fingerprint = request.method + "\n" + path + "\n" + request.body;
+  const std::string fingerprint =
+      request.method + "\n" + path + "\n" + request.body;
   std::lock_guard<std::mutex> idempotency_lock(idempotency_mutex_);
   if (const auto found = idempotency_results_.find(cache_key);
       found != idempotency_results_.end()) {
@@ -858,21 +902,23 @@ HttpResponse ExternalApiRouter::HandleRouteCommand(
     if (route.error) return Error(400, route.error->code, route.error->message);
     result = services_.route_commands->CreateDraft(*route.value, *key);
     success_status = 201;
-  } else if (request.method == "POST" &&
-             path == "/api/v2/routes/deactivate") {
+  } else if (request.method == "POST" && path == "/api/v2/routes/deactivate") {
     result = services_.route_commands->Deactivate(*key);
   } else {
-    std::string suffix = path.substr(std::char_traits<char>::length(route_prefix));
+    std::string suffix =
+        path.substr(std::char_traits<char>::length(route_prefix));
     const auto activate_offset = suffix.rfind("/activate");
     if (request.method == "POST" && activate_offset != std::string::npos &&
         activate_offset + 9 == suffix.size()) {
       const auto guid = suffix.substr(0, activate_offset);
       std::optional<std::string> waypoint;
-      if (body.contains("waypointGuid")) waypoint = body.at("waypointGuid").get<std::string>();
+      if (body.contains("waypointGuid"))
+        waypoint = body.at("waypointGuid").get<std::string>();
       result = services_.route_commands->Activate(guid, waypoint, *key);
     } else if (request.method == "PUT") {
       const auto route = ParseRouteMutation(body);
-      if (route.error) return Error(400, route.error->code, route.error->message);
+      if (route.error)
+        return Error(400, route.error->code, route.error->message);
       try {
         result = services_.route_commands->Update(
             suffix, body.at("expectedRevision").get<std::uint64_t>(),

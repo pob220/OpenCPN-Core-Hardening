@@ -48,9 +48,13 @@ filesystem access, and configuration mutation are outside the initial API.
 Planning uses a provider-neutral capability name and always returns a draft.
 The built-in `route-planning.chart-direct.v1` provider is intentionally small:
 it proves the complete asynchronous boundary and succeeds only after an
-authoritative chart-safety pass. The xWeatherRouting provider remains a plugin
-adapter; its headless result contract carries full route geometry and safety
-provenance so it can be connected without moving its engine into core.
+authoritative chart-safety pass. Preview B connects xWeatherRouting through a
+separate versioned C registration surface which is resolved dynamically by the
+plugin. This does not change the native plugin class ABI or API 1.21. The
+provider-neutral planning service owns discovery, cancellation and job
+lifetime; the plugin adapter owns translation into its existing headless
+engine contract. Core treats returned geometry as untrusted and independently
+performs the final authoritative chart-safety pass before exposing a draft.
 
 ## Compatibility and versioning
 
@@ -73,6 +77,8 @@ are bounded, high-rate state is coalesced, and a gap or slow-client disconnect
 is explicit. Planning jobs use a bounded worker pool and queue, pin their
 provider for the lifetime of a run, isolate jobs by credential owner, and make
 cancellation observable without treating a request as completed prematurely.
+Provider unregistration removes discovery first, cancels active work, and
+refuses plugin deactivation until pinned callbacks have drained.
 
 ## Test installation
 
