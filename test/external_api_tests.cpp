@@ -319,6 +319,26 @@ TEST(InProcessPlanningJobServiceTest, CancellationCompletesAndPinsProvider) {
   service.Shutdown();
 }
 
+TEST(InProcessPlanningJobServiceTest, ShutdownCancelsAndDrainsRunningProvider) {
+  auto provider = std::make_shared<CancellablePlanningProvider>();
+  InProcessPlanningJobService service(nullptr, 1, 4);
+  ASSERT_TRUE(service.RegisterProvider(provider));
+  PlanningRequest request;
+  request.provider_capability = provider->Capability();
+  const auto submitted = service.Submit(request, "owner");
+  ASSERT_TRUE(submitted.value);
+  for (int attempt = 0; attempt < 100 && !provider->started.load(); ++attempt)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  ASSERT_TRUE(provider->started.load());
+
+  service.Shutdown();
+
+  const auto snapshot = service.Get(submitted.value->id, "owner");
+  ASSERT_TRUE(snapshot.value);
+  EXPECT_EQ(snapshot.value->state, PlanningJobState::Cancelled);
+  EXPECT_TRUE(snapshot.value->cancellation_requested);
+}
+
 TEST_F(ExternalApiTest, NavigationUsesExplicitUnitsValidityAndNulls) {
   const auto response = router.Handle(Request("GET", "/api/v2/navigation"));
   const auto body = nlohmann::json::parse(response.body);

@@ -24,6 +24,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -32,9 +33,11 @@
 #include <vector>
 
 #include <wx/event.h>
+#include <wx/app.h>
 #include <wx/filename.h>
 #include <wx/log.h>
 #include <wx/string.h>
+#include <wx/thread.h>
 
 #include "config.h"
 
@@ -655,14 +658,36 @@ bool RestServer::StartServer(const fs::path& certificate_location) {
 
 void RestServer::StopServer() {
   wxLogDebug("Stopping REST service");
-  if (m_external_api) m_external_api->Shutdown();
-  //  Kill off the IO Thread if alive
-  if (m_std_thread.joinable()) {
-    wxLogDebug("Stopping io thread");
-    m_io_thread.Stop();
-    m_io_thread.WaitUntilStopped();
-    m_std_thread.join();
+  const auto stop = [this] {
+    // Close network admission before draining application work. Otherwise a
+    // client could submit another command during the shutdown window.
+    if (m_std_thread.joinable()) {
+      wxLogDebug("Stopping io thread");
+      m_io_thread.Stop();
+      m_io_thread.WaitUntilStopped();
+      m_std_thread.join();
+    }
+    if (m_external_api) m_external_api->Shutdown();
+  };
+  if (!wxThread::IsMain() || !wxTheApp) {
+    stop();
+    return;
   }
+
+  // Pending HTTP requests and planning providers can require CallAfter work
+  // on the wx owner thread. Joining their threads directly here would
+  // deadlock shutdown. Run the blocking drain off-thread while keeping the
+  // application executor alive for cancellation, timers and cleanup.
+  std::atomic<bool> complete{false};
+  std::thread drain([&] {
+    stop();
+    complete.store(true, std::memory_order_release);
+  });
+  while (!complete.load(std::memory_order_acquire)) {
+    wxTheApp->Yield(true);
+    std::this_thread::sleep_for(10ms);
+  }
+  drain.join();
 }
 
 ocpn::control::HttpResponse RestServer::ReadExternalEvents(

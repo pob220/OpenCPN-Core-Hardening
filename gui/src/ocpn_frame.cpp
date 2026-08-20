@@ -1545,6 +1545,10 @@ void MyFrame::OnCloseWindow(wxCloseEvent &event) {
   //  Give any requesting plugins a PreShutdownHook call
   SendPreShutdownHookToPlugins();
 
+  // Stop external admission and drain cancellable planning work while the wx
+  // owner-thread executor and plugin instances are still available.
+  m_rest_server.StopServer();
+
   // We save perspective before closing to restore position next time
   // Pane is not closed so the child is not notified (OnPaneClose)
   if (g_pAISTargetList) {
