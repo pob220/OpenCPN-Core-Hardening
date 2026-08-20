@@ -105,7 +105,8 @@ static PlugInContainer* GetContainer(const PlugInData& pd,
 /** Return true if path "seems" to contain a system plugin */
 static bool IsSystemPluginPath(const std::string& path) {
   static const std::vector<std::string> kPlugins = {
-      "chartdldr_pi", "wmm_pi", "dashboard_pi", "grib_pi", "demo_pi"};
+      "chartdldr_pi",        "wmm_pi", "dashboard_pi", "grib_pi", "xgrib_pi",
+      "xweather_routing_pi", "demo_pi"};
 
   const std::string lc_path = ocpn::tolower(path);
   for (const auto& p : kPlugins)

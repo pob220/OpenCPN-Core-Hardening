@@ -129,10 +129,19 @@ static wxString ExpandPaths(wxString paths, AbstractPlatform* platform);
 
 static wxString GetLinuxDataPath() {
   wxString dirs;
+  wxString install_prefix;
+  if (wxGetEnv("OPENCPN_PREFIX", &install_prefix) &&
+      !install_prefix.IsEmpty()) {
+    if (install_prefix.EndsWith("/")) install_prefix.RemoveLast();
+    dirs = install_prefix + "/share";
+  }
   if (wxGetEnv("XDG_DATA_DIRS", &dirs)) {
-    dirs = wxString("~/.local/share:") + dirs;
+    dirs = install_prefix.IsEmpty()
+               ? wxString("~/.local/share:") + dirs
+               : install_prefix + "/share:~/.local/share:" + dirs;
   } else {
-    dirs = DEFAULT_XDG_DATA_DIRS;
+    dirs += dirs.IsEmpty() ? wxString(DEFAULT_XDG_DATA_DIRS)
+                           : wxString(":") + DEFAULT_XDG_DATA_DIRS;
   }
   wxString s;
   wxStringTokenizer tokens(dirs, ':');
