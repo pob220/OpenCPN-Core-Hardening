@@ -7,18 +7,27 @@
 #include <cmath>
 #include <cstdint>
 #include <iomanip>
+#include <memory>
 #include <sstream>
+#include <unordered_set>
 
+#include <wx/log.h>
 #include <wx/thread.h>
 
+#include "model/config_vars.h"
+#include "model/gui_events.h"
+#include "model/nav_object_database.h"
+#include "model/navobj_db.h"
 #include "model/own_ship.h"
 #include "model/route.h"
 #include "model/route_point.h"
 #include "model/routeman.h"
+#include "model/select.h"
 #include "ocpn_plugin.h"
 
 namespace {
 using namespace ocpn::control;
+constexpr const char* kExternalDraftMarker = "opencpn:external-control:draft:v1";
 
 std::uint64_t Revision(const Route& route) {
   std::ostringstream value;
@@ -38,7 +47,8 @@ std::uint64_t Revision(const Route& route) {
 RouteSummary Summary(const Route& route) {
   return {route.GetGUID().ToStdString(), route.GetName().ToStdString(),
           Revision(route), route.pRoutePointList->size(),
-          route.m_bIsInLayer, false};
+          route.m_bIsInLayer,
+          route.m_RouteDescription == kExternalDraftMarker};
 }
 
 RouteSnapshot Snapshot(const Route& route) {
@@ -130,6 +140,207 @@ public:
       }
     }
     return Result<ActiveRouteSnapshot>::FromValue(result);
+  }
+};
+
+void DestroyUnregisteredRoute(Route* route) {
+  if (!route) return;
+  for (auto* point : *route->pRoutePointList) delete point;
+  route->pRoutePointList->clear();
+  delete route;
+}
+
+Result<Route*> BuildDraftRoute(const RouteMutation& mutation,
+                               const std::optional<std::string>& route_guid) {
+  if (mutation.waypoints.size() < 2)
+    return Result<Route*>::FromError("invalid_route",
+                                    "A route requires at least two waypoints");
+  auto* route = new Route();
+  if (route_guid) route->m_GUID = *route_guid;
+  route->m_RouteNameString = mutation.name;
+  route->m_RouteDescription = kExternalDraftMarker;
+  route->m_btemp = false;
+  std::unordered_set<std::string> guids;
+  for (const auto& waypoint : mutation.waypoints) {
+    auto* point = new RoutePoint(
+        waypoint.position.latitude_degrees,
+        waypoint.position.longitude_degrees, g_default_wp_icon, waypoint.name,
+        waypoint.guid, false);
+    const auto guid = point->m_GUID.ToStdString();
+    if (!guids.insert(guid).second ||
+        (pWayPointMan && pWayPointMan->FindRoutePointByGUID(guid))) {
+      delete point;
+      DestroyUnregisteredRoute(route);
+      return Result<Route*>::FromError(
+          "conflict", "Waypoint GUID is duplicated or already exists");
+    }
+    route->AddPoint(point, false, true);
+  }
+  route->FinalizeForRendering();
+  return Result<Route*>::FromValue(route);
+}
+
+void RegisterDraftRoute(Route* route) {
+  for (auto* point : *route->pRoutePointList)
+    if (pWayPointMan) pWayPointMan->AddRoutePoint(point);
+  InsertRouteA(route, nullptr);
+  GuiEvents::GetInstance().on_routes_update.Notify();
+}
+
+class LiveRouteCommands final : public RouteCommandService {
+public:
+  Result<RouteCommandResult> CreateDraft(
+      const RouteMutation& mutation, const std::string& command_id) override {
+    if (!Ready()) return NotReady<RouteCommandResult>();
+    auto built = BuildDraftRoute(mutation, std::nullopt);
+    if (built.error) return Result<RouteCommandResult>{std::nullopt, built.error};
+    auto* route = *built.value;
+    if (!NavObj_dB::GetInstance().InsertRoute(route)) {
+      NavObj_dB::GetInstance().DeleteRoute(route);
+      DestroyUnregisteredRoute(route);
+      return Result<RouteCommandResult>::FromError(
+          "persistence_failed", "Draft route could not be persisted");
+    }
+    RegisterDraftRoute(route);
+    wxLogMessage("External control audit: command=%s action=create-draft route=%s",
+                 command_id, route->m_GUID);
+    return Result<RouteCommandResult>::FromValue(
+        {command_id, Snapshot(*route), true, {}});
+  }
+
+  Result<RouteCommandResult> Update(
+      const std::string& guid, std::uint64_t expected_revision,
+      const RouteMutation& mutation, const std::string& command_id) override {
+    if (!Ready()) return NotReady<RouteCommandResult>();
+    auto* current = g_pRouteMan->FindRouteByGUID(guid);
+    if (!current)
+      return Result<RouteCommandResult>::FromError("not_found", "Route not found");
+    if (current->m_bIsInLayer)
+      return Result<RouteCommandResult>::FromError("layer_owned",
+                                                   "Layer routes cannot be edited");
+    if (current->m_RouteDescription != kExternalDraftMarker)
+      return Result<RouteCommandResult>::FromError(
+          "invalid_route", "Only external-control draft routes can be replaced");
+    if (g_pRouteMan->GetpActiveRoute() == current)
+      return Result<RouteCommandResult>::FromError(
+          "active_route", "Deactivate the route before updating it");
+    if (Revision(*current) != expected_revision)
+      return Result<RouteCommandResult>::FromError(
+          "conflict", "Route revision does not match expectedRevision");
+
+    auto built = BuildDraftRoute(mutation, guid);
+    if (built.error) return Result<RouteCommandResult>{std::nullopt, built.error};
+    auto* replacement = *built.value;
+    if (!NavObj_dB::GetInstance().UpdateRoute(replacement)) {
+      DestroyUnregisteredRoute(replacement);
+      return Result<RouteCommandResult>::FromError(
+          "persistence_failed", "Draft route update could not be persisted");
+    }
+
+    pSelect->DeleteAllSelectableRouteSegments(current);
+    pSelect->DeleteAllSelectableRoutePoints(current);
+    const auto found = std::find(pRouteList->begin(), pRouteList->end(), current);
+    if (found != pRouteList->end()) *found = replacement;
+    for (auto* point : *replacement->pRoutePointList)
+      pWayPointMan->AddRoutePoint(point);
+    pSelect->AddAllSelectableRouteSegments(replacement);
+    pSelect->AddAllSelectableRoutePoints(replacement);
+    for (auto* point : *current->pRoutePointList) {
+      NavObj_dB::GetInstance().DeleteRoutePoint(point);
+      delete point;
+    }
+    current->pRoutePointList->clear();
+    delete current;
+    GuiEvents::GetInstance().on_routes_update.Notify();
+    wxLogMessage("External control audit: command=%s action=update-draft route=%s",
+                 command_id, replacement->m_GUID);
+    return Result<RouteCommandResult>::FromValue(
+        {command_id, Snapshot(*replacement), true, {}});
+  }
+
+  Result<RouteCommandResult> Delete(
+      const std::string& guid, std::uint64_t expected_revision,
+      const std::string& command_id) override {
+    if (!Ready()) return NotReady<RouteCommandResult>();
+    auto* route = g_pRouteMan->FindRouteByGUID(guid);
+    if (!route)
+      return Result<RouteCommandResult>::FromError("not_found", "Route not found");
+    if (route->m_bIsInLayer)
+      return Result<RouteCommandResult>::FromError("layer_owned",
+                                                   "Layer routes cannot be deleted");
+    if (Revision(*route) != expected_revision)
+      return Result<RouteCommandResult>::FromError(
+          "conflict", "Route revision does not match expectedRevision");
+    if (!NavObj_dB::GetInstance().DeleteRoute(route))
+      return Result<RouteCommandResult>::FromError(
+          "persistence_failed", "Route deletion could not be persisted");
+    if (!g_pRouteMan->DeleteRoute(route))
+      return Result<RouteCommandResult>::FromError(
+          "command_failed", "Route manager rejected deletion");
+    GuiEvents::GetInstance().on_routes_update.Notify();
+    wxLogMessage("External control audit: command=%s action=delete-route route=%s",
+                 command_id, guid);
+    return Result<RouteCommandResult>::FromValue(
+        {command_id, std::nullopt, true, {}});
+  }
+
+  Result<RouteCommandResult> Activate(
+      const std::string& guid, const std::optional<std::string>& waypoint_guid,
+      const std::string& command_id) override {
+    if (!Ready()) return NotReady<RouteCommandResult>();
+    auto* route = g_pRouteMan->FindRouteByGUID(guid);
+    if (!route)
+      return Result<RouteCommandResult>::FromError("not_found", "Route not found");
+    if (route->GetnPoints() < 2)
+      return Result<RouteCommandResult>::FromError("invalid_route",
+                                                   "Route has fewer than two points");
+    RoutePoint* start = nullptr;
+    if (waypoint_guid) {
+      start = route->GetPoint(*waypoint_guid);
+      if (!start)
+        return Result<RouteCommandResult>::FromError(
+            "not_found", "Activation waypoint is not part of the route");
+    }
+    if (g_pRouteMan->GetpActiveRoute() == route &&
+        (!start || g_pRouteMan->GetpActivePoint() == start)) {
+      return Result<RouteCommandResult>::FromValue(
+          {command_id, Snapshot(*route), false,
+           {"Route was already active at the requested waypoint"}});
+    }
+    if (g_pRouteMan->GetpActiveRoute()) g_pRouteMan->DeactivateRoute();
+    if (!g_pRouteMan->ActivateRoute(route, start))
+      return Result<RouteCommandResult>::FromError(
+          "command_failed", "Route manager rejected activation");
+    wxLogMessage("External control audit: command=%s action=activate-route route=%s",
+                 command_id, guid);
+    return Result<RouteCommandResult>::FromValue(
+        {command_id, Snapshot(*route), true,
+         {"Route activation may affect configured navigation outputs"}});
+  }
+
+  Result<RouteCommandResult> Deactivate(
+      const std::string& command_id) override {
+    if (!Ready()) return NotReady<RouteCommandResult>();
+    if (!g_pRouteMan->GetpActiveRoute())
+      return Result<RouteCommandResult>::FromValue(
+          {command_id, std::nullopt, false, {}});
+    if (!g_pRouteMan->DeactivateRoute())
+      return Result<RouteCommandResult>::FromError(
+          "command_failed", "Route manager rejected deactivation");
+    wxLogMessage("External control audit: command=%s action=deactivate-route",
+                 command_id);
+    return Result<RouteCommandResult>::FromValue(
+        {command_id, std::nullopt, true, {}});
+  }
+
+private:
+  bool Ready() const {
+    return wxThread::IsMain() && pRouteList && pWayPointMan && pSelect && g_pRouteMan;
+  }
+
+  template <typename T>
+  Result<T> NotReady() const {
+    return Result<T>::FromError("not_ready", "Route services are not ready");
   }
 };
 
@@ -242,5 +453,6 @@ public:
 
 ocpn::control::ServiceBundle MakeExternalControlServices() {
   return {std::make_shared<LiveReadiness>(), std::make_shared<LiveNavigation>(),
-          std::make_shared<LiveRoutes>(), std::make_shared<LiveChartSafety>()};
+          std::make_shared<LiveRoutes>(), std::make_shared<LiveRouteCommands>(),
+          std::make_shared<LiveChartSafety>()};
 }

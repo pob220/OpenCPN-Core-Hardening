@@ -381,6 +381,8 @@ static void HandleExternalApi(struct mg_connection* c,
     request.headers["Authorization"] = MgString(*authorization);
   if (auto* content_type = mg_http_get_header(hm, "Content-Type"))
     request.headers["Content-Type"] = MgString(*content_type);
+  if (auto* idempotency_key = mg_http_get_header(hm, "Idempotency-Key"))
+    request.headers["Idempotency-Key"] = MgString(*idempotency_key);
 
   auto context = std::make_shared<ExternalApiRequestContext>(std::move(request));
   auto event_data = std::make_shared<RestIoEvtData>(
@@ -604,6 +606,7 @@ void RestServer::ConfigureExternalApi(
   options.maximum_body_bytes =
       static_cast<std::size_t>(std::max(1024L, maximum_body_bytes));
   options.server_version = VERSION_FULL;
+  m_route_commands = services.route_commands;
   m_external_api = std::make_shared<ocpn::control::ExternalApiRouter>(
       std::move(services), std::move(authorizer), std::move(options));
 }
@@ -751,8 +754,15 @@ void RestServer::HandleServerMessage(ObservedEvt& event) {
     } break;
     case RestIoEvtData::Cmd::ActivateRoute: {
       auto guid = evt_data->payload;
-      activate_route.Notify(guid);
-      UpdateReturnStatus(RestServerResult::NoError);
+      if (m_route_commands) {
+        const auto result = m_route_commands->Activate(
+            guid, std::nullopt, "legacy-rest-activate-" + guid);
+        UpdateReturnStatus(result.error ? RestServerResult::ObjectRejected
+                                        : RestServerResult::NoError);
+      } else {
+        activate_route.Notify(guid);
+        UpdateReturnStatus(RestServerResult::NoError);
+      }
     } break;
     case RestIoEvtData::Cmd::ReverseRoute: {
       auto guid = evt_data->payload;

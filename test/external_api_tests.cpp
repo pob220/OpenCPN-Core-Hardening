@@ -81,12 +81,61 @@ private:
   }
 };
 
+class Commands final : public RouteCommandService {
+public:
+  Result<RouteCommandResult> CreateDraft(
+      const RouteMutation& mutation, const std::string& command_id) override {
+    ++calls;
+    RouteSnapshot route;
+    route.guid = "created-route";
+    route.name = mutation.name;
+    route.revision = 11;
+    route.waypoint_count = mutation.waypoints.size();
+    route.is_draft = true;
+    route.waypoints = mutation.waypoints;
+    return Result<RouteCommandResult>::FromValue(
+        {command_id, route, true, {}});
+  }
+  Result<RouteCommandResult> Update(
+      const std::string&, std::uint64_t expected_revision,
+      const RouteMutation&, const std::string& command_id) override {
+    ++calls;
+    if (expected_revision != 11)
+      return Result<RouteCommandResult>::FromError("conflict", "stale revision");
+    return Result<RouteCommandResult>::FromValue(
+        {command_id, std::nullopt, true, {}});
+  }
+  Result<RouteCommandResult> Delete(
+      const std::string&, std::uint64_t, const std::string& command_id) override {
+    ++calls;
+    return Result<RouteCommandResult>::FromValue(
+        {command_id, std::nullopt, true, {}});
+  }
+  Result<RouteCommandResult> Activate(
+      const std::string&, const std::optional<std::string>&,
+      const std::string& command_id) override {
+    ++calls;
+    return Result<RouteCommandResult>::FromValue(
+        {command_id, std::nullopt, true, {"output-affecting"}});
+  }
+  Result<RouteCommandResult> Deactivate(
+      const std::string& command_id) override {
+    ++calls;
+    return Result<RouteCommandResult>::FromValue(
+        {command_id, std::nullopt, true, {}});
+  }
+  std::atomic<int> calls{0};
+};
+
 struct ExternalApiTest : public testing::Test {
   ExternalApiTest() {
     authorizer->Put("read-token",
                     {"test-client", {"navigation:read", "routes:read",
                                      "charts:query"}});
     authorizer->Put("navigation-only", {"limited", {"navigation:read"}});
+    authorizer->Put("write-token",
+                    {"writer", {"navigation:read", "routes:read",
+                                "routes:write", "routes:activate"}});
   }
 
   HttpRequest Request(std::string method, std::string path,
@@ -98,9 +147,11 @@ struct ExternalApiTest : public testing::Test {
 
   std::shared_ptr<TokenAuthorizer> authorizer =
       std::make_shared<TokenAuthorizer>();
+  std::shared_ptr<Commands> commands = std::make_shared<Commands>();
   ServiceBundle services{std::make_shared<Readiness>(),
                          std::make_shared<Navigation>(),
                          std::make_shared<Routes>(),
+                         commands,
                          std::make_shared<Safety>()};
   ExternalApiRouter router{services, authorizer, {true, 1024, "5.16-test"}};
 };
@@ -215,6 +266,53 @@ TEST_F(ExternalApiTest, ConcurrentRequestsCannotShareResponseState) {
   }
   for (auto& thread : threads) thread.join();
   EXPECT_EQ(failures, 0);
+}
+
+TEST_F(ExternalApiTest, CreatesDraftWithScopeAndIdempotency) {
+  auto request = Request(
+      "POST", "/api/v2/routes",
+      R"({"name":"API draft","waypoints":[{"name":"A","position":{"latitudeDegrees":53,"longitudeDegrees":-4}},{"name":"B","position":{"latitudeDegrees":54,"longitudeDegrees":-5}}]})");
+  request.headers["Authorization"] = "Bearer write-token";
+  request.headers["Idempotency-Key"] = "create-1";
+  auto response = router.Handle(request);
+  ASSERT_EQ(response.status, 201);
+  auto body = nlohmann::json::parse(response.body);
+  EXPECT_TRUE(body["route"]["isDraft"]);
+  EXPECT_EQ(body["route"]["revision"], 11);
+  EXPECT_EQ(commands->calls, 1);
+  EXPECT_EQ(router.Handle(request).status, 201);
+  EXPECT_EQ(commands->calls, 1);
+  request.body = R"({"name":"different","waypoints":[]})";
+  EXPECT_EQ(router.Handle(request).status, 409);
+}
+
+TEST_F(ExternalApiTest, RequiresMutationScopeAndIdempotencyKey) {
+  auto request = Request("POST", "/api/v2/routes", "{}");
+  EXPECT_EQ(router.Handle(request).status, 403);
+  request.headers["Authorization"] = "Bearer write-token";
+  EXPECT_EQ(router.Handle(request).status, 400);
+}
+
+TEST_F(ExternalApiTest, RevisionConflictIsHttpConflict) {
+  auto request = Request(
+      "PUT", "/api/v2/routes/created-route",
+      R"({"expectedRevision":10,"name":"API draft","waypoints":[{"position":{"latitudeDegrees":53,"longitudeDegrees":-4}},{"position":{"latitudeDegrees":54,"longitudeDegrees":-5}}]})");
+  request.headers["Authorization"] = "Bearer write-token";
+  request.headers["Idempotency-Key"] = "update-1";
+  const auto response = router.Handle(request);
+  EXPECT_EQ(response.status, 409);
+  EXPECT_EQ(nlohmann::json::parse(response.body)["error"]["code"], "conflict");
+}
+
+TEST_F(ExternalApiTest, ActivationHasSeparateScopeAndExplicitWarning) {
+  auto request = Request("POST", "/api/v2/routes/route-1/activate", "{}");
+  request.headers["Idempotency-Key"] = "activate-1";
+  EXPECT_EQ(router.Handle(request).status, 403);
+  request.headers["Authorization"] = "Bearer write-token";
+  const auto response = router.Handle(request);
+  EXPECT_EQ(response.status, 200);
+  EXPECT_EQ(nlohmann::json::parse(response.body)["warnings"][0],
+            "output-affecting");
 }
 
 }  // namespace

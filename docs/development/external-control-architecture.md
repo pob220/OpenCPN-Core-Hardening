@@ -33,11 +33,13 @@ stores configured tokens as SHA-256 digests, enforces scopes and body limits,
 and returns stable machine-readable errors.  LAN access requires an explicit
 setting.  Logs must not contain raw bearer tokens or local chart paths.
 
-Read-only scopes in this slice are `navigation:read`, `routes:read`, and
-`charts:query`.  Route mutation and activation will use separate
-`routes:write` and `routes:activate` scopes, optimistic revisions, idempotency
-keys, transactional persistence, and audit records.  Draft creation must never
-activate a route.  Direct autopilot, NMEA/N2K output, arbitrary plugin RPC,
+Read-only scopes are `navigation:read`, `routes:read`, and `charts:query`.
+Route mutation and activation use separate `routes:write` and
+`routes:activate` scopes, optimistic revisions, idempotency keys, transactional
+persistence, and audit records. New routes are persistent drafts; replacement
+is initially restricted to external-control drafts so existing shared-waypoint
+semantics cannot be bypassed. Draft creation never activates a route. Direct
+autopilot, NMEA/N2K output, arbitrary plugin RPC,
 filesystem access, and configuration mutation are outside the initial API.
 
 ## Compatibility and versioning

@@ -69,10 +69,16 @@ private:
   HttpResponse HandleAuthenticated(const HttpRequest& request,
                                    const TokenAuthorizer::Principal& principal)
       const;
+  HttpResponse HandleRouteCommand(
+      const HttpRequest& request, const TokenAuthorizer::Principal& principal,
+      const std::string& path) const;
 
   ServiceBundle services_;
   std::shared_ptr<TokenAuthorizer> authorizer_;
   Options options_;
+  mutable std::mutex idempotency_mutex_;
+  mutable std::unordered_map<std::string, std::pair<std::string, HttpResponse>>
+      idempotency_results_;
 };
 
 }  // namespace ocpn::control

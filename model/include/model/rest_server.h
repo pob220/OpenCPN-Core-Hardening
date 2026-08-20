@@ -357,6 +357,7 @@ private:
   IoThread m_io_thread;
   Pincode m_pincode;
   std::shared_ptr<ocpn::control::ExternalApiRouter> m_external_api;
+  std::shared_ptr<ocpn::control::RouteCommandService> m_route_commands;
 };
 
 #endif  // guard

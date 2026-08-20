@@ -1159,23 +1159,30 @@ bool NavObj_dB::DeleteTrack(Track* track) {
 //  Route support
 
 bool NavObj_dB::InsertRoute(Route* route) {
-  bool rv = false;
-  char* errMsg = 0;
-
-  if (!RouteExistsDB(m_db, route->m_GUID.ToStdString())) {
-    // Insert a new route
-    wxString sql = wxString::Format("INSERT INTO routes (guid) VALUES ('%s')",
-                                    route->m_GUID.ToStdString().c_str());
-    if (!executeSQL(m_db, sql)) {
-      return false;
-    }
-    UpdateDBRouteAttributes(route);
-  }
-
-  sqlite3_exec(m_db, "BEGIN TRANSACTION", 0, 0, &errMsg);
-  if (errMsg) {
+  if (!route) return false;
+  if (sqlite3_exec(m_db, "BEGIN IMMEDIATE TRANSACTION", nullptr, nullptr,
+                   nullptr) != SQLITE_OK) {
     ReportError("InsertRoute:BEGIN TRANSACTION");
     return false;
+  }
+  const auto rollback = [this](const char* where) {
+    ReportError(where);
+    sqlite3_exec(m_db, "ROLLBACK", nullptr, nullptr, nullptr);
+    return false;
+  };
+
+  if (!RouteExistsDB(m_db, route->m_GUID.ToStdString())) {
+    sqlite3_stmt* statement = nullptr;
+    if (sqlite3_prepare_v2(m_db, "INSERT INTO routes (guid) VALUES (?)", -1,
+                           &statement, nullptr) != SQLITE_OK)
+      return rollback("InsertRoute:prepare route");
+    sqlite3_bind_text(statement, 1, route->m_GUID.ToStdString().c_str(), -1,
+                      SQLITE_TRANSIENT);
+    const bool inserted = sqlite3_step(statement) == SQLITE_DONE;
+    sqlite3_finalize(statement);
+    if (!inserted) return rollback("InsertRoute:insert route");
+    if (!UpdateDBRouteAttributes(route))
+      return rollback("InsertRoute:update route attributes");
   }
 
   // insert routepoints
@@ -1184,8 +1191,9 @@ bool NavObj_dB::InsertRoute(Route* route) {
     //  Add the bare point
     if (point) {
       if (!RoutePointExists(m_db, point->m_GUID.ToStdString())) {
-        InsertRoutePointDB(m_db, point);
-        UpdateDBRoutePointAttributes(point);
+        if (!InsertRoutePointDB(m_db, point) ||
+            !UpdateDBRoutePointAttributes(point))
+          return rollback("InsertRoute:insert route point");
       }
     }
   }
@@ -1195,7 +1203,8 @@ bool NavObj_dB::InsertRoute(Route* route) {
     auto point = route->GetPoint(i + 1);
     //  Add the bare point
     if (point) {
-      InsertRoutePointLink(m_db, route, point, i + 1);
+      if (!InsertRoutePointLink(m_db, route, point, i + 1))
+        return rollback("InsertRoute:insert route point link");
     }
   }
 
@@ -1206,35 +1215,36 @@ bool NavObj_dB::InsertRoute(Route* route) {
     for (auto it = list.begin(); it != list.end(); ++it) {
       Hyperlink* link = *it;
       if (!RouteHtmlLinkExists(m_db, link->GUID)) {
-        InsertRouteHTML(m_db, route->m_GUID.ToStdString(), link->GUID,
-                        link->DescrText.ToStdString(), link->Link.ToStdString(),
-                        link->LType.ToStdString());
+        if (!InsertRouteHTML(m_db, route->m_GUID.ToStdString(), link->GUID,
+                             link->DescrText.ToStdString(),
+                             link->Link.ToStdString(),
+                             link->LType.ToStdString()))
+          return rollback("InsertRoute:insert route HTML");
       }
     }
   }
 
-  sqlite3_exec(m_db, "COMMIT", 0, 0, &errMsg);
-  rv = true;
-  if (errMsg) {
-    ReportError("InsertRoute:commit");
-    rv = false;
-  }
-  return rv;
+  if (sqlite3_exec(m_db, "COMMIT", nullptr, nullptr, nullptr) != SQLITE_OK)
+    return rollback("InsertRoute:commit");
+  return true;
 };
 
 bool NavObj_dB::UpdateRoute(Route* route) {
-  bool rv = false;
-  char* errMsg = 0;
-
   if (!RouteExistsDB(m_db, route->m_GUID.ToStdString())) return false;
 
-  sqlite3_exec(m_db, "BEGIN TRANSACTION", 0, 0, &errMsg);
-  if (errMsg) {
+  if (sqlite3_exec(m_db, "BEGIN IMMEDIATE TRANSACTION", nullptr, nullptr,
+                   nullptr) != SQLITE_OK) {
     ReportError("UpdateRoute:BEGIN TRANSACTION");
     return false;
   }
+  const auto rollback = [this](const char* where) {
+    ReportError(where);
+    sqlite3_exec(m_db, "ROLLBACK", nullptr, nullptr, nullptr);
+    return false;
+  };
 
-  UpdateDBRouteAttributes(route);
+  if (!UpdateDBRouteAttributes(route))
+    return rollback("UpdateRoute:update route attributes");
 
   // update routepoints
   for (int i = 0; i < route->GetnPoints(); i++) {
@@ -1242,9 +1252,11 @@ bool NavObj_dB::UpdateRoute(Route* route) {
     //  Add the bare point
     if (point) {
       if (!RoutePointExists(m_db, point->m_GUID.ToStdString())) {
-        InsertRoutePointDB(m_db, point);
+        if (!InsertRoutePointDB(m_db, point))
+          return rollback("UpdateRoute:insert route point");
       }
-      UpdateDBRoutePointAttributes(point);
+      if (!UpdateDBRoutePointAttributes(point))
+        return rollback("UpdateRoute:update route point");
     }
   }
 
@@ -1255,14 +1267,12 @@ bool NavObj_dB::UpdateRoute(Route* route) {
     sqlite3_bind_text(stmt, 1, route->m_GUID.ToStdString().c_str(), -1,
                       SQLITE_TRANSIENT);
   } else {
-    sqlite3_exec(m_db, "COMMIT", 0, 0, &errMsg);
-    return false;
+    return rollback("UpdateRoute:prepare route point link deletion");
   }
   if (sqlite3_step(stmt) != SQLITE_DONE) {
     ReportError("UpdateRoute:step");
     sqlite3_finalize(stmt);
-    sqlite3_exec(m_db, "COMMIT", 0, 0, &errMsg);
-    return false;
+    return rollback("UpdateRoute:delete route point links");
   }
 
   sqlite3_finalize(stmt);
@@ -1270,7 +1280,8 @@ bool NavObj_dB::UpdateRoute(Route* route) {
   for (int i = 0; i < route->GetnPoints(); i++) {
     auto point = route->GetPoint(i + 1);
     if (point) {
-      InsertRoutePointLink(m_db, route, point, i + 1);
+      if (!InsertRoutePointLink(m_db, route, point, i + 1))
+        return rollback("UpdateRoute:insert route point link");
     }
   }
 
@@ -1281,18 +1292,17 @@ bool NavObj_dB::UpdateRoute(Route* route) {
     for (auto it = list.begin(); it != list.end(); ++it) {
       Hyperlink* link = *it;
       if (!RouteHtmlLinkExists(m_db, link->GUID)) {
-        InsertRouteHTML(m_db, route->m_GUID.ToStdString(), link->GUID,
-                        link->DescrText.ToStdString(), link->Link.ToStdString(),
-                        link->LType.ToStdString());
+        if (!InsertRouteHTML(m_db, route->m_GUID.ToStdString(), link->GUID,
+                             link->DescrText.ToStdString(),
+                             link->Link.ToStdString(),
+                             link->LType.ToStdString()))
+          return rollback("UpdateRoute:insert route HTML");
       }
     }
   }
-  sqlite3_exec(m_db, "COMMIT", 0, 0, nullptr);
-
-  rv = true;
-  if (errMsg) rv = false;
-
-  return rv;
+  if (sqlite3_exec(m_db, "COMMIT", nullptr, nullptr, nullptr) != SQLITE_OK)
+    return rollback("UpdateRoute:commit");
+  return true;
 };
 
 bool NavObj_dB::UpdateRouteViz(Route* route) {

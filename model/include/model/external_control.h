@@ -58,6 +58,18 @@ struct RouteSnapshot : RouteSummary {
   std::vector<WaypointSnapshot> waypoints;
 };
 
+struct RouteMutation {
+  std::string name;
+  std::vector<WaypointSnapshot> waypoints;
+};
+
+struct RouteCommandResult {
+  std::string command_id;
+  std::optional<RouteSnapshot> route;
+  bool changed = false;
+  std::vector<std::string> warnings;
+};
+
 struct ActiveRouteSnapshot {
   bool active = false;
   std::optional<std::string> route_guid;
@@ -128,6 +140,25 @@ public:
   virtual Result<ActiveRouteSnapshot> GetActiveRoute() const = 0;
 };
 
+class RouteCommandService {
+public:
+  virtual ~RouteCommandService() = default;
+  virtual Result<RouteCommandResult> CreateDraft(
+      const RouteMutation& route, const std::string& command_id) = 0;
+  virtual Result<RouteCommandResult> Update(
+      const std::string& guid, std::uint64_t expected_revision,
+      const RouteMutation& route, const std::string& command_id) = 0;
+  virtual Result<RouteCommandResult> Delete(
+      const std::string& guid, std::uint64_t expected_revision,
+      const std::string& command_id) = 0;
+  virtual Result<RouteCommandResult> Activate(
+      const std::string& guid,
+      const std::optional<std::string>& waypoint_guid,
+      const std::string& command_id) = 0;
+  virtual Result<RouteCommandResult> Deactivate(
+      const std::string& command_id) = 0;
+};
+
 class ChartSafetyQuery {
 public:
   virtual ~ChartSafetyQuery() = default;
@@ -145,6 +176,7 @@ struct ServiceBundle {
   std::shared_ptr<ReadinessService> readiness;
   std::shared_ptr<NavigationSnapshotService> navigation;
   std::shared_ptr<RouteQueryService> routes;
+  std::shared_ptr<RouteCommandService> route_commands;
   std::shared_ptr<ChartSafetyQuery> chart_safety;
 };
 

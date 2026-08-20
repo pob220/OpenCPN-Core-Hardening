@@ -81,6 +81,18 @@ paths:
                     type: array
                     items: {$ref: '#/components/schemas/RouteSummary'}
         default: {$ref: '#/components/responses/Error'}
+    post:
+      operationId: createDraftRoute
+      x-required-scope: routes:write
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RouteMutation'}
+      responses:
+        '201': {$ref: '#/components/responses/RouteCommand'}
+        default: {$ref: '#/components/responses/Error'}
   /api/v2/routes/{guid}:
     parameters:
       - name: guid
@@ -96,6 +108,70 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Route'}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      operationId: updateDraftRoute
+      x-required-scope: routes:write
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/RouteMutation'}
+                - type: object
+                  required: [expectedRevision]
+                  properties:
+                    expectedRevision: {type: integer, minimum: 0}
+      responses:
+        '200': {$ref: '#/components/responses/RouteCommand'}
+        '409': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      operationId: deleteRoute
+      x-required-scope: routes:write
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision]
+              properties:
+                expectedRevision: {type: integer, minimum: 0}
+      responses:
+        '200': {$ref: '#/components/responses/RouteCommand'}
+        '409': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v2/routes/{guid}/activate:
+    parameters:
+      - name: guid
+        in: path
+        required: true
+        schema: {type: string, minLength: 1}
+      - {$ref: '#/components/parameters/IdempotencyKey'}
+    post:
+      operationId: activateRoute
+      x-required-scope: routes:activate
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                waypointGuid: {type: string}
+      responses:
+        '200': {$ref: '#/components/responses/RouteCommand'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v2/routes/deactivate:
+    post:
+      operationId: deactivateRoute
+      x-required-scope: routes:activate
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      responses:
+        '200': {$ref: '#/components/responses/RouteCommand'}
         default: {$ref: '#/components/responses/Error'}
   /api/v2/active-route:
     get:
@@ -161,6 +237,12 @@ paths:
                       items: {$ref: '#/components/schemas/Coordinate'}
       responses: {$ref: '#/components/x-responses/SafetyResponses'}
 components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 128}
   securitySchemes:
     bearerToken:
       type: http
@@ -172,6 +254,11 @@ components:
       content:
         application/json:
           schema: {$ref: '#/components/schemas/ErrorResponse'}
+    RouteCommand:
+      description: Explicit idempotent route-command result
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/RouteCommandResult'}
   x-responses:
     SafetyResponses:
       '200':
@@ -226,6 +313,22 @@ components:
         guid: {type: string}
         name: {type: string}
         position: {$ref: '#/components/schemas/Coordinate'}
+    RouteMutation:
+      type: object
+      required: [name, waypoints]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 256}
+        waypoints:
+          type: array
+          minItems: 2
+          maxItems: 10000
+          items:
+            type: object
+            required: [position]
+            properties:
+              guid: {type: string, maxLength: 128}
+              name: {type: string, maxLength: 256}
+              position: {$ref: '#/components/schemas/Coordinate'}
     Route:
       allOf:
         - {$ref: '#/components/schemas/RouteSummary'}
@@ -242,6 +345,14 @@ components:
         activeWaypointGuid: {type: [string, 'null']}
         activeLegIndex: {type: [integer, 'null'], minimum: 0}
         routeRevision: {type: [integer, 'null'], minimum: 0}
+    RouteCommandResult:
+      type: object
+      required: [commandId, changed, route, warnings]
+      properties:
+        commandId: {type: string}
+        changed: {type: boolean}
+        route: {oneOf: [{$ref: '#/components/schemas/Route'}, {type: 'null'}]}
+        warnings: {type: array, items: {type: string}}
     SafetyConstraints:
       type: object
       required: [minimumDepthMeters]

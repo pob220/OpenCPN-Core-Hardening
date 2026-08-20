@@ -133,8 +133,12 @@ const char* AuthorityText(ChartSafetyAuthority authority) {
 
 HttpResponse ServiceFailure(const ServiceError& error) {
   const bool client_error =
-      error.code.rfind("invalid_", 0) == 0 || error.code == "conflict";
-  const int status = error.code == "not_found" ? 404 : client_error ? 400 : 503;
+      error.code.rfind("invalid_", 0) == 0 || error.code == "not_ready" ||
+      error.code == "active_route" || error.code == "layer_owned";
+  const int status = error.code == "not_found" ? 404
+                     : error.code == "conflict" ? 409
+                     : client_error ? 400
+                                    : 503;
   return Error(status, error.code, error.message);
 }
 
@@ -194,6 +198,45 @@ HttpResponse ChartResultResponse(const ChartSafetyResult& result) {
   if (result.failed_segment_index)
     body["failedSegmentIndex"] = *result.failed_segment_index;
   return JsonResponse(200, body);
+}
+
+Result<RouteMutation> ParseRouteMutation(const json& body) {
+  try {
+    RouteMutation mutation;
+    mutation.name = body.at("name").get<std::string>();
+    if (mutation.name.empty() || mutation.name.size() > 256)
+      return Result<RouteMutation>::FromError(
+          "invalid_route", "Route name must contain 1 to 256 characters");
+    for (const auto& value : body.at("waypoints")) {
+      const auto position = ParseCoordinate(value.at("position"));
+      if (position.error)
+        return Result<RouteMutation>::FromError(position.error->code,
+                                                position.error->message);
+      WaypointSnapshot waypoint;
+      waypoint.guid = value.value("guid", std::string());
+      waypoint.name = value.value("name", std::string());
+      waypoint.position = *position.value;
+      if (waypoint.guid.size() > 128 || waypoint.name.size() > 256)
+        return Result<RouteMutation>::FromError(
+            "invalid_route", "Waypoint name or GUID exceeds its size limit");
+      mutation.waypoints.push_back(std::move(waypoint));
+    }
+    if (mutation.waypoints.size() < 2 || mutation.waypoints.size() > 10000)
+      return Result<RouteMutation>::FromError(
+          "invalid_route", "A route requires between 2 and 10000 waypoints");
+    return Result<RouteMutation>::FromValue(std::move(mutation));
+  } catch (const json::exception&) {
+    return Result<RouteMutation>::FromError(
+        "invalid_route", "Route requires a name and waypoint array");
+  }
+}
+
+HttpResponse CommandResponse(int status, const RouteCommandResult& result) {
+  json body = {{"commandId", result.command_id},
+               {"changed", result.changed},
+               {"warnings", result.warnings}};
+  body["route"] = result.route ? RouteJson(*result.route) : json(nullptr);
+  return JsonResponse(status, body);
 }
 
 }  // namespace
@@ -264,6 +307,10 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
       capabilities.push_back("navigation.snapshot.v1");
     if (services_.routes && HasScope(principal, "routes:read"))
       capabilities.push_back("routes.query.v1");
+    if (services_.route_commands && HasScope(principal, "routes:write"))
+      capabilities.push_back("routes.draft-mutation.v1");
+    if (services_.route_commands && HasScope(principal, "routes:activate"))
+      capabilities.push_back("routes.guarded-activation.v1");
     if (services_.chart_safety && HasScope(principal, "charts:query"))
       capabilities.push_back("chart-safety.v1");
     return JsonResponse(200, {{"apiVersion", options_.api_version},
@@ -316,6 +363,15 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
     json routes = json::array();
     for (const auto& route : *result.value) routes.push_back(RouteSummaryJson(route));
     return JsonResponse(200, {{"routes", routes}});
+  }
+  if (services_.route_commands &&
+      ((request.method == "POST" && path == "/api/v2/routes") ||
+       (request.method == "PUT" && path.rfind("/api/v2/routes/", 0) == 0) ||
+       (request.method == "DELETE" && path.rfind("/api/v2/routes/", 0) == 0) ||
+       (request.method == "POST" &&
+        (path == "/api/v2/routes/deactivate" ||
+         path.find("/activate") != std::string::npos)))) {
+    return HandleRouteCommand(request, principal, path);
   }
   if (request.method == "GET" && path == "/api/v2/active-route") {
     if (const auto denied = RequireScope(principal, "routes:read");
@@ -402,6 +458,93 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
   }
 
   return Error(404, "not_found", "No matching API v2 endpoint");
+}
+
+HttpResponse ExternalApiRouter::HandleRouteCommand(
+    const HttpRequest& request, const TokenAuthorizer::Principal& principal,
+    const std::string& path) const {
+  const bool activation =
+      path == "/api/v2/routes/deactivate" ||
+      (path.size() > 9 && path.compare(path.size() - 9, 9, "/activate") == 0);
+  if (const auto denied = RequireScope(
+          principal, activation ? "routes:activate" : "routes:write");
+      denied.status != 500)
+    return denied;
+
+  const auto key = Header(request, "Idempotency-Key");
+  if (!key || key->empty() || key->size() > 128)
+    return Error(400, "idempotency_key_required",
+                 "Idempotency-Key must contain 1 to 128 characters");
+  const std::string cache_key = principal.id + ":" + *key;
+  const std::string fingerprint = request.method + "\n" + path + "\n" + request.body;
+  std::lock_guard<std::mutex> idempotency_lock(idempotency_mutex_);
+  if (const auto found = idempotency_results_.find(cache_key);
+      found != idempotency_results_.end()) {
+    if (found->second.first != fingerprint)
+      return Error(409, "idempotency_conflict",
+                   "Idempotency-Key was already used for a different command");
+    return found->second.second;
+  }
+
+  json body = json::object();
+  if (!request.body.empty()) {
+    try {
+      body = json::parse(request.body);
+    } catch (const json::exception&) {
+      return Error(400, "malformed_json", "Request body is not valid JSON");
+    }
+  }
+
+  Result<RouteCommandResult> result;
+  int success_status = 200;
+  constexpr const char* route_prefix = "/api/v2/routes/";
+  if (request.method == "POST" && path == "/api/v2/routes") {
+    const auto route = ParseRouteMutation(body);
+    if (route.error) return Error(400, route.error->code, route.error->message);
+    result = services_.route_commands->CreateDraft(*route.value, *key);
+    success_status = 201;
+  } else if (request.method == "POST" &&
+             path == "/api/v2/routes/deactivate") {
+    result = services_.route_commands->Deactivate(*key);
+  } else {
+    std::string suffix = path.substr(std::char_traits<char>::length(route_prefix));
+    const auto activate_offset = suffix.rfind("/activate");
+    if (request.method == "POST" && activate_offset != std::string::npos &&
+        activate_offset + 9 == suffix.size()) {
+      const auto guid = suffix.substr(0, activate_offset);
+      std::optional<std::string> waypoint;
+      if (body.contains("waypointGuid")) waypoint = body.at("waypointGuid").get<std::string>();
+      result = services_.route_commands->Activate(guid, waypoint, *key);
+    } else if (request.method == "PUT") {
+      const auto route = ParseRouteMutation(body);
+      if (route.error) return Error(400, route.error->code, route.error->message);
+      try {
+        result = services_.route_commands->Update(
+            suffix, body.at("expectedRevision").get<std::uint64_t>(),
+            *route.value, *key);
+      } catch (const json::exception&) {
+        return Error(400, "expected_revision_required",
+                     "expectedRevision must be an unsigned integer");
+      }
+    } else if (request.method == "DELETE") {
+      try {
+        result = services_.route_commands->Delete(
+            suffix, body.at("expectedRevision").get<std::uint64_t>(), *key);
+      } catch (const json::exception&) {
+        return Error(400, "expected_revision_required",
+                     "expectedRevision must be an unsigned integer");
+      }
+    } else {
+      return Error(404, "not_found", "No matching route command endpoint");
+    }
+  }
+  const auto response = result.error
+                            ? ServiceFailure(*result.error)
+                            : CommandResponse(success_status, *result.value);
+  if (idempotency_results_.size() >= 1024) idempotency_results_.clear();
+  idempotency_results_.emplace(cache_key,
+                               std::make_pair(fingerprint, response));
+  return response;
 }
 
 }  // namespace ocpn::control
