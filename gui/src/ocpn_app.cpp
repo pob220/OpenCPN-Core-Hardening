@@ -1450,17 +1450,17 @@ bool MyApp::OnInit() {
 
   std::vector<std::string> ipv4_addrs = get_local_ipv4_addresses();
 
-  // If network connection is available, start the server and mDNS client
-  if (ipv4_addrs.size()) {
-    std::string ipAddr = ipv4_addrs[0];
+  // The loopback API must remain available while the host is offline.  A
+  // non-loopback address is only required for mDNS advertisement.
+  const std::string certificate_address =
+      ipv4_addrs.empty() ? "127.0.0.1" : ipv4_addrs[0];
+  wxString data_dir = g_Platform->GetPrivateDataDir();
+  if (data_dir.Last() != wxFileName::GetPathSeparator())
+    data_dir.Append(wxFileName::GetPathSeparator());
+  make_certificate(certificate_address, data_dir.ToStdString());
+  m_rest_server.StartServer(fs::path(data_dir.ToStdString()));
 
-    wxString data_dir = g_Platform->GetPrivateDataDir();
-    if (data_dir.Last() != wxFileName::GetPathSeparator())
-      data_dir.Append(wxFileName::GetPathSeparator());
-
-    make_certificate(ipAddr, data_dir.ToStdString());
-
-    m_rest_server.StartServer(fs::path(data_dir.ToStdString()));
+  if (!ipv4_addrs.empty()) {
     StartMDNSService(g_hostname.ToStdString(), "opencpn-object-control-service",
                      8000);
   }
