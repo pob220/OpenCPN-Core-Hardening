@@ -19,14 +19,11 @@ using namespace std::literals::chrono_literals;
 
 static std::string s_result;
 
-static wxLogStderr default_log;
-
 TEST(Filter, Create) {
   using Direction = NavmsgStatus::Direction;
   using Accepted = NavmsgStatus::Accepted;
   using State = NavmsgStatus::State;
 
-  wxLog::SetActiveTarget(&default_log);
   NavmsgFilter filter;
   filter.m_name = "test-1";
   filter.m_description = "A useless test filter";

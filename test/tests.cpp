@@ -313,11 +313,21 @@ public:
   }
 };
 
+static void EnsureLoopbackDriver() {
+  for (const auto& handle : GetActiveDrivers()) {
+    const auto& attributes = GetAttributes(handle);
+    const auto protocol = attributes.find("protocol");
+    if (protocol != attributes.end() && protocol->second == "loopback") return;
+  }
+  MakeLoopbackDriver();
+}
+
 class Loopback0183App : public BasicTest {
 public:
   class Source {
   public:
     Source() {
+      EnsureLoopbackDriver();
       const auto& handles = GetActiveDrivers();
       auto found = std::find_if(
           handles.begin(), handles.end(), [](const DriverHandle& h) {
@@ -369,6 +379,7 @@ public:
   class Source {
   public:
     Source() {
+      EnsureLoopbackDriver();
       const auto& handles = GetActiveDrivers();
       auto found = std::find_if(
           handles.begin(), handles.end(), [](const DriverHandle& h) {
@@ -431,6 +442,7 @@ public:
   class Source {
   public:
     Source() {
+      EnsureLoopbackDriver();
       const auto& handles = GetActiveDrivers();
       auto found = std::find_if(
           handles.begin(), handles.end(), [](const DriverHandle& h) {
@@ -505,6 +517,7 @@ public:
   class Source {
   public:
     Source() {
+      EnsureLoopbackDriver();
       const auto& handles = GetActiveDrivers();
       auto found = std::find_if(
           handles.begin(), handles.end(), [](const DriverHandle& h) {
@@ -1301,7 +1314,7 @@ TEST(SemanticVersion, Basic) {
 }
 
 TEST(Loopback, Exists) {
-  MakeLoopbackDriver();
+  EnsureLoopbackDriver();
   bool found = false;
   for (const auto& handle : GetActiveDrivers()) {
     const auto& attributes = GetAttributes(handle);
