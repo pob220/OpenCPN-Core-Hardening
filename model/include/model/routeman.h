@@ -33,8 +33,9 @@
 #include <wx/pen.h>
 #include <wx/string.h>
 
-#include "model/MarkIcon.h"
+#include "observable/evtvar.h"
 
+#include "model/MarkIcon.h"
 #include "model/nav_object_database.h"
 #include "model/nmea_log.h"
 #include "model/ocpn_types.h"
@@ -44,7 +45,6 @@
 
 #include "color_types.h"
 #include "nmea0183.h"
-#include "observable_evtvar.h"
 
 //----------------------------------------------------------------------------
 //   constants
@@ -121,6 +121,7 @@ public:
   void DeleteAllRoutes();
 
   bool IsRouteValid(Route *pRoute);
+  bool IsRouteInList(Route *pRoute);
 
   Route *FindRouteByGUID(const wxString &guid);
   Track *FindTrackByGUID(const wxString &guid);
@@ -245,21 +246,21 @@ public:
   wxString GetRouteResequenceMessage(void);
   struct RoutemanDlgCtx &GetDlgContext() { return m_route_dlg_ctx; }
   NMEA0183 GetNMEA0183() { return m_NMEA0183; }
-  EventVar &GetMessageSentEventVar() { return on_message_sent; }
+  obs::EventVar &GetMessageSentEventVar() { return on_message_sent; }
   std::vector<DriverHandle> GetOutpuDriverArray() { return m_output_drivers; }
   bool m_bDataValid;
 
   /**
    * Notified with message targeting all plugins. Contains a message type
-   * string and a wxJSONValue shared_ptr.
+   * string and a nlohmann::json shared_ptr.
    */
-  EventVar json_msg;
+  obs::EventVar json_msg_evt;
 
   /** Notified with a shared_ptr<ActiveLegDat>, leg info to all plugins.  */
-  EventVar json_leg_info;
+  obs::EventVar json_leg_info;
 
   /** Notified when a message available as GetString() is sent to garmin. */
-  EventVar on_message_sent;
+  obs::EventVar on_message_sent;
 
 private:
   Route *pActiveRoute;
@@ -296,8 +297,8 @@ private:
   struct RoutePropDlgCtx m_prop_dlg_ctx;
   struct RoutemanDlgCtx m_route_dlg_ctx;
 
-  ObsListener msg_sent_listener;
-  ObsListener active_route_listener;
+  obs::Listener msg_sent_listener;
+  obs::Listener active_route_listener;
   std::vector<DriverHandle> m_output_drivers;
   bool m_have_n0183_out;
   bool m_have_n2000_out;

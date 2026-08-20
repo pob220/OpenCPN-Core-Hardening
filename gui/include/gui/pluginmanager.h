@@ -49,6 +49,7 @@
 #endif
 
 #include "o_sound/o_sound.h"
+#include "observable/observable.h"
 
 #include "model/ais_target_data.h"
 #include "model/catalog_parser.h"
@@ -58,7 +59,6 @@
 #include "model/semantic_vers.h"
 
 #include "chartimg.h"
-#include "observable.h"
 #include "ocpndc.h"
 #include "ocpn_plugin.h"
 #include "s57chart.h"  // for Object list
@@ -299,11 +299,11 @@ private:
 
   ObservableListener m_listener_SignalK;
 
-  ObsListener m_new_msgtype_lstnr;
+  obs::Listener m_new_msgtype_lstnr;
 
-  ObsListener m_on_msg_sent_listener;
+  obs::Listener m_on_msg_sent_listener;
 
-  std::unordered_map<std::string, ObsListener> m_0183_listeners;
+  std::unordered_map<std::string, obs::Listener> m_0183_listeners;
 
   wxBitmap* BuildDimmedToolBitmap(wxBitmap* pbmp_normal,
                                   unsigned char dim_ratio);

@@ -30,15 +30,15 @@
 #include <wx/event.h>
 #include <wx/log.h>
 
+#include "observable/observable.h"
+
 #include "model/comm_drv_registry.h"
 #include "model/comm_navmsg.h"
 #include "model/comm_navmsg_bus.h"
 #include "model/data_monitor_src.h"
 #include "model/ocpn_utils.h"
 
-#include "observable.h"
-
-static void InitListener(ObsListener& ol, NavMsg& msg,
+static void InitListener(obs::Listener& ol, NavMsg& msg,
                          const std::function<void(ObservedEvt)>& on_message) {
   ol.Init(msg, on_message);
 }
@@ -56,7 +56,7 @@ void DataMonitorSrc::OnNewMessage() {
   for (const auto& msg : messages) {
     auto found = m_listeners.find(msg);
     if (found == m_listeners.end()) {
-      ObsListener listener;
+      obs::Listener listener;
       std::string type(msg);
       size_t pos;
       NavAddr::Bus bus = NavAddr::Bus::Undef;
@@ -100,6 +100,6 @@ void DataMonitorSrc::OnNewMessage() {
 }
 
 void DataMonitorSrc::OnMessage(ObservedEvt& ev) {
-  auto ptr = UnpackEvtPointer<NavMsg>(ev);
+  auto ptr = obs::UnpackEvtPointer<NavMsg>(ev);
   m_sink_func(ptr);
 }

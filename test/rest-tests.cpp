@@ -17,10 +17,12 @@
 #include <wx/app.h>
 #include <wx/event.h>
 #include <wx/fileconf.h>
-#include <wx/jsonreader.h>
 #include <wx/log.h>
 
 #include <gtest/gtest.h>
+
+#include "ocpn-nlohmann/json.hpp"
+#include "observable/configvar.h"
 
 #include "ocpn_plugin.h"
 #include "model/certificates.h"
@@ -28,7 +30,6 @@
 #include "model/config_vars.h"
 #include "model/comm_navmsg.h"
 #include "model/mdns_query.h"
-#include "observable_confvar.h"
 #include "model/ocpn_types.h"
 #include "model/ocpn_utils.h"
 #include "model/rest_server.h"
@@ -194,9 +195,9 @@ protected:
       s_result = "";
       s_result2 = "";
       fs::path curl_prog(CURLPROG);
-      ObsListener listener;
+      obs::Listener listener;
       listener.Init(PluginMsg("msg1", ""), [&](ObservedEvt ev) {
-        auto msg = UnpackEvtPointer<PluginMsg>(ev);
+        auto msg = obs::UnpackEvtPointer<PluginMsg>(ev);
         s_result = msg->name;
         s_result2 = msg->message;
       });
@@ -282,12 +283,15 @@ protected:
     std::ifstream f(path.string());
     std::stringstream ss;
     ss << f.rdbuf();
-    wxJSONValue root;
-    wxJSONReader reader;
-    std::string reply = ss.str();
-    int errors = reader.Parse(reply, &root);
-    EXPECT_EQ(errors, 0);
-    wxString version = root["version"].AsString();
+    bool failed = false;
+    nlohmann::json root;
+    try {
+      root = nlohmann::json::parse(ss.str());
+    } catch (nlohmann::json::exception& e) {
+      failed = true;
+    }
+    EXPECT_FALSE(failed);
+    std::string version = root["version"].get<std::string>();
     EXPECT_EQ(version, PACKAGE_VERSION);
   }
 };

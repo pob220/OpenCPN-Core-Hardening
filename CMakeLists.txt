@@ -450,8 +450,8 @@ if (QT_ANDROID)
   add_definitions(-D__OCPN__ANDROID__)
   add_definitions(-DANDROID)
   add_definitions(-DNOASSERT)
-  set(CMAKE_CXX_FLAGS "-pthread -fPIC -g -O2")
-  set(CMAKE_C_FLAGS "-pthread -fPIC -g -O2")
+  set(CMAKE_CXX_FLAGS "-pthread -fPIC -g -O2 ${CMAKE_CXX_FLAGS}")
+  set(CMAKE_C_FLAGS "-pthread -fPIC -g -O2 ${CMAKE_C_FLAGS}")
 
   add_compile_options(
     "-Wno-inconsistent-missing-override"
@@ -1111,6 +1111,7 @@ target_link_libraries(_opencpn INTERFACE ${PACKAGE_NAME})
 target_include_directories(
   _opencpn BEFORE
   INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/model/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/gui/include
             ${CMAKE_CURRENT_SOURCE_DIR}/include
             ${CMAKE_CURRENT_SOURCE_DIR}/resources
             ${CMAKE_CURRENT_SOURCE_DIR}/gui/src/mbtiles
@@ -1523,6 +1524,9 @@ endif ()
 
 # Add android and windows extra, bundled GL headers
 target_link_libraries(${PACKAGE_NAME} PUBLIC ocpn::gl-headers)
+
+add_subdirectory(libs/nlohmann-json)
+target_link_libraries(${PACKAGE_NAME} PUBLIC nlohmann::json)
 
 # Ensure we have ghc::filesystem if std::filesystem is missing.
 add_subdirectory(libs/std_filesystem)
@@ -2047,7 +2051,6 @@ if (NOT APPLE)
   endif ()
   if (LINUX)
     install(TARGETS ${PACKAGE_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-    install(FILES LINUX_DEVICES.md DESTINATION ${PREFIX_DATA}/${PACKAGE_NAME})
   endif ()
 
   install(

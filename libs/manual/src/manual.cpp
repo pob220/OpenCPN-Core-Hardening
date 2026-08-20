@@ -13,9 +13,7 @@
  *   GNU General Public License for more details.                          *
  *                                                                         *
  *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
+ *   along with this program; if not, see <https://www.gnu.org/licenses/>. *
  **************************************************************************/
 
 /**
@@ -29,7 +27,6 @@
 #include <unordered_map>
 
 #include <wx/log.h>
-#include <wx/jsonreader.h>
 #include <wx/string.h>
 
 #include "manual.h"
@@ -47,7 +44,7 @@ static const std::unordered_map<std::string, std::string> kOnlineEntries = {
   {"Toc", "@ONLINE_ROOT@/index.html"},
   {"Chartdldr",
      "@ONLINE_ROOT@/chartdldr/index.html"},
-  {"Wmm",  "@ONLINE_PLUG@/wmm/index.html"},
+  {"Wmm",  "@ONLINE_ROOT@/wmm/index.html"},
   {"Dashboard", "@ONLINE_ROOT@/dashboard/index.html"},
   {"Grib", "@ONLINE_ROOT@/grib/index.html"},
   {"Hotkeys",
@@ -70,21 +67,26 @@ Manual::Manual(wxWindow* parent, const std::string& path)
     return;
   }
   std::ifstream stream(datadir_path.string());
-  std::stringstream ss;
-  ss << stream.rdbuf();
-  wxJSONReader reader;
-  int err_count = reader.Parse(ss.str(), &m_root);
-  if (err_count != 0) {
+  try {
+    m_root = json::parse(stream);
+  } catch(json::exception& e) {
     wxLogWarning("Cannot parse entrypoints.json from manual plugin");
   }
 }
 
 bool Manual::Launch(const std::string& entrypoint) {
-  std::string path(m_root[entrypoint].AsString());
-  replace(path, "@LOCAL_ROOT@", m_datadir);
-  if (fs::exists(fs::path(path))) {
-    wxLaunchDefaultBrowser(path);
-    return true;
+  std::string path;
+  try {
+    path = m_root[entrypoint].get<std::string>();
+  } catch(json::exception& e) {
+    wxLogDebug("No usable manual_pi json data");
+  }
+  if (!path.empty()) {
+    replace(path, "@LOCAL_ROOT@", m_datadir);
+    if (fs::exists(fs::path(path))) {
+      wxLaunchDefaultBrowser(path);
+      return true;
+    }
   }
   auto found = kOnlineEntries.find(entrypoint);
   if (found == kOnlineEntries.end()) {

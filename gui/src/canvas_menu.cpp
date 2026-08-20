@@ -37,6 +37,8 @@
 #include <wx/listbook.h>
 #include <wx/menu.h>
 
+#include "ocpn-nlohmann/json.hpp"
+
 #include "model/ais_decoder.h"
 #include "model/ais_state_vars.h"
 #include "model/ais_target_data.h"
@@ -1367,10 +1369,9 @@ void CanvasMenuHandler::PopupMenuHandler(wxCommandEvent &event) {
         g_AW2GUID.Clear();
       }
       if (!guid.IsEmpty()) {
-        wxJSONValue v;
+        nlohmann::json v;
         v["GUID"] = guid;
-        wxString msg_id("OCPN_ANCHOR_WATCH_CLEARED");
-        SendJSONMessageToAllPlugins(msg_id, v);
+        SendJsonMessageToAllPlugins("OCPN_ANCHOR_WATCH_CLEARED", v);
       }
       break;
     }
@@ -1399,10 +1400,9 @@ void CanvasMenuHandler::PopupMenuHandler(wxCommandEvent &event) {
         }
       }
       if (!guid.IsEmpty()) {
-        wxJSONValue v;
+        nlohmann::json v;
         v["GUID"] = guid;
-        wxString msg_id("OCPN_ANCHOR_WATCH_SET");
-        SendJSONMessageToAllPlugins(msg_id, v);
+        SendJsonMessageToAllPlugins("OCPN_ANCHOR_WATCH_SET", v);
       }
       break;
     }
@@ -1679,8 +1679,8 @@ void CanvasMenuHandler::PopupMenuHandler(wxCommandEvent &event) {
 
       m_pHead = new Route();
       m_pTail = new Route();
-      m_pHead->CloneRoute(m_pSelectedRoute, 1, m_SelectedIdx, _("_A"));
-      m_pTail->CloneRoute(m_pSelectedRoute, m_SelectedIdx + splitMode,
+      m_pHead->CloneRoute(m_pSelectedRoute, 1, m_SelectedIdx + 1, _("_A"));
+      m_pTail->CloneRoute(m_pSelectedRoute, m_SelectedIdx + 1 + splitMode,
                           m_pSelectedRoute->GetnPoints(), _("_B"), dupFirstWpt);
       pRouteList->push_back(m_pHead);
       NavObj_dB::GetInstance().InsertRoute(m_pHead);

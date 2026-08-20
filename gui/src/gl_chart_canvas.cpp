@@ -44,7 +44,6 @@
 #include <wx/gdicmn.h>
 #include <wx/glcanvas.h>
 #include <wx/image.h>
-#include <wx/jsonval.h>
 #include <wx/log.h>
 #include <wx/pen.h>
 #include <wx/progdlg.h>
@@ -53,6 +52,8 @@
 #include <wx/tokenzr.h>
 #include <wx/utils.h>
 #include <wx/window.h>
+
+#include "ocpn-nlohmann/json.hpp"
 
 #include "model/base_platform.h"
 #include "model/config_vars.h"
@@ -93,6 +94,7 @@
 #include "route_point_gui.h"
 #include "s52plib.h"
 #include "s57chart.h"  // for ArrayOfS57Obj
+#include "s57_load.h"
 #include "s57_ocpn_utils.h"
 #include "shapefile_basemap.h"
 #include "tcmgr.h"
@@ -963,6 +965,8 @@ void glChartCanvas::BuildFBO() {
 }
 
 void glChartCanvas::SetupOpenGL() {
+  LoadS57();
+
   if (IsShown()) SetCurrent(*m_pcontext);
 
   char *str = (char *)glGetString(GL_RENDERER);
@@ -1084,16 +1088,16 @@ void glChartCanvas::SetupOpenGL() {
 #endif
 
   // VBO??
-  g_b_EnableVBO = true;
-
-#ifdef __ANDROID__
-  g_b_EnableVBO = false;
-#endif
+  g_b_EnableVBO = true;  // For linestrings
 
   if (g_b_EnableVBO)
     wxLogMessage("OpenGL-> Using Vertexbuffer Objects");
   else
     wxLogMessage("OpenGL-> Vertexbuffer Objects unavailable");
+
+  // Inform S52PLIB of Renderer string, for any possible optimizations
+  //  Especially, for using VBO while AREA rendering.
+  if (ps52plib) ps52plib->SetGLRendererString(GetRendererString());
 
     //      Can we use the stencil buffer in a FBO?
 #ifdef ocpnUSE_GLES
@@ -1226,7 +1230,7 @@ void glChartCanvas::SetupOpenGL() {
 
 void glChartCanvas::SendJSONConfigMessage() {
   if (g_pi_manager) {
-    wxJSONValue v;
+    nlohmann::json v;
     v["setupComplete"] = m_bsetup;
     v["useStencil"] = s_b_useStencil;
     v["useStencilAP"] = s_b_useStencilAP;
@@ -1234,8 +1238,7 @@ void glChartCanvas::SendJSONConfigMessage() {
     v["useFBO"] = s_b_useFBO;
     v["useVBO"] = g_b_EnableVBO;
     v["TextureRectangleFormat"] = g_texture_rectangle_format;
-    wxString msg_id("OCPN_OPENGL_CONFIG");
-    SendJSONMessageToAllPlugins(msg_id, v);
+    SendJsonMessageToAllPlugins("OCPN_OPENGL_CONFIG", v);
   }
 }
 void glChartCanvas::SetupCompression() {

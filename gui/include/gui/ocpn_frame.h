@@ -39,6 +39,8 @@
 
 #include "ocpn_plugin.h"
 
+#include "observable/evtvar.h"
+
 #include "model/ais_target_data.h"
 #include "model/gui.h"
 #include "model/idents.h"
@@ -58,7 +60,6 @@
 #include "displays.h"
 #include "gui_lib.h"
 #include "load_errors_dlg.h"
-#include "observable_evtvar.h"
 #include "options.h"
 #include "pluginmanager.h"
 #include "s52_plib_utils.h"
@@ -316,6 +317,10 @@ public:
     }
   }
   void OnToolLeftClick(wxCommandEvent& event) override;
+
+  bool DisableTbarTooltips();
+  void EnableTbarTooltips();
+  void HideTbarTooltip();
 
   void SetENCDisplayCategory(ChartCanvas* cc, enum _DisCat nset);
   void ToggleQuiltMode(ChartCanvas* cc);
@@ -579,13 +584,13 @@ private:
 private:
   ObservableListener listener_basic_navdata;
   ObservableListener listener_gps_watchdog;
-  ObsListener m_on_raise_listener;
-  ObsListener m_on_quit_listener;
-  ObsListener m_routes_update_listener;
-  ObsListener m_evt_drv_msg_listener;
-  ObsListener m_update_statusbar_listener;
-  ObsListener m_center_aistarget_listener;
-  ObsListener m_reload_charts_listener;
+  obs::Listener m_on_raise_listener;
+  obs::Listener m_on_quit_listener;
+  obs::Listener m_routes_update_listener;
+  obs::Listener m_evt_drv_msg_listener;
+  obs::Listener m_update_statusbar_listener;
+  obs::Listener m_center_aistarget_listener;
+  obs::Listener m_reload_charts_listener;
   ToolbarDlgCallbacks m_toolbar_callbacks;
 
   wxStatusBar* m_pStatusBar;

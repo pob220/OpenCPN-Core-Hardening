@@ -24,13 +24,14 @@
 #include <wx/checkbox.h>
 #include <wx/string.h>
 
+#include "observable/evtvar.h"
+
 #include "model/route.h"
 #include "model/route_point.h"
 #include "model/track.h"
 
 #include "pugixml.hpp"
 #include "bbox.h"
-#include "observable_evtvar.h"
 
 //      Bitfield definition controlling the GPX nodes output for point objects
 #define OUT_TYPE 1 << 1        //  Output point type
@@ -79,8 +80,9 @@ class TrackPoint;  // circular
 using RouteList = std::vector<Route *>;  // circular
 
 bool WptIsInRouteList(RoutePoint *pr);
-RoutePoint *WaypointExists(const wxString &name, double lat, double lon);
-RoutePoint *WaypointExists(const wxString &guid);
+RoutePoint *WaypointExistsByNamePosition(const wxString &name, double lat,
+                                         double lon);
+RoutePoint *WaypointExistsByGUID(const wxString &guid);
 Route *RouteExists(const wxString &guid);
 Route *RouteExists(Route *pTentRoute);
 Track *TrackExists(const wxString &guid);

@@ -474,6 +474,7 @@ endif ()
 
 target_link_libraries(
   _OCPN_MODEL INTERFACE
+    nlohmann::json
     observable::observable
     ocpn::ixwebsocket
     ocpn::garminhost

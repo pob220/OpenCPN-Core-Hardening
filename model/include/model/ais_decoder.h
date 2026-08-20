@@ -34,6 +34,9 @@
 #include <wx/string.h>
 
 #include "rapidjson/fwd.h"
+
+#include "observable/evtvar.h"
+
 #include "model/ais_bitstring.h"
 #include "model/ais_defs.h"
 #include "model/ais_target_data.h"
@@ -41,7 +44,6 @@
 #include "model/ocpn_types.h"
 #include "model/select.h"
 #include "model/track.h"
-#include "observable_evtvar.h"
 
 using N0183MsgPtr = std::shared_ptr<const Nmea0183Msg>;
 using N2000MsgPtr = std::shared_ptr<const Nmea2000Msg>;
@@ -136,22 +138,22 @@ public:
    * Notified when AIS user dialogs should update. Event contains an
    * AIS_Target_data pointer.
    */
-  EventVar info_update;
+  obs::EventVar info_update;
 
   /** Notified when gFrame->TouchAISActive() should be invoked */
-  EventVar touch_state;
+  obs::EventVar touch_state;
 
   /** Notified when new AIS wp is created. Contains a RoutePoint* pointer. */
-  EventVar new_ais_wp;
+  obs::EventVar new_ais_wp;
 
   /** Notified on new track creation. Contains a Track* pointer. */
-  EventVar new_track;
+  obs::EventVar new_track;
 
   /** Notified when about to delete track. Contains a MmsiProperties* ptr */
-  EventVar delete_track;
+  obs::EventVar delete_track;
 
-  /** A JSON message should be sent. Contains a AisTargetData* pointer. */
-  EventVar plugin_msg;
+  /** A JSON message should be sent. Contains an AisTargetData* pointer. */
+  obs::EventVar plugin_msg_evt;
 
 private:
   void OnTimerAIS(wxTimerEvent &event);

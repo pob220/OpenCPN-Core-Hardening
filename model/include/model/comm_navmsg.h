@@ -37,7 +37,7 @@
 #include <netinet/in.h>
 #endif
 
-#include "observable.h"
+#include "observable/observable.h"
 
 using NavmsgClock = std::chrono::system_clock;
 using NavmsgTimePoint = std::chrono::time_point<NavmsgClock>;
@@ -224,7 +224,7 @@ public:
 };
 
 /** Actual data sent between application and transport layer */
-class NavMsg : public KeyProvider {
+class NavMsg : public obs::KeyProvider {
 public:
   enum class State { kOk, kCannotParse, kBadChecksum, kFiltered };
 

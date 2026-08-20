@@ -288,7 +288,7 @@ public:
   options &operator=(const options &) = delete;
 
   ~options(void);
-  bool SendIdleEvents(wxIdleEvent &event);
+  bool SendIdleEvents(wxIdleEvent &event) override;
   void SetInitialPage(int page_sel, int sub_page = -1);
   void Finish(void);
 
@@ -445,6 +445,8 @@ public:
   /** Specify date/time should be formatted in UTC. */
   wxRadioButton *pTimezoneUTC;
   wxTextCtrl *pCmdSoundString;
+
+  MMSI_Props_Panel *pPropsPanel;
 
   wxChoice *m_pShipIconType, *m_pcTCDatasets;
   wxSlider *m_pSlider_Zoom_Raster, *m_pSlider_GUI_Factor,
@@ -639,8 +641,8 @@ public:
   void OnUXAudioEnableButtonClickDSC(wxCommandEvent &event);
 
   /** Notified with a OCPN_Sound* pointer when sound has completed. */
-  EventVar m_on_sound_done;
-  ObsListener m_sound_done_listener;
+  obs::EventVar m_on_sound_done;
+  obs::Listener m_sound_done_listener;
   wxGenericProgressDialog *m_pCBDSprog;
   void DoDBSUpdate(bool force_full);
   bool m_bTextureCacheingSave;
@@ -717,7 +719,7 @@ private:
 
   wxSize m_sliderSize;
   bool m_bneedNew;
-  ObsListener m_OnChartDb_finalize_listener;
+  obs::Listener m_OnChartDb_finalize_listener;
   std::shared_ptr<ConnectionsDlg> comm_dialog;
 
   DECLARE_EVENT_TABLE()
@@ -846,8 +848,9 @@ enum {
   mlIgnore,
   mlMOB,
   mlVDM,
+  mlShipName,
   mlFollower,
-  mlShipName
+
 };  // MMSIListCtrl Columns;
 
 class MMSIListCtrl : private Uncopyable, public wxListCtrl {
@@ -856,7 +859,7 @@ public:
                         const wxSize &size, long style);
   ~MMSIListCtrl(void);
 
-  wxString OnGetItemText(long item, long column) const;
+  wxString OnGetItemText(long item, long column) const override;
   void OnListItemClick(wxListEvent &event);
   void OnListItemActivated(wxListEvent &event);
   void OnListItemRightClick(wxListEvent &event);

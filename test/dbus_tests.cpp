@@ -14,6 +14,8 @@
 
 #include <gio/gio.h>
 
+#include "observable/observable.h"
+
 #include "model/base_platform.h"
 #include "model/dbus_client.h"
 #include "model/logger.h"
@@ -78,7 +80,7 @@ class DbusRaise : public wxAppConsole {
 public:
   class ObsListener : public wxEvtHandler {
   public:
-    ObsListener(const KeyProvider& kp) : wxEvtHandler() {
+    ObsListener(const obs::KeyProvider& kp) : wxEvtHandler() {
       wxDEFINE_EVENT(EVT_OBS_RAISE, ObservedEvt);
       m_listener.Listen(kp.GetKey(), this, EVT_OBS_RAISE);
       Bind(EVT_OBS_RAISE, [&](ObservedEvt& o) { bool_result0 = true; });

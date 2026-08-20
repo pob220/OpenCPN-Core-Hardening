@@ -35,7 +35,7 @@
 #include <wx/event.h>
 
 #include "model/comm_driver.h"
-#include "observable_evtvar.h"
+#include "observable/evtvar.h"
 
 /** The raw message layer, a singleton. */
 class NavMsgBus : public wxEvtHandler, public DriverListener {
@@ -66,7 +66,7 @@ public:
   const std::set<std::string>& GetActiveMessages() { return m_active_messages; }
 
   /** Notified without data when new message type(s) are detected. */
-  EventVar new_msg_event;
+  obs::EventVar new_msg_event;
 
 private:
   std::mutex m_mutex;

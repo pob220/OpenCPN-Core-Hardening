@@ -31,8 +31,9 @@
 
 #include <wx/event.h>
 
+#include "observable/observable.h"
+
 #include "model/comm_driver.h"
-#include "observable.h"
 
 double PosPartsToDegrees(float degrees, float minutes, float percent_of_minute);
 
@@ -82,7 +83,7 @@ private:
   double TypeToLong(Type t, double lon);
 };
 
-class AppMsg : public KeyProvider {
+class AppMsg : public obs::KeyProvider {
 public:
   enum class Type;
 

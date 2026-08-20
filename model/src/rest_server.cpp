@@ -35,6 +35,8 @@
 
 #include "config.h"
 
+#include "observable/event.h"
+
 #include "model/config_vars.h"
 #include "model/comm_navmsg_bus.h"
 #include "model/gui_events.h"
@@ -45,7 +47,6 @@
 #include "model/rest_server.h"
 
 #include "mongoose.h"
-#include "observable_evt.h"
 #include "model/navobj_db.h"
 
 /** Event from IO thread to main */
@@ -524,7 +525,7 @@ bool RestServer::CheckApiKey(const RestIoEvtData& evt_data) {
 }
 
 void RestServer::HandleServerMessage(ObservedEvt& event) {
-  auto evt_data = UnpackEvtPointer<RestIoEvtData>(event);
+  auto evt_data = obs::UnpackEvtPointer<RestIoEvtData>(event);
   m_reply_body = "";
   switch (event.GetId()) {
     case ORS_START_OF_SESSION:

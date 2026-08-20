@@ -27,11 +27,12 @@
 
 #include <wx/socket.h>
 
+#include "observable/observable.h"
+
 #include "rapidjson/document.h"
 #include "ixwebsocket/IXNetSystem.h"
 #include "ixwebsocket/IXSocketTLSOptions.h"
 #include "ixwebsocket/IXWebSocket.h"
-#include "observable.h"
 
 #include "model/comm_drv_signalk_net.h"
 #include "model/comm_navmsg_bus.h"
@@ -66,7 +67,7 @@ private:
   const std::string m_iface;
   std::string m_token;
   ix::WebSocket m_ws;
-  ObsListener m_resume_listener;
+  obs::Listener m_resume_listener;
   DriverStats m_driver_stats;
   mutable std::mutex m_stats_mutex;
 };

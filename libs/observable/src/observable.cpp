@@ -1,6 +1,5 @@
 /*************************************************************************
  *
- *
  * Copyright (C) 2022 - 2025 Alec Leamas
  *
  * This program is free software; you can redistribute it and/or modify
@@ -14,9 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the
- * Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.
+ * along with this program; if not, see <https://www.gnu.org/licenses/>.
  **************************************************************************/
 
 /**
@@ -24,7 +21,6 @@
  *
  * Implement observable.h
  */
-
 
 #include <algorithm>
 #include <mutex>
@@ -35,7 +31,9 @@
 
 #include "observable.h"
 
-std::string ptr_key(const void* ptr) {
+namespace obs {
+
+std::string PtrKey(const void* ptr) {
   std::ostringstream oss;
   oss << ptr;
   return oss.str();
@@ -56,13 +54,13 @@ ListenersByKey& ListenersByKey::GetInstance(const std::string& key) {
 
 /* Observable implementation. */
 
-using ev_pair = std::pair<wxEvtHandler*, wxEventType>;
+using EvPair = std::pair<wxEvtHandler*, wxEventType>;
 
 void Observable::Listen(wxEvtHandler* listener, wxEventType ev_type) {
   std::lock_guard<std::mutex> lock(m_mutex);
   const auto& listeners = m_list.listeners;
 
-  ev_pair key_pair(listener, ev_type);
+  EvPair key_pair(listener, ev_type);
   auto found = std::find(listeners.begin(), listeners.end(), key_pair);
   assert((found == listeners.end()) && "Duplicate listener");
   m_list.listeners.push_back(key_pair);
@@ -72,7 +70,7 @@ bool Observable::Unlisten(wxEvtHandler* listener, wxEventType ev_type) {
   std::lock_guard<std::mutex> lock(m_mutex);
   auto& listeners = m_list.listeners;
 
-  ev_pair key_pair(listener, ev_type);
+  EvPair key_pair(listener, ev_type);
   auto found = std::find(listeners.begin(), listeners.end(), key_pair);
   if (found == listeners.end()) return false;
   listeners.erase(found);
@@ -80,8 +78,7 @@ bool Observable::Unlisten(wxEvtHandler* listener, wxEventType ev_type) {
 }
 
 void Observable::Notify(const std::shared_ptr<const void>& ptr,
-                              const std::string& s, int num,
-                              void* client_data) {
+                        const std::string& s, int num, void* client_data) {
   std::lock_guard<std::mutex> lock(m_mutex);
   auto& listeners = m_list.listeners;
 
@@ -96,29 +93,30 @@ void Observable::Notify(const std::shared_ptr<const void>& ptr,
 }
 
 void Observable::Notify() { Notify("", nullptr); }
-
 /* ObservableListener implementation. */
+
+}  // namespace obs
 
 void ObservableListener::Listen(const std::string& k, wxEvtHandler* l,
                                 wxEventType e) {
-  if (!key.empty()) Unlisten();
-  key = k;
-  listener = l;
-  ev_type = e;
+  if (!m_key.empty()) Unlisten();
+  m_key = k;
+  m_listener = l;
+  m_ev_type = e;
   Listen();
 }
 
 void ObservableListener::Listen() {
-  if (!key.empty()) {
-    assert(listener);
-    Observable(key).Listen(listener, ev_type);
+  if (!m_key.empty()) {
+    assert(m_listener);
+    obs::Observable(m_key).Listen(m_listener, m_ev_type);
   }
 }
 
 void ObservableListener::Unlisten() {
-  if (!key.empty()) {
-    assert(listener);
-    Observable(key).Unlisten(listener, ev_type);
-    key = "";
+  if (!m_key.empty()) {
+    assert(m_listener);
+    obs::Observable(m_key).Unlisten(m_listener, m_ev_type);
+    m_key = "";
   }
 }

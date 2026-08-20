@@ -31,13 +31,12 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <archive.h>
 
 #include <wx/cmdline.h>
 
-#include <archive.h>
-
+#include "observable/evtvar.h"
 #include "model/catalog_parser.h"
-#include "observable_evtvar.h"
 
 bool isRegularFile(const char* path);
 
@@ -95,10 +94,10 @@ public:
    * Notified with plugin name + version string after successful download
    * from repository
    */
-  EventVar evt_download_ok;
+  obs::EventVar evt_download_ok;
 
   /** Notified with plugin name after failed download attempt. */
-  EventVar evt_download_failed;
+  obs::EventVar evt_download_failed;
 
   /** Cleanup failed installation attempt using filelist for plugin. */
   static void Cleanup(const std::string& filelist, const std::string& plugname);

@@ -1,8 +1,5 @@
 /*************************************************************************
  *
- * Project: OpenCPN
- * Purpose: Implement observable.h
- *
  * Copyright (C) 2022 Alec Leamas
  *
  * This program is free software; you can redistribute it and/or modify
@@ -16,10 +13,14 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the
- * Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.
+ * along with this program; if not, see <https://www.gnu.org/licenses/>.
  **************************************************************************/
+
+/**
+ * \file
+ *
+ * Implement configvar.h
+ */
 
 #include <sstream>
 #include <string>
@@ -28,13 +29,13 @@
 #include <wx/string.h>
 #include <wx/config.h>
 
-#include "observable_confvar.h"
+#include "observable/configvar.h"
 
 /**
  * Add >> support for wxString, for some reason missing in wxWidgets 3.0,
  * required by ConfigVar::get()
  */
-std::istream& operator>>(std::istream& input, wxString& ws) {
+static std::istream& operator>>(std::istream& input, wxString& ws) {
   std::string s;
   input >> s;
   ws.Append(s);
@@ -44,18 +45,18 @@ std::istream& operator>>(std::istream& input, wxString& ws) {
 /* ConfigVar implementation. */
 
 template <typename T>
-ConfigVar<T>::ConfigVar(const std::string& section_, const std::string& key_,
-                        wxConfigBase* cb)
+obs::ConfigVar<T>::ConfigVar(const std::string& section_,
+                             const std::string& key_, wxConfigBase* cb)
     : Observable(section_ + "/" + key_),
-      section(section_),
-      key(key_),
-      config(cb) {}
+      m_section(section_),
+      m_key(key_),
+      m_config(cb) {}
 
 template <typename T>
-const T ConfigVar<T>::Get(const T& default_val) {
+T obs::ConfigVar<T>::Get(const T& default_val) {
   std::istringstream iss;
-  config->SetPath(section);
-  auto value = config->Read(key, "").ToStdString();
+  m_config->SetPath(m_section);
+  auto value = m_config->Read(m_key, "").ToStdString();
   iss.str(value);
   T r;
   iss >> r;
@@ -63,25 +64,25 @@ const T ConfigVar<T>::Get(const T& default_val) {
 }
 
 template <typename T>
-void ConfigVar<T>::Set(const T& arg) {
+void obs::ConfigVar<T>::Set(const T& arg) {
   std::ostringstream oss;
   oss << arg;
   if (oss.fail()) {
-    wxLogWarning("Cannot dump failed buffer for key %s:%s", section.c_str(),
-                 key.c_str());
+    wxLogWarning("Cannot dump failed buffer for key %s:%s", m_section.c_str(),
+                 m_key.c_str());
     return;
   }
-  config->SetPath(section);
-  if (!config->Write(key.c_str(), oss.str().c_str())) {
-    wxLogWarning("Error writing buffer to key %s:%s", section.c_str(),
-                 key.c_str());
+  m_config->SetPath(m_section);
+  if (!m_config->Write(m_key.c_str(), oss.str().c_str())) {
+    wxLogWarning("Error writing buffer to key %s:%s", m_section.c_str(),
+                 m_key.c_str());
   }
   Observable::Notify();
 }
 
 /* Explicitly instantiate the ConfigVar types supported. */
-template class ConfigVar<bool>;
-template class ConfigVar<double>;
-template class ConfigVar<int>;
-template class ConfigVar<std::string>;
-template class ConfigVar<wxString>;
+template class obs::ConfigVar<bool>;
+template class obs::ConfigVar<double>;
+template class obs::ConfigVar<int>;
+template class obs::ConfigVar<std::string>;
+template class obs::ConfigVar<wxString>;

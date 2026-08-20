@@ -42,9 +42,9 @@
 
 #include <gtest/gtest.h>
 
-#include "model/base_platform.h"
-#include "observable_evtvar.h"
+#include "observable/evtvar.h"
 
+#include "model/base_platform.h"
 #include "model/ipc_api.h"
 #include "model/local_api.h"
 #include "model/logger.h"
@@ -76,17 +76,17 @@ private:
     ObsListener() {}
 
     /** Create object which invokes action when kp is notified. */
-    ObsListener(const KeyProvider& kp,
+    ObsListener(const obs::KeyProvider& kp,
                 std::function<void(ObservedEvt& ev)> action) {
       Init(kp, action);
     }
 
     /** Create object which invokes action when kp is notified. */
-    ObsListener(const KeyProvider& kp, std::function<void()> action)
+    ObsListener(const obs::KeyProvider& kp, std::function<void()> action)
         : ObsListener(kp, [&](ObservedEvt&) { action(); }) {}
 
     /** Initiate an object yet not listening. */
-    void Init(const KeyProvider& kp,
+    void Init(const obs::KeyProvider& kp,
               std::function<void(ObservedEvt& ev)> action) {
       // i. e. wxDEFINE_EVENT(), avoiding the evil macro.
       const wxEventTypeTag<ObservedEvt> EvtObs(wxNewEventType());

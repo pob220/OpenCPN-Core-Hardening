@@ -33,12 +33,13 @@
 #include <wx/event.h>
 #include <wx/window.h>
 
-#include "model/plugin_handler.h"
+#include "observable/event.h"
 
+#include "model/plugin_handler.h"
 #include "model/plugin_loader.h"
+
 #include "gui_lib.h"
 #include "load_errors_dlg.h"
-#include "observable_evt.h"
 
 #ifdef __ANDROID__
 #include "androidUTIL.h"
@@ -157,7 +158,7 @@ LoadErrorsDlgCtrl::LoadErrorsDlgCtrl(wxWindow* parent) : m_parent(parent) {
   load_complete_listener.Listen(loader->evt_plugin_loadall_finalize, this,
                                 EVT_LOAD_COMPLETE);
   Bind(EVT_LOAD_COMPLETE, [&](ObservedEvt& ev) {
-    auto errors = UnpackEvtPointer<std::vector<LoadError>>(ev);
+    auto errors = obs::UnpackEvtPointer<std::vector<LoadError>>(ev);
     if (errors->size() != 0) Run(m_parent, *errors);
   });
 }

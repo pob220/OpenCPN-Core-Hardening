@@ -14,11 +14,13 @@
 #include <wx/evtloop.h>
 #include <wx/fileconf.h>
 #include <wx/jsonval.h>
-#include <wx/jsonreader.h>
 
 #include <wx/timer.h>
 
 #include <gtest/gtest.h>
+
+#include "ocpn-nlohmann/json.hpp"
+#include "observable/configvar.h"
 
 #include "model/ais_decoder.h"
 #include "model/ais_defs.h"
@@ -45,7 +47,6 @@
 #include "model/select.h"
 #include "model/semantic_vers.h"
 #include "model/std_instance_chk.h"
-#include "observable_confvar.h"
 #include "ocpn_plugin.h"
 
 #include "test_config.h"
@@ -179,7 +180,7 @@ public:
 
   public:
     Sink() {
-      Observable observable("1234");
+      obs::Observable observable("1234");
       listener.Listen(observable, this, EVT_BAR);
       Bind(EVT_BAR, [&](ObservedEvt ev) {
         auto msg = ev.GetSharedPtr();
@@ -199,7 +200,7 @@ public:
       auto id = static_cast<uint64_t>(1234);
       auto n2k_msg = std::make_shared<const Nmea2000Msg>(
           id, payload, shared_navaddr_none2000);
-      Observable observable("1234");
+      obs::Observable observable("1234");
       observable.Notify(n2k_msg);
     }
   };
@@ -663,7 +664,7 @@ public:
       listener.Listen(n2k_msg, this, EVT_FOO);
       listeners.push_back(std::move(listener));
       Bind(EVT_FOO, [&](ObservedEvt ev) {
-        auto n2k_msg = UnpackEvtPointer<Nmea2000Msg>(ev);
+        auto n2k_msg = obs::UnpackEvtPointer<Nmea2000Msg>(ev);
         std::string s(n2k_msg->payload.begin(), n2k_msg->payload.end());
         s_result = s;
         s_bus = n2k_msg->bus;
@@ -701,7 +702,7 @@ public:
     Sink() {
       listener.Listen(AppMsg(AppMsg::Type::GnssFix), this, EVT_FOO);
       Bind(EVT_FOO, [&](ObservedEvt ev) {
-        auto msg = UnpackEvtPointer<const AppMsg>(ev);
+        auto msg = obs::UnpackEvtPointer<const AppMsg>(ev);
         auto fix = std::static_pointer_cast<const GnssFix>(msg);
         if (fix == 0) {
           std::cerr << "Cannot cast pointer\n" << std::flush;
@@ -998,7 +999,7 @@ public:
 
   private:
     void OnNotify(ObservedEvt& o) {
-      auto s = UnpackEvtPointer<std::string>(o);
+      auto s = obs::UnpackEvtPointer<std::string>(o);
       EXPECT_TRUE(*s == "arg1");
       int_result0++;
     }
@@ -1008,7 +1009,7 @@ public:
 
   ObsTorture() {
     ObsListener l1;
-    Observable o("key1");
+    obs::Observable o("key1");
     std::vector<std::thread> threads;
     for (int i = 0; i < 10; i += 1) {
       threads.push_back(std::thread([&] {
@@ -1080,20 +1081,19 @@ public:
   static std::string GetSocketPath() {
     wxFileName path;
     try {
-    if (getenv("OCPN_TEST_HOMEDIR"))
-      path = wxFileName(getenv("OCPN_TEST_HOMEDIR"), "opencpn-ipc");
-    else
-      path = wxFileName("~/.opencpn", "opencpn-ipc");
-    path.Normalize(wxPATH_NORM_TILDE);
-    auto dirpath = path.GetPath();
-    if (!wxFileName::DirExists(dirpath)) wxFileName::Mkdir(dirpath);
-    return path.GetFullPath().ToStdString();
+      if (getenv("OCPN_TEST_HOMEDIR"))
+        path = wxFileName(getenv("OCPN_TEST_HOMEDIR"), "opencpn-ipc");
+      else
+        path = wxFileName("~/.opencpn", "opencpn-ipc");
+      path.Normalize(wxPATH_NORM_TILDE);
+      auto dirpath = path.GetPath();
+      if (!wxFileName::DirExists(dirpath)) wxFileName::Mkdir(dirpath);
+      return path.GetFullPath().ToStdString();
     } catch (std::exception& e) {
-        std::string what = e.what();
-        what += ", using path: " + path.GetFullPath().ToStdString();
-        throw std::runtime_error(what);
+      std::string what = e.what();
+      what += ", using path: " + path.GetFullPath().ToStdString();
+      throw std::runtime_error(what);
     }
-
   }
 
 protected:
@@ -1344,10 +1344,13 @@ TEST(Loopback, SignalK) {
   EXPECT_TRUE(s_result == "vessels.urn:mrn:imo:mmsi:265599691");
   EXPECT_TRUE(s_result3 == "signalk.stupan.se:3000");
   EXPECT_TRUE(s_bus == NavAddr::Bus::Signalk);
-  wxJSONReader reader;
-  wxJSONValue root;
-  int err_count = reader.Parse(s_result2, &root);
-  EXPECT_EQ(err_count, 0);
+  bool failed = false;
+  try {
+    nlohmann::json root = nlohmann::json::parse(s_result2);
+  } catch (nlohmann::json::exception&) {
+    failed = true;
+  }
+  EXPECT_FALSE(failed);
 }
 
 TEST(Loopback, BadInput) {

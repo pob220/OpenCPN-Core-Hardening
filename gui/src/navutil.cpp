@@ -58,6 +58,7 @@
 #include <wx/timectrl.h>
 #include <wx/tokenzr.h>
 
+#include "observable/global_var.h"
 #include "o_sound/o_sound.h"
 
 #include "model/ais_decoder.h"
@@ -96,7 +97,6 @@
 #include "layer.h"
 #include "navutil.h"
 #include "nmea0183.h"
-#include "observable_globvar.h"
 #include "ocpndc.h"
 #include "ocpn_plugin.h"
 #include "ocpn_platform.h"
@@ -347,8 +347,6 @@ int MyConfig::LoadMyConfig() {
     g_cm93_zoom_factor = wxMin(g_cm93_zoom_factor, CM93_ZOOM_FACTOR_MAX_RANGE);
     g_cm93_zoom_factor =
         wxMax(g_cm93_zoom_factor, (-CM93_ZOOM_FACTOR_MAX_RANGE));
-
-    g_tile_basemap_zoom_factor = 4.0;
 
     if ((g_detailslider_dialog_x < 0) ||
         (g_detailslider_dialog_x > display_width))
@@ -2578,18 +2576,8 @@ bool ExportGPXRoutes(wxWindow *parent, RouteList *pRoutes,
   pgpx->SaveFile(fns);
   delete pgpx;
 
-  // Kick off the Android file chooser activity
-  wxString path;
-  int response = g_Platform->DoFileSelectorDialog(
-      parent, &path, _("Export GPX file"), g_gpx_path, suggestedName + ".gpx",
-      "*.gpx");
-
-  if (path.IsEmpty())  // relocation handled by SAF logic in Java
-    return true;
-
-  wxCopyFile(fns, path);  // known to be safe paths, since SAF is not involved.
+  AndroidExportSAF(parent, suggestedName + ".gpx");
   return true;
-
 #endif
 
   return false;
@@ -2615,16 +2603,7 @@ bool ExportGPXTracks(wxWindow *parent, std::vector<Track *> *pTracks,
   pgpx->SaveFile(fns);
   delete pgpx;
 
-  // Kick off the Android file chooser activity
-  wxString path;
-  int response = g_Platform->DoFileSelectorDialog(
-      parent, &path, _("Export GPX file"), g_gpx_path, suggestedName + ".gpx",
-      "*.gpx");
-
-  if (path.IsEmpty())  // relocation handled by SAF logic in Java
-    return true;
-
-  wxCopyFile(fns, path);  // known to be safe paths, since SAF is not involved.
+  AndroidExportSAF(parent, suggestedName + ".gpx");
   return true;
 #endif
 
@@ -2651,18 +2630,8 @@ bool ExportGPXWaypoints(wxWindow *parent, RoutePointList *pRoutePoints,
   pgpx->SaveFile(fns);
   delete pgpx;
 
-  // Kick off the Android file chooser activity
-  wxString path;
-  int response = g_Platform->DoFileSelectorDialog(
-      parent, &path, _("Export GPX file"), g_gpx_path, suggestedName + ".gpx",
-      "*.gpx");
-
-  if (path.IsEmpty())  // relocation handled by SAF logic in Java
-    return true;
-
-  wxCopyFile(fns, path);  // known to be safe paths, since SAF is not involved.
+  AndroidExportSAF(parent, suggestedName + ".gpx");
   return true;
-
 #endif
 
   return false;
@@ -2737,17 +2706,10 @@ void ExportGPX(wxWindow *parent, bool bviz_only, bool blayer) {
   pgpx->SaveFile(fns);
 
 #ifdef __ANDROID__
-  // Kick off the Android file chooser activity
-  wxString path;
-  int response =
-      g_Platform->DoFileSelectorDialog(parent, &path, _("Export GPX file"),
-                                       g_gpx_path, "userobjects.gpx", "*.gpx");
-  if (path.IsEmpty())  // relocation handled by SAF logic in Java
-    return;
-
-  wxCopyFile(fns, path);  // known to be safe paths, since SAF is not involved.
+  AndroidExportSAF(parent, "userobjects.gpx");
   return;
 #endif
+
   delete pgpx;
   ::wxEndBusyCursor();
   delete pprog;
@@ -2794,12 +2756,16 @@ void UI_ImportGPX(wxWindow *parent, bool islayer, wxString dirpath,
     }
     delete popenDialog;
 #else  // Android
+    if (!androidCheckSAFPermission("primary:Documents")) {
+      AndroidDoSAFPermissions();
+      return;
+    }
+
     wxString path;
     response = g_Platform->DoFileSelectorDialog(
         NULL, &path, _("Import GPX file"), g_gpx_path, "", "*.gpx");
 
     wxFileName fn(path);
-    g_gpx_path = fn.GetPath();
     if (path.IsEmpty()) {  // Return from SAF processing, expecting callback
       PrepareImportAndroid(islayer, isPersistent);
       return;
@@ -3238,9 +3204,10 @@ void DimeControl(wxWindow *ctrl) {
   if (wxPlatformInfo::Get().CheckOSVersion(10, 14)) {
     return;
   }
-#endif
-#ifdef __WXQT__
+#elif defined(__WXQT__)
   return;  // this is seriously broken on wxqt
+#elif defined(__WXGTK__)
+  return;  // trust the native Dark/Light setting
 #endif
 
   if (wxSystemSettings::GetColour(wxSystemColour::wxSYS_COLOUR_WINDOW).Red() <

@@ -45,6 +45,21 @@
 #include <X11/Xlib.h>
 #endif
 
+#ifdef __WXGTK__
+// Forward-declare the GTK/GDK symbols we need to avoid pulling in <gtk/gtk.h>
+// (build flags do not expose the GTK include paths; libgtk-3 is already linked
+// transitively via libwx_gtk3u_core).
+extern "C" {
+typedef struct _GdkWindow GdkWindow;
+typedef struct _GtkWidget GtkWidget;
+typedef int gboolean;
+void gtk_widget_realize(GtkWidget *widget);
+GdkWindow *gtk_widget_get_window(GtkWidget *widget);
+void gdk_window_set_override_redirect(GdkWindow *window,
+                                      gboolean override_redirect);
+}
+#endif
+
 #include "gl_headers.h"  // Must be included before anything using GL stuff
 
 #ifdef __VISUALC__
@@ -85,7 +100,6 @@
 #include <wx/image.h>
 #include <wx/intl.h>
 #include <wx/ipc.h>
-#include <wx/jsonreader.h>
 #include <wx/listctrl.h>
 #include <wx/power.h>
 #include <wx/printdlg.h>
@@ -95,6 +109,7 @@
 #include <wx/stdpaths.h>
 #include <wx/tokenzr.h>
 
+#include "observable/observable.h"
 #include "o_sound/o_sound.h"
 
 #include "model/ais_decoder.h"
@@ -149,7 +164,6 @@
 #include "layer.h"
 #include "mark_info.h"
 #include "navutil.h"
-#include "observable.h"
 #include "ocpn_app.h"
 #include "ocpn_aui_manager.h"
 #include "ocpn_frame.h"
@@ -376,6 +390,21 @@ public:
     SetSizer(sizer);
     Layout();
     Center();  // Center the wallpaper frame
+
+#ifdef __WXGTK__
+    // Bypass the WM: make this an override-redirect window so Openbox cannot
+    // restack it (Openbox was sending WM_TAKE_FOCUS to gFrame after its map,
+    // raising gFrame above the fullscreen wallpaper during plugin LateInit
+    // and exposing the chart canvases mid-load).
+    GtkWidget *widget = reinterpret_cast<GtkWidget *>(GetHandle());
+    if (widget) {
+      gtk_widget_realize(widget);
+      GdkWindow *gdk = gtk_widget_get_window(widget);
+      if (gdk) {
+        gdk_window_set_override_redirect(gdk, 1);
+      }
+    }
+#endif
   }
 };
 
@@ -647,7 +676,7 @@ bool MyApp::OnCmdLineParsed(wxCmdLineParser &parser) {
     g_unit_test_1 = static_cast<int>(number);
     if (g_unit_test_1 == 0) g_unit_test_1 = -1;
   }
-  safe_mode::set_mode(parser.Found("safe_mode"));
+  safe_mode::SetMode(parser.Found("safe_mode"));
   ParseLoglevel(parser);
   wxString wxstr;
   if (parser.Found("configdir", &wxstr)) {
@@ -838,8 +867,8 @@ bool MyApp::OnInit() {
 
 #ifndef __ANDROID__
   // Check if last run failed, set up safe_mode.
-  if (!safe_mode::get_mode()) {
-    safe_mode::check_last_start();
+  if (!safe_mode::GetMode()) {
+    safe_mode::CheckLastStart();
   }
 #endif
 
@@ -1054,6 +1083,7 @@ bool MyApp::OnInit() {
 
   if (g_kiosk_startup) {
     g_wallpaper = new WallpaperFrame();
+    g_wallpaper->ShowFullScreen(true);
     g_wallpaper->Show();
   }
 
@@ -1237,7 +1267,7 @@ bool MyApp::OnInit() {
         "starting in software mode. Use --renderer=vulkan-experimental to "
         "retry explicitly or --reset-renderer to reset settings.");
   }
-  if (safe_mode::get_mode()) requested_backend = RendererBackend::Software;
+  if (safe_mode::GetMode()) requested_backend = RendererBackend::Software;
 #ifndef ocpnUSE_GL
   if (requested_backend == RendererBackend::OpenGLLegacy)
     requested_backend = RendererBackend::Software;
@@ -1977,7 +2007,7 @@ int MyApp::OnExit() {
   FontMgr::Shutdown();
 
   g_Platform->OnExit_2();
-  safe_mode::clear_check();
+  safe_mode::MarkStartAsOk();
   delete g_Platform;
 
   return TRUE;

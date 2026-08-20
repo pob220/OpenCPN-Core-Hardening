@@ -29,9 +29,6 @@
 
 #include "config.h"
 
-#include <wx/jsonreader.h>
-#include <wx/jsonval.h>
-#include <wx/jsonwriter.h>
 #include <wx/tokenzr.h>
 
 #include "model/comm_driver.h"
@@ -63,7 +60,7 @@ void LogBroadcastOutputMessageColor(const std::shared_ptr<const NavMsg>& msg,
 }
 
 void BroadcastNMEA0183Message(const wxString& msg, NmeaLog* nmea_log,
-                              EventVar& on_msg_sent) {
+                              obs::EventVar& on_msg_sent) {
   auto& registry = CommDriverRegistry::GetInstance();
   const std::vector<std::unique_ptr<AbstractCommDriver>>& drivers =
       registry.GetDrivers();

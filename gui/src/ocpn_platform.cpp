@@ -22,6 +22,7 @@
  */
 
 #include <cstdlib>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -52,10 +53,9 @@
 #include <wx/filename.h>
 #include <wx/tokenzr.h>
 #include <wx/textfile.h>
-#include <wx/jsonval.h>
-#include <wx/jsonreader.h>
 
 #include "config.h"
+#include "ocpn-nlohmann/json.hpp"
 
 #include "model/ais_decoder.h"
 #include "model/ais_state_vars.h"
@@ -509,6 +509,8 @@ void OCPNPlatform::Initialize_2() {
     }
   }
 
+  if (!g_TCData_Dir.Length()) g_TCData_Dir = GetPrivateDataDir();
+
 #endif
 
   //  Set a global toolbar scale factor
@@ -615,12 +617,12 @@ void OCPNPlatform::OnExit_2() {
 
 #ifdef ocpnUSE_GL
 
-bool HasGLExt(wxJSONValue &glinfo, const std::string ext) {
-  if (!glinfo.HasMember("GL_EXTENSIONS")) {
+static bool HasGLExt(const nlohmann::json &glinfo, const std::string &ext) {
+  if (glinfo.count("GL_EXTENSIONS") <= 0) {
     return false;
   }
-  for (int i = 0; i < glinfo["GL_EXTENSIONS"].Size(); i++) {
-    if (glinfo["GL_EXTENSIONS"][i].AsString() == ext) {
+  for (const auto &extension : glinfo["GL_EXTENSIONS"]) {
+    if (extension.get<std::string>() == ext) {
       return true;
     }
   }
@@ -688,41 +690,43 @@ bool OCPNPlatform::BuildGLCaps(void *pbuf) {
     }
     return false;
   }
-
-  wxFileInputStream fis(gl_json);
-  wxJSONReader reader;
-  wxJSONValue root;
-  reader.Parse(fis, &root);
-  if (reader.GetErrorCount() > 0) {
+  nlohmann::json root;
+  std::ifstream f(gl_json);
+  try {
+    root = nlohmann::json::parse(f);
+  } catch (nlohmann::json::exception &e) {
     wxLogMessage("Failed to parse JSON output from OpenGL test utility.");
-    for (const auto &l : reader.GetErrors()) {
-      wxLogMessage(l);
-    }
+    wxLogMessage(e.what());
     return false;
   }
 
-  OCPN_GLCaps *pcaps = (OCPN_GLCaps *)pbuf;
-
-  if (root.HasMember("GL_RENDERER")) {
-    pcaps->Renderer = root["GL_RENDERER"].AsString();
+  auto *pcaps = static_cast<OCPN_GLCaps *>(pbuf);
+  if (root.contains("GL_RENDERER")) {
+    pcaps->Renderer = root["GL_RENDERER"].get<std::string>();
   } else {
     wxLogMessage("GL_RENDERER not found.");
     return false;
   }
-  if (root.HasMember("GL_VERSION")) {
-    pcaps->Version = root["GL_VERSION"].AsString();
+  if (root.contains("GL_VERSION")) {
+    pcaps->Version = root["GL_VERSION"].get<std::string>();
   } else {
     wxLogMessage("GL_VERSION not found.");
     return false;
   }
-  if (root.HasMember("GL_SHADING_LANGUAGE_VERSION")) {
-    pcaps->GLSL_Version = root["GL_SHADING_LANGUAGE_VERSION"].AsString();
+  if (root.contains("GL_SHADING_LANGUAGE_VERSION")) {
+    pcaps->GLSL_Version =
+        root["GL_SHADING_LANGUAGE_VERSION"].get<std::string>();
   } else {
     wxLogMessage("GL_SHADING_LANGUAGE_VERSION not found.");
     return false;
   }
-  if (root.HasMember("GL_USABLE")) {
-    if (!root["GL_USABLE"].AsBool()) {
+  if (root.contains("GL_USABLE")) {
+    if (!root["GL_USABLE"].get<bool>()) {
+      wxLogMessage("OpenGL test utility reports that OpenGL is not usable.");
+      return false;
+    }
+  } else if (root.contains("\"GL_USABLE\"")) {
+    if (!root["\"GL_USABLE\""].get<bool>()) {
       wxLogMessage("OpenGL test utility reports that OpenGL is not usable.");
       return false;
     }
@@ -757,10 +761,10 @@ bool OCPNPlatform::BuildGLCaps(void *pbuf) {
     pcaps->bCanDoFBO = false;
   }
 
-  pcaps->bCanDoVBO = HasGLExt(
-      root, "GL_ARB_vertex_buffer_object");  // TODO: Or the old way where we
-                                             // enable it without querying the
-                                             // extension is right?
+  pcaps->bCanDoVBO = HasGLExt(root, "GL_ARB_vertex_buffer_object");
+  // TODO: Or the old way where we enable it without querying the
+  // extension is right?
+
   top_frame::Get()->Show();
   return true;
 #else
@@ -1402,12 +1406,11 @@ void OCPNPlatform::SetUpgradeOptions(wxString vNew, wxString vOld) {
     g_n_ownship_min_mm = 8;
     g_toolbarConfig = "X.....XX.......XX.XXXXXXXXXXX";
 
-    //  Experience indicates a slightly larger default font size is better
-    pConfig->DeleteGroup("/Settings/QTFonts");
-    g_default_font_size = 20;
-    g_default_font_facename = "Roboto";
-
-    FontMgr::Get().Shutdown();  // Restart the font manager
+    // Avoid changing fonts on app upgrade.
+    // pConfig->DeleteGroup("/Settings/QTFonts");
+    // g_default_font_size = 20;
+    // g_default_font_facename = "Roboto";
+    // FontMgr::Get().Shutdown();  // Restart the font manager
 
     // Reshow the zoom buttons
     g_bShowMuiZoomButtons = true;
@@ -1929,12 +1932,12 @@ double OCPNPlatform::GetToolbarScaleFactor(int GUIScaleFactor) {
   //  This may be approximated in a device orientation-independent way as:
   //   45pixels * DENSITY
   double premult = 1.0;
-  if (g_config_display_size_manual && g_config_display_size_mm[0] > 0) {
-    double target_size = 9.0;  // mm
-
-    double basic_tool_size_mm = tool_size / GetDisplayDPmm();
-    premult = target_size / basic_tool_size_mm;
-
+  if (g_config_display_size_manual && g_config_display_size_mm.size()) {
+    if (g_config_display_size_mm[0] > 0) {
+      double target_size = 9.0;  // mm
+      double basic_tool_size_mm = tool_size / GetDisplayDPmm();
+      premult = target_size / basic_tool_size_mm;
+    }
   } else {
     premult = wxMax(45 * getAndroidDisplayDensity(), 45) /
               tool_size;  // make sure not too small

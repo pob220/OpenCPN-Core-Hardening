@@ -29,8 +29,11 @@
 #include <sstream>
 
 #include <wx/filename.h>
-#include <wx/jsonreader.h>
 #include <wx/log.h>
+
+#include "ocpn-nlohmann/json.hpp"
+#include "observable/evtvar.h"
+#include "observable/global_var.h"
 
 #include "model/base_platform.h"
 #include "model/catalog_handler.h"
@@ -39,8 +42,6 @@
 #include "model/downloader.h"
 #include "model/ocpn_utils.h"
 #include "model/plugin_handler.h"
-#include "observable_evtvar.h"
-#include "observable_globvar.h"
 
 #ifdef _WIN32
 static const std::string SEP("\\");
@@ -233,7 +234,7 @@ std::vector<std::string> CatalogHandler::GetChannels() { return channels; }
 bool CatalogHandler::SetActiveChannel(const char* channel) {
   for (auto c : channels) {
     if (c == channel) {
-      GlobalVar<wxString> catalog_channel(&g_catalog_channel);
+      obs::GlobalVar<wxString> catalog_channel(&g_catalog_channel);
       catalog_channel.Set(channel);
       return true;
     }
@@ -336,22 +337,21 @@ catalog_status CatalogHandler::LoadChannels(std::ostream* stream) {
 }
 
 catalog_status CatalogHandler::LoadChannels(const std::string& json) {
-  wxJSONValue node;
-  wxJSONReader parser;
-  parser.Parse(json.c_str(), &node);
-  if (!node.IsArray()) {
+  nlohmann::json branches;
+  try {
+    branches = nlohmann::json::parse(json);
+  } catch (nlohmann::json::exception&) {
+  }
+  if (!branches.is_array()) {
     wxLogMessage("Cannot parse json (toplevel)");
-    error_msg = parser.GetErrors().Item(0).ToStdString();
     return ServerStatus::JSON_ERROR;
   }
-  auto branches = node.AsArray();
-  wxLogMessage("Got %d branches", branches->Count());
+  wxLogMessage("Got %d branches", branches.size());
   channels.clear();
-  for (size_t i = 0; i < branches->Count(); i += 1) {
-    auto branch = branches->Item(i);
-    channels.push_back(branch["name"].AsString().ToStdString());
+  for (const auto& branch : branches) {
+    channels.push_back(branch["name"].get<std::string>());
   }
-  if (branches->Count() > 0) {
+  if (branches.size() > 0) {
     wxLogMessage("First branch: %s", channels[0].c_str());
   }
   return ServerStatus::OK;

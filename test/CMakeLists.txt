@@ -68,6 +68,7 @@ if (CURL)
 endif ()
 
 add_executable(tests ${SRC})
+target_include_directories(tests PRIVATE ${CMAKE_SOURCE_DIR}/gui/include)
 
 if (DEFINED ENV{FLATPAK_ID})
   target_compile_definitions(tests PRIVATE OCPN_FLATPAK)
