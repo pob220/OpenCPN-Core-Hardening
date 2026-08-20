@@ -1456,6 +1456,31 @@ TEST(PluginApi, PrivateDataPathRespectsConfigDir) {
   PluginPrivateDataPathApp app;
 }
 
+#ifdef __unix__
+TEST(PlatformPaths, OpenCpnPrefixRelocatesSharedDataAndPlugins) {
+  wxInitializer initializer;
+  ASSERT_TRUE(initializer.IsOk());
+
+  wxString saved_prefix;
+  const bool had_prefix = wxGetEnv("OPENCPN_PREFIX", &saved_prefix);
+  const wxString test_prefix =
+      wxString::FromUTF8((fs::path(CMAKE_BINARY_DIR) / "relocatable-prefix")
+                             .string());
+  ASSERT_TRUE(wxSetEnv("OPENCPN_PREFIX", test_prefix));
+
+  BasePlatform platform;
+  EXPECT_TRUE(
+      platform.GetSharedDataDir().StartsWith(test_prefix + "/share/"));
+  EXPECT_TRUE(platform.GetPluginDir().StartsWith(test_prefix + "/lib/"));
+
+  if (had_prefix) {
+    EXPECT_TRUE(wxSetEnv("OPENCPN_PREFIX", saved_prefix));
+  } else {
+    EXPECT_TRUE(wxUnsetEnv("OPENCPN_PREFIX"));
+  }
+}
+#endif
+
 TEST(FormatTime, Basic) {
   wxTimeSpan span(0, 0, 7200, 0);
   auto s = formatTimeDelta(span).ToStdString();

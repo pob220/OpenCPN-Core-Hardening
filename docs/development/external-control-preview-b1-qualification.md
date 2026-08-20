@@ -21,8 +21,8 @@ The release `SHA256SUMS` is the authority for every binary and archive.
 ## Automated evidence
 
 - combined OpenCPN RelWithDebInfo application and test targets built;
-- OpenCPN deterministic suite: 119/119 passed sequentially;
-- focused GCC AddressSanitizer safety/API suite: 51/51 passed with
+- OpenCPN deterministic suite: 120/120 passed sequentially;
+- focused GCC AddressSanitizer safety/API/package suite: 52/52 passed with
   `abort_on_error=1`;
 - xWeatherRouting stock-host suite: 176/176 passed;
 - xWeatherRouting hardened-host shared library built against this combined
@@ -34,6 +34,13 @@ The release `SHA256SUMS` is the authority for every binary and archive.
   unprivileged isolated root; the freshly built xGRIB and hardened
   xWeatherRouting archives overlaid successfully and all three ELF runtime
   files were present with the expected architecture.
+
+The first extracted-runtime attempt also caught an inherited packaging error:
+`--prefix` relocated the CPack files but wxWidgets still used the compiled
+`/usr/local` resource prefix. `OPENCPN_PREFIX` now configures shared-data and
+plug-in paths consistently, has a deterministic regression test, and is set by
+the supplied launcher. Runtime qualification was restarted from the rebuilt
+package; the failed pre-fix attempt is not counted as a pass.
 
 LeakSanitizer is disabled for the focused run because the managed ptrace
 environment makes LSan itself terminate. The historical aggregate test and

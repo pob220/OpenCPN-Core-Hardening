@@ -38,6 +38,7 @@ Download these four release assets into an empty directory:
 opencpn-5.15.0-preview-b1-hardening-linux-x86_64-installer.sh
 xweather-routing-preview-b1-hardened-arch-x86_64.tar.gz
 xgrib-preview-b1-0.2.4.0-arch-x86_64.tar.gz
+run-preview-b1.sh
 SHA256SUMS
 ```
 
@@ -70,9 +71,14 @@ plug-in, enable **xGRIB** and **xWeatherRouting**, then close OpenCPN. Do not
 enable the bundled GRIB and xGRIB together. Likewise, do not enable the
 original Weather Routing plug-in and xWeatherRouting together.
 
+The launcher sets `OPENCPN_PREFIX` so wxWidgets resolves shared data and
+plug-ins under the extracted root rather than the compiled `/usr/local`
+default. The combined core explicitly supports and tests this existing
+environment boundary. Do not add `--portable`; its layout is different.
+
 ```sh
-"$OCPN_PREVIEW_ROOT/usr/local/bin/opencpn" \
-  --portable --configdir "$OCPN_PREVIEW_ROOT/config" --no_opengl
+chmod u+x run-preview-b1.sh
+OCPN_PREVIEW_ROOT="$OCPN_PREVIEW_ROOT" ./run-preview-b1.sh
 ```
 
 ## Enable the local API

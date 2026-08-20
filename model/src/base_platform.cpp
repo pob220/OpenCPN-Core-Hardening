@@ -107,6 +107,16 @@ static inline bool IsWindows() {
   return wxPlatformInfo::Get().GetOperatingSystemId() & wxOS_WINDOWS;
 }
 
+#ifdef __unix__
+static void ConfigureUnixInstallPrefix(wxStandardPaths& paths) {
+  wxString prefix;
+  if (!wxGetEnv("OPENCPN_PREFIX", &prefix) || prefix.IsEmpty()) {
+    prefix = wxString(PREFIX, wxConvUTF8);
+  }
+  paths.SetInstallPrefix(prefix);
+}
+#endif
+
 static bool checkIfFlatpacked() {
   wxString id;
   if (!wxGetEnv("FLATPAK_ID", &id)) {
@@ -207,7 +217,7 @@ wxString& AbstractPlatform::GetHomeDir() {
     //    wxStandardPaths& std_path = wxApp::GetTraits()->GetStandardPaths();
 
 #ifdef __unix__
-    std_path.SetInstallPrefix(wxString(PREFIX, wxConvUTF8));
+    ConfigureUnixInstallPrefix(std_path);
 #endif
 
 #ifdef __WXMSW__
@@ -273,6 +283,9 @@ wxString& AbstractPlatform::GetSharedDataDir() {
      * appname.app/Contents/SharedSupport bundle subdirectory
      */
     wxStandardPaths& std_path = GetStdPaths();
+#ifdef __unix__
+    ConfigureUnixInstallPrefix(std_path);
+#endif
     m_SData_Dir = std_path.GetDataDir();
     appendOSDirSlash(&m_SData_Dir);
 
@@ -437,6 +450,9 @@ wxString AbstractPlatform::GetWinPluginBaseDir() {
 wxString& AbstractPlatform::GetPluginDir() {
   if (m_PluginsDir.IsEmpty()) {
     wxStandardPaths& std_path = GetStdPaths();
+#ifdef __unix__
+    ConfigureUnixInstallPrefix(std_path);
+#endif
 
     //  Get the PlugIns directory location
     m_PluginsDir = std_path.GetPluginsDir();  // linux:   {prefix}/lib/opencpn
