@@ -41,6 +41,8 @@
 #include "observable/evtvar.h"
 #include "std_filesystem.h"
 
+#include "model/external_api.h"
+
 #include "pugixml.hpp"
 #include "pincode.h"
 #include "route.h"
@@ -247,6 +249,9 @@ public:
 
   std::string GetEndpoint() override { return m_endpoint; }
 
+  /** Configure the disabled-by-default v2 API using transport-free services. */
+  void ConfigureExternalApi(ocpn::control::ServiceBundle services);
+
   /** IoThread interface.*/
   void UpdateReturnStatus(RestServerResult r);
 
@@ -351,6 +356,7 @@ private:
   std::thread m_std_thread;
   IoThread m_io_thread;
   Pincode m_pincode;
+  std::shared_ptr<ocpn::control::ExternalApiRouter> m_external_api;
 };
 
 #endif  // guard

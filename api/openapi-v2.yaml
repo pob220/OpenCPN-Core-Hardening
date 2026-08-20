@@ -1,0 +1,271 @@
+openapi: 3.1.0
+info:
+  title: OpenCPN External Control API
+  version: 2.0.0-dev
+  description: >-
+    Disabled-by-default, scoped external-control API. Coordinates are WGS84,
+    timestamps are UTC, and units are included in field names.
+servers:
+  - url: https://127.0.0.1:8443
+security:
+  - bearerToken: []
+paths:
+  /api/v2/version:
+    get:
+      operationId: getVersion
+      responses:
+        '200':
+          description: Server and API versions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [apiVersion, openCpnVersion]
+                properties:
+                  apiVersion: {type: string}
+                  openCpnVersion: {type: string}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v2/capabilities:
+    get:
+      operationId: getCapabilities
+      responses:
+        '200':
+          description: Capabilities available to this principal
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [apiVersion, capabilities]
+                properties:
+                  apiVersion: {type: string}
+                  capabilities:
+                    type: array
+                    items: {type: string}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v2/readiness:
+    get:
+      operationId: getReadiness
+      responses:
+        '200':
+          description: Application readiness
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+        default: {$ref: '#/components/responses/Error'}
+  /api/v2/navigation:
+    get:
+      operationId: getNavigation
+      x-required-scope: navigation:read
+      responses:
+        '200':
+          description: Immutable navigation snapshot
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NavigationSnapshot'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v2/routes:
+    get:
+      operationId: listRoutes
+      x-required-scope: routes:read
+      responses:
+        '200':
+          description: Route catalogue
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [routes]
+                properties:
+                  routes:
+                    type: array
+                    items: {$ref: '#/components/schemas/RouteSummary'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v2/routes/{guid}:
+    parameters:
+      - name: guid
+        in: path
+        required: true
+        schema: {type: string, minLength: 1}
+    get:
+      operationId: getRoute
+      x-required-scope: routes:read
+      responses:
+        '200':
+          description: Complete route geometry and revision
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Route'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v2/active-route:
+    get:
+      operationId: getActiveRoute
+      x-required-scope: routes:read
+      responses:
+        '200':
+          description: Active route and leg snapshot
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ActiveRoute'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v2/chart-safety/validate-point:
+    post:
+      operationId: validatePoint
+      x-required-scope: charts:query
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/SafetyConstraints'}
+                - type: object
+                  required: [point]
+                  properties:
+                    point: {$ref: '#/components/schemas/Coordinate'}
+      responses: {$ref: '#/components/x-responses/SafetyResponses'}
+  /api/v2/chart-safety/validate-segment:
+    post:
+      operationId: validateSegment
+      x-required-scope: charts:query
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/SafetyConstraints'}
+                - type: object
+                  required: [start, end]
+                  properties:
+                    start: {$ref: '#/components/schemas/Coordinate'}
+                    end: {$ref: '#/components/schemas/Coordinate'}
+      responses: {$ref: '#/components/x-responses/SafetyResponses'}
+  /api/v2/chart-safety/validate-route:
+    post:
+      operationId: validateRoute
+      x-required-scope: charts:query
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/SafetyConstraints'}
+                - type: object
+                  required: [route]
+                  properties:
+                    route:
+                      type: array
+                      minItems: 2
+                      items: {$ref: '#/components/schemas/Coordinate'}
+      responses: {$ref: '#/components/x-responses/SafetyResponses'}
+components:
+  securitySchemes:
+    bearerToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+  responses:
+    Error:
+      description: Stable machine-readable error
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
+  x-responses:
+    SafetyResponses:
+      '200':
+        description: Conservative chart-safety decision
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ChartSafetyResult'}
+      default: {$ref: '#/components/responses/Error'}
+  schemas:
+    Coordinate:
+      type: object
+      required: [latitudeDegrees, longitudeDegrees]
+      properties:
+        latitudeDegrees: {type: number, minimum: -90, maximum: 90}
+        longitudeDegrees: {type: number, minimum: -180, maximum: 180}
+    Readiness:
+      type: object
+      required: [ready, closing, unavailableCapabilities]
+      properties:
+        ready: {type: boolean}
+        closing: {type: boolean}
+        unavailableCapabilities: {type: array, items: {type: string}}
+    NavigationSnapshot:
+      type: object
+      required: [positionValid, stale, source, receiptTimeUtc, ageMilliseconds]
+      properties:
+        position: {oneOf: [{$ref: '#/components/schemas/Coordinate'}, {type: 'null'}]}
+        positionValid: {type: boolean}
+        courseOverGroundDegreesTrue: {type: [number, 'null']}
+        speedOverGroundKnots: {type: [number, 'null'], minimum: 0}
+        headingDegreesTrue: {type: [number, 'null']}
+        magneticVariationDegrees: {type: [number, 'null']}
+        source: {type: string}
+        measurementTimeUtc: {type: [string, 'null'], format: date-time}
+        receiptTimeUtc: {type: string, format: date-time}
+        ageMilliseconds: {type: integer, minimum: 0}
+        stale: {type: boolean}
+    RouteSummary:
+      type: object
+      required: [guid, name, revision, waypointCount, isLayer, isDraft]
+      properties:
+        guid: {type: string}
+        name: {type: string}
+        revision: {type: integer, minimum: 0}
+        waypointCount: {type: integer, minimum: 0}
+        isLayer: {type: boolean}
+        isDraft: {type: boolean}
+    Waypoint:
+      type: object
+      required: [guid, name, position]
+      properties:
+        guid: {type: string}
+        name: {type: string}
+        position: {$ref: '#/components/schemas/Coordinate'}
+    Route:
+      allOf:
+        - {$ref: '#/components/schemas/RouteSummary'}
+        - type: object
+          required: [waypoints]
+          properties:
+            waypoints: {type: array, items: {$ref: '#/components/schemas/Waypoint'}}
+    ActiveRoute:
+      type: object
+      required: [active, routeGuid, activeWaypointGuid, activeLegIndex, routeRevision]
+      properties:
+        active: {type: boolean}
+        routeGuid: {type: [string, 'null']}
+        activeWaypointGuid: {type: [string, 'null']}
+        activeLegIndex: {type: [integer, 'null'], minimum: 0}
+        routeRevision: {type: [integer, 'null'], minimum: 0}
+    SafetyConstraints:
+      type: object
+      required: [minimumDepthMeters]
+      properties:
+        minimumDepthMeters: {type: number, minimum: 0}
+        landMarginNauticalMiles: {type: number, minimum: 0, default: 0}
+    ChartSafetyResult:
+      type: object
+      required: [decision, authority, causeCode, chartDatabaseIdentity, constraints, warnings]
+      properties:
+        decision: {type: string, enum: [pass, fail, unknown]}
+        authority: {type: string, enum: [authoritative, fallback, unknown]}
+        causeCode: {type: string}
+        chartDatabaseIdentity: {type: string}
+        constraints: {$ref: '#/components/schemas/SafetyConstraints'}
+        warnings: {type: array, items: {type: string}}
+        failedSegmentIndex: {type: integer, minimum: 0}
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string}

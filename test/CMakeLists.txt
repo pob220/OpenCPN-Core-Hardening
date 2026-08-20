@@ -45,6 +45,7 @@ set(SRC
   chart_safety_depth_tests.cpp
   chart_safety_service_tests.cpp
   datetime_tests.cpp
+  external_api_tests.cpp
   tests.cpp filter_tests.cpp
   renderer_config_tests.cpp
   navutil_base_tests.cpp

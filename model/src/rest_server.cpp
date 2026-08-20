@@ -24,6 +24,7 @@
 
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -38,6 +39,7 @@
 #include "observable/event.h"
 
 #include "model/config_vars.h"
+#include "model/external_api.h"
 #include "model/comm_navmsg_bus.h"
 #include "model/gui_events.h"
 #include "model/logger.h"
@@ -66,6 +68,30 @@ static const char* const kListRoutesReply =
 /** Kind of messages sent from io thread to main code. */
 enum { ORS_START_OF_SESSION, ORS_CHUNK_N, ORS_CHUNK_LAST };
 
+struct ExternalApiRequestContext {
+  explicit ExternalApiRequestContext(ocpn::control::HttpRequest value)
+      : request(std::move(value)),
+        deadline(std::chrono::steady_clock::now() + 10s) {}
+
+  void Complete(ocpn::control::HttpResponse value) {
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      if (cancelled) return;
+      response = std::move(value);
+      complete = true;
+    }
+    completed.notify_one();
+  }
+
+  ocpn::control::HttpRequest request;
+  ocpn::control::HttpResponse response;
+  const std::chrono::steady_clock::time_point deadline;
+  std::mutex mutex;
+  std::condition_variable completed;
+  bool complete = false;
+  bool cancelled = false;
+};
+
 struct RestIoEvtData {
   const enum class Cmd {
     Ping,
@@ -75,6 +101,7 @@ struct RestIoEvtData {
     ActivateRoute,
     ReverseRoute,
     PluginMsg,
+    ExternalApi,
   } cmd;
   const std::string api_key;  ///< Rest API parameter apikey
   const std::string source;   ///< Rest API parameter source
@@ -84,6 +111,7 @@ struct RestIoEvtData {
 
   /** GPX data for Cmd::Object, Guid for Cmd::CheckWrite, Activate, Reverse. */
   const std::string payload;
+  const std::shared_ptr<ExternalApiRequestContext> external_context;
 
   /** Create a Cmd::Object instance. */
   static RestIoEvtData CreateCmdData(const std::string& key,
@@ -132,9 +160,23 @@ struct RestIoEvtData {
     return {Cmd::ReverseRoute, key, src, guid, ""};
   }
 
+  static RestIoEvtData CreateExternalApiData(
+      std::shared_ptr<ExternalApiRequestContext> context) {
+    return RestIoEvtData(std::move(context));
+  }
+
 private:
   RestIoEvtData(Cmd c, std::string key, std::string src, std::string _payload,
                 std::string _id, bool _force, bool _activate);
+  explicit RestIoEvtData(std::shared_ptr<ExternalApiRequestContext> context)
+      : cmd(Cmd::ExternalApi),
+        api_key(),
+        source(),
+        id(),
+        force(false),
+        activate(false),
+        payload(),
+        external_context(std::move(context)) {}
   RestIoEvtData(Cmd c, std::string key, std::string src, std::string _payload,
                 std::string id)
       : RestIoEvtData(c, key, src, _payload, id, false, false) {}
@@ -321,6 +363,47 @@ static void HandleReverseRoute(struct mg_connection* c,
   mg_http_reply(c, 200, "", "{\"result\": %d}\n", parent->GetReturnStatus());
 }
 
+static std::string MgString(const mg_str& value) {
+  return value.ptr ? std::string(value.ptr, value.len) : std::string();
+}
+
+static void HandleExternalApi(struct mg_connection* c,
+                              struct mg_http_message* hm,
+                              RestServer* parent) {
+  char remote[80] = {};
+  mg_ntoa(&c->rem, remote, sizeof(remote));
+  ocpn::control::HttpRequest request;
+  request.method = MgString(hm->method);
+  request.path = MgString(hm->uri);
+  request.body = MgString(hm->body);
+  request.remote_address = remote;
+  if (auto* authorization = mg_http_get_header(hm, "Authorization"))
+    request.headers["Authorization"] = MgString(*authorization);
+  if (auto* content_type = mg_http_get_header(hm, "Content-Type"))
+    request.headers["Content-Type"] = MgString(*content_type);
+
+  auto context = std::make_shared<ExternalApiRequestContext>(std::move(request));
+  auto event_data = std::make_shared<RestIoEvtData>(
+      RestIoEvtData::CreateExternalApiData(context));
+  PostEvent(parent, event_data, ORS_CHUNK_LAST);
+
+  std::unique_lock<std::mutex> lock(context->mutex);
+  if (!context->completed.wait_until(lock, context->deadline,
+                                     [&] { return context->complete; })) {
+    context->cancelled = true;
+    mg_http_reply(
+        c, 504,
+        "Content-Type: application/json\r\nCache-Control: no-store\r\n", "%s",
+        "{\"error\":{\"code\":\"request_timeout\",\"message\":\"Application request timed out\"}}\n");
+    return;
+  }
+  std::string headers;
+  for (const auto& [name, value] : context->response.headers)
+    headers += name + ": " + value + "\r\n";
+  mg_http_reply(c, context->response.status, headers.c_str(), "%s",
+                context->response.body.c_str());
+}
+
 // We use the same event handler function for HTTP and HTTPS connections
 // fn_data is NULL for plain HTTP, and non-NULL for HTTPS
 static void fn(struct mg_connection* c, int ev, void* ev_data, void* fn_data) {
@@ -335,9 +418,15 @@ static void fn(struct mg_connection* c, int ev, void* ev_data, void* fn_data) {
     mg_tls_init(c, &opts);
   } else if (ev == MG_EV_TLS_HS) {  // Think of this as "start of session"
     PostEvent(parent, nullptr, ORS_START_OF_SESSION);
+  } else if (ev == MG_EV_HTTP_MSG) {
+    auto hm = (struct mg_http_message*)ev_data;
+    const auto uri = MgString(hm->uri);
+    if (uri.rfind("/api/v2/", 0) == 0) HandleExternalApi(c, hm, parent);
   } else if (ev == MG_EV_HTTP_CHUNK) {
     auto hm = (struct mg_http_message*)ev_data;
-    if (mg_http_match_uri(hm, "/api/ping")) {
+    if (MgString(hm->uri).rfind("/api/v2/", 0) == 0) {
+      return;
+    } else if (mg_http_match_uri(hm, "/api/ping")) {
       HandlePing(c, hm, parent);
     } else if (mg_http_match_uri(hm, "/api/rx_object")) {
       HandleRxObject(c, hm, parent);
@@ -483,6 +572,42 @@ void RestServer::StopServer() {
   }
 }
 
+void RestServer::ConfigureExternalApi(
+    ocpn::control::ServiceBundle services) {
+  bool enabled = false;
+  bool allow_lan = false;
+  long maximum_body_bytes = 1024 * 1024;
+  wxString token_digest;
+  wxString scopes;
+  TheBaseConfig()->SetPath("/Settings/ExternalControl");
+  TheBaseConfig()->Read("Enabled", &enabled, false);
+  TheBaseConfig()->Read("AllowLan", &allow_lan, false);
+  TheBaseConfig()->Read("MaximumBodyBytes", &maximum_body_bytes,
+                        1024 * 1024L);
+  TheBaseConfig()->Read("TokenSha256", &token_digest);
+  TheBaseConfig()->Read("TokenScopes", &scopes,
+                        "navigation:read;routes:read;charts:query");
+
+  auto authorizer = std::make_shared<ocpn::control::TokenAuthorizer>();
+  if (!token_digest.empty()) {
+    std::set<std::string> parsed_scopes;
+    for (const auto& scope : ocpn::split(scopes.ToStdString().c_str(), ";"))
+      if (!scope.empty()) parsed_scopes.insert(scope);
+    authorizer->PutDigest(token_digest.ToStdString(),
+                          {"configured-client", std::move(parsed_scopes)});
+  } else if (enabled) {
+    wxLogWarning("External control enabled without a configured token hash");
+  }
+  ocpn::control::ExternalApiRouter::Options options;
+  options.enabled = enabled;
+  options.allow_lan = allow_lan;
+  options.maximum_body_bytes =
+      static_cast<std::size_t>(std::max(1024L, maximum_body_bytes));
+  options.server_version = VERSION_FULL;
+  m_external_api = std::make_shared<ocpn::control::ExternalApiRouter>(
+      std::move(services), std::move(authorizer), std::move(options));
+}
+
 bool RestServer::LoadConfig() {
   TheBaseConfig()->SetPath("/Settings/RestServer");
   wxString key_string;
@@ -526,6 +651,20 @@ bool RestServer::CheckApiKey(const RestIoEvtData& evt_data) {
 
 void RestServer::HandleServerMessage(ObservedEvt& event) {
   auto evt_data = obs::UnpackEvtPointer<RestIoEvtData>(event);
+  if (evt_data && evt_data->cmd == RestIoEvtData::Cmd::ExternalApi) {
+    if (!evt_data->external_context) return;
+    if (!m_external_api) {
+      evt_data->external_context->Complete(
+          {404,
+           {{"Content-Type", "application/json"},
+            {"Cache-Control", "no-store"}},
+           "{\"error\":{\"code\":\"api_disabled\",\"message\":\"External control API is disabled\"}}\n"});
+      return;
+    }
+    evt_data->external_context->Complete(
+        m_external_api->Handle(evt_data->external_context->request));
+    return;
+  }
   m_reply_body = "";
   switch (event.GetId()) {
     case ORS_START_OF_SESSION:
@@ -558,6 +697,9 @@ void RestServer::HandleServerMessage(ObservedEvt& event) {
   }
 
   switch (evt_data->cmd) {
+    case RestIoEvtData::Cmd::ExternalApi:
+      // Handled before the legacy session and pairing state above.
+      return;
     case RestIoEvtData::Cmd::Ping:
       UpdateReturnStatus(RestServerResult::NoError);
       return;
@@ -762,7 +904,8 @@ RestIoEvtData::RestIoEvtData(Cmd c, std::string key, std::string src,
       id(_id),
       force(_force),
       activate(_activate),
-      payload(std::move(_payload)) {}
+      payload(std::move(_payload)),
+      external_context(nullptr) {}
 
 RestServerDlgCtx::RestServerDlgCtx()
     : run_pincode_dlg([](const std::string&, const std::string&) -> wxDialog* {

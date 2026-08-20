@@ -875,6 +875,7 @@ set(GUI_HDRS
     ${GUI_HDR_DIR}/priority_gui.h
     ${GUI_HDR_DIR}/quilt.h
     ${GUI_HDR_DIR}/rest_server_gui.h
+    ${GUI_HDR_DIR}/external_control_gui.h
     ${GUI_HDR_DIR}/rollover_win.h
     ${GUI_HDR_DIR}/route_ctx_factory.h
     ${GUI_HDR_DIR}/route_gui.h
@@ -1006,6 +1007,7 @@ set(GUI_SRC
     ${GUI_SRC_DIR}/priority_gui.cpp
     ${GUI_SRC_DIR}/quilt.cpp
     ${GUI_SRC_DIR}/rest_server_gui.cpp
+    ${GUI_SRC_DIR}/external_control_gui.cpp
     ${GUI_SRC_DIR}/rollover_win.cpp
     ${GUI_SRC_DIR}/route_gui.cpp
     ${GUI_SRC_DIR}/routemanagerdialog.cpp

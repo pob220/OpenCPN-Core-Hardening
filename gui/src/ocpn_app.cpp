@@ -171,6 +171,7 @@ void gdk_window_set_override_redirect(GdkWindow *window,
 #include "o_senc.h"
 #include "options.h"
 #include "rest_server_gui.h"
+#include "external_control_gui.h"
 #include "route_ctx_factory.h"
 #include "routemanagerdialog.h"
 #include "routeman_gui.h"
@@ -1459,6 +1460,7 @@ bool MyApp::OnInit() {
 
     make_certificate(ipAddr, data_dir.ToStdString());
 
+    m_rest_server.ConfigureExternalApi(MakeExternalControlServices());
     m_rest_server.StartServer(fs::path(data_dir.ToStdString()));
     StartMDNSService(g_hostname.ToStdString(), "opencpn-object-control-service",
                      8000);
