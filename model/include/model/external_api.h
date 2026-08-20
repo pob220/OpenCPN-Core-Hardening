@@ -64,6 +64,16 @@ public:
                     std::shared_ptr<TokenAuthorizer> authorizer,
                     Options options);
 
+  /**
+   * Return true for requests which only touch thread-safe planning-job state.
+   *
+   * The REST transport normally dispatches v2 requests to the application
+   * thread because most live OpenCPN services own GUI-thread state.  Planning
+   * status and cancellation are deliberately different: they must remain
+   * reachable while a provider is waiting for application-thread chart work.
+   */
+  static bool CanHandleOnTransportThread(const HttpRequest& request);
+
   HttpResponse Handle(const HttpRequest& request) const;
   /** Encode a bounded batch for an already-authenticated event connection. */
   HttpResponse ReadEvents(std::uint64_t after_sequence, std::size_t maximum,

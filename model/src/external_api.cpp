@@ -463,6 +463,21 @@ ExternalApiRouter::ExternalApiRouter(
       authorizer_(std::move(authorizer)),
       options_(std::move(options)) {}
 
+bool ExternalApiRouter::CanHandleOnTransportThread(
+    const HttpRequest& request) {
+  if (request.method != "GET" && request.method != "DELETE") return false;
+  const auto path = request.path.substr(0, request.path.find('?'));
+  constexpr const char* prefix = "/api/v2/planning/jobs/";
+  if (path.rfind(prefix, 0) != 0) return false;
+  auto suffix = path.substr(std::char_traits<char>::length(prefix));
+  if (suffix.size() > 7 &&
+      suffix.compare(suffix.size() - 7, 7, "/result") == 0) {
+    if (request.method != "GET") return false;
+    suffix.resize(suffix.size() - 7);
+  }
+  return !suffix.empty() && suffix.find('/') == std::string::npos;
+}
+
 HttpResponse ExternalApiRouter::Handle(const HttpRequest& request) const {
   if (!options_.enabled)
     return Error(404, "api_disabled", "External control API is disabled");

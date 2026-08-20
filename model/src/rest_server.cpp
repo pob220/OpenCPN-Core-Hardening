@@ -389,6 +389,20 @@ static void HandleExternalApi(struct mg_connection* c,
   if (auto* idempotency_key = mg_http_get_header(hm, "Idempotency-Key"))
     request.headers["Idempotency-Key"] = MgString(*idempotency_key);
 
+  // Cancellation and status must not queue behind application-thread chart
+  // work initiated by the very planning job being controlled.  The router's
+  // classifier is intentionally narrow; all UI-owned services retain the
+  // established application-thread dispatch below.
+  if (ocpn::control::ExternalApiRouter::CanHandleOnTransportThread(request)) {
+    const auto response = parent->HandleExternalApiTransportRequest(request);
+    std::string headers;
+    for (const auto& [name, value] : response.headers)
+      headers += name + ": " + value + "\r\n";
+    mg_http_reply(c, response.status, headers.c_str(), "%s",
+                  response.body.c_str());
+    return;
+  }
+
   auto context = std::make_shared<ExternalApiRequestContext>(std::move(request));
   auto event_data = std::make_shared<RestIoEvtData>(
       RestIoEvtData::CreateExternalApiData(context));
@@ -704,6 +718,16 @@ RestServer::ParseExternalEventSubscription(const std::string& message) const {
     return ocpn::control::Result<std::uint32_t>::FromError(
         "capability_unavailable", "Event service is unavailable");
   return m_external_api->ParseEventSubscription(message);
+}
+
+ocpn::control::HttpResponse RestServer::HandleExternalApiTransportRequest(
+    const ocpn::control::HttpRequest& request) const {
+  if (!m_external_api)
+    return {404,
+            {{"Content-Type", "application/json"},
+             {"Cache-Control", "no-store"}},
+            "{\"error\":{\"code\":\"api_disabled\",\"message\":\"External control API is disabled\"}}\n"};
+  return m_external_api->Handle(request);
 }
 
 void RestServer::ConfigureExternalApi(

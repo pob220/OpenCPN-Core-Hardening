@@ -339,6 +339,27 @@ TEST(InProcessPlanningJobServiceTest, ShutdownCancelsAndDrainsRunningProvider) {
   EXPECT_TRUE(snapshot.value->cancellation_requested);
 }
 
+TEST(ExternalApiRouterTest, OnlyPlanningObservationAndCancellationBypassGui) {
+  HttpRequest request;
+  request.path = "/api/v2/planning/jobs/plan-7";
+  request.method = "GET";
+  EXPECT_TRUE(ExternalApiRouter::CanHandleOnTransportThread(request));
+  request.method = "DELETE";
+  EXPECT_TRUE(ExternalApiRouter::CanHandleOnTransportThread(request));
+  request.path += "/result";
+  EXPECT_FALSE(ExternalApiRouter::CanHandleOnTransportThread(request));
+  request.method = "GET";
+  EXPECT_TRUE(ExternalApiRouter::CanHandleOnTransportThread(request));
+
+  request.method = "POST";
+  EXPECT_FALSE(ExternalApiRouter::CanHandleOnTransportThread(request));
+  request.method = "GET";
+  request.path = "/api/v2/routes";
+  EXPECT_FALSE(ExternalApiRouter::CanHandleOnTransportThread(request));
+  request.path = "/api/v2/planning/jobs/plan-7/unexpected";
+  EXPECT_FALSE(ExternalApiRouter::CanHandleOnTransportThread(request));
+}
+
 TEST_F(ExternalApiTest, NavigationUsesExplicitUnitsValidityAndNulls) {
   const auto response = router.Handle(Request("GET", "/api/v2/navigation"));
   const auto body = nlohmann::json::parse(response.body);

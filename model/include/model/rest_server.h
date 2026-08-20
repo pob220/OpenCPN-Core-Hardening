@@ -258,6 +258,10 @@ public:
   ocpn::control::Result<std::uint32_t> ParseExternalEventSubscription(
       const std::string& message) const;
 
+  /** Handle a request classified as transport-thread safe by ExternalApiRouter. */
+  ocpn::control::HttpResponse HandleExternalApiTransportRequest(
+      const ocpn::control::HttpRequest& request) const;
+
   /** IoThread interface.*/
   void UpdateReturnStatus(RestServerResult r);
 
