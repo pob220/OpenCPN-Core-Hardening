@@ -36,8 +36,8 @@ Download these four release assets into an empty directory:
 
 ```text
 opencpn-5.15.0-preview-b1-hardening-linux-x86_64-installer.sh
-xweather-routing-preview-b-hardened-arch-x86_64.tar.gz
-xgrib-preview-b-0.2.4.0-arch-x86_64.tar.gz
+xweather-routing-preview-b1-hardened-arch-x86_64.tar.gz
+xgrib-preview-b1-0.2.4.0-arch-x86_64.tar.gz
 SHA256SUMS
 ```
 
@@ -53,15 +53,17 @@ chmod u+x opencpn-5.15.0-preview-b1-hardening-linux-x86_64-installer.sh
 ./opencpn-5.15.0-preview-b1-hardening-linux-x86_64-installer.sh \
   --skip-license --exclude-subdir --prefix="$OCPN_PREVIEW_ROOT"
 
-tar -xzf xweather-routing-preview-b-hardened-arch-x86_64.tar.gz \
+tar -xzf xweather-routing-preview-b1-hardened-arch-x86_64.tar.gz \
   -C "$OCPN_PREVIEW_ROOT" --strip-components=1
-tar -xzf xgrib-preview-b-0.2.4.0-arch-x86_64.tar.gz \
+tar -xzf xgrib-preview-b1-0.2.4.0-arch-x86_64.tar.gz \
   -C "$OCPN_PREVIEW_ROOT/usr/local" --strip-components=1
 ```
 
 The expected executable is
 `$OCPN_PREVIEW_ROOT/usr/local/bin/opencpn`. The core installer has been checked
-by extracting all 791 payload files into an unprivileged isolated directory.
+by extracting all 790 core payload files into an unprivileged isolated
+directory. The two plug-in archives were then extracted over that test root
+and their installed shared libraries verified.
 
 Start it once, configure a test chart directory, disable the bundled **GRIB**
 plug-in, enable **xGRIB** and **xWeatherRouting**, then close OpenCPN. Do not

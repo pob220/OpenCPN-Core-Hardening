@@ -30,6 +30,10 @@ The release `SHA256SUMS` is the authority for every binary and archive.
 - xGRIB suite: 22/22 passed;
 - Python SDK: 3/3 passed;
 - MCP protocol suite: 7/7 passed.
+- the self-extracting installer unpacked 790 core payload files into an
+  unprivileged isolated root; the freshly built xGRIB and hardened
+  xWeatherRouting archives overlaid successfully and all three ELF runtime
+  files were present with the expected architecture.
 
 LeakSanitizer is disabled for the focused run because the managed ptrace
 environment makes LSan itself terminate. The historical aggregate test and
