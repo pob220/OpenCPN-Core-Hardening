@@ -22,6 +22,14 @@ class Handler(BaseHTTPRequestHandler):
         else: self.send_response(404); body = {"error": {"code": "not_found", "message": "missing"}}
         data = json.dumps(body).encode(); self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0)); body = json.loads(self.rfile.read(length))
+        if self.path == "/api/v2/planning/jobs" and self.headers.get("Idempotency-Key"):
+            self.send_response(202); response = {"id": "job-1", "state": "queued", "request": body}
+        else:
+            self.send_response(404); response = {"error": {"code": "not_found", "message": "missing"}}
+        data = json.dumps(response).encode(); self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
     def log_message(self, *_): pass
 
 
@@ -41,6 +49,9 @@ class ClientTest(unittest.TestCase):
         with self.assertRaises(OpenCPNError) as caught: Client(self.url, "wrong").version()
         self.assertEqual(caught.exception.code, "invalid_token")
         self.assertNotIn("wrong", str(caught.exception))
+    def test_planning_submission_has_idempotency(self):
+        result = Client(self.url, "secret").start_plan({"providerCapability": "test.v1"})
+        self.assertEqual(result["id"], "job-1")
 
 
 if __name__ == "__main__": unittest.main()

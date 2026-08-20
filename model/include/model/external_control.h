@@ -8,10 +8,14 @@
 #ifndef MODEL_EXTERNAL_CONTROL_H_
 #define MODEL_EXTERNAL_CONTROL_H_
 
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
+#include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
@@ -82,6 +86,58 @@ struct ReadinessSnapshot {
   bool ready = false;
   bool closing = false;
   std::vector<std::string> unavailable_capabilities;
+};
+
+enum class ApplicationEventType {
+  Navigation,
+  NavigationValidity,
+  RouteCatalogue,
+  ActiveRoute,
+  ChartDatabase,
+  Readiness,
+  PlanningJob
+};
+
+struct ApplicationEvent {
+  std::uint64_t sequence = 0;
+  Clock::time_point timestamp{};
+  ApplicationEventType type = ApplicationEventType::Readiness;
+  std::string subject_id;
+};
+
+struct ApplicationEventBatch {
+  bool gap = false;
+  std::uint64_t oldest_available_sequence = 0;
+  std::uint64_t latest_sequence = 0;
+  std::vector<ApplicationEvent> events;
+};
+
+class ApplicationEventStream {
+public:
+  virtual ~ApplicationEventStream() = default;
+  virtual std::uint64_t Publish(ApplicationEvent event) = 0;
+  virtual ApplicationEventBatch ReadAfter(std::uint64_t sequence,
+                                          std::size_t maximum) const = 0;
+  virtual std::uint64_t LatestSequence() const = 0;
+  virtual void Close() = 0;
+};
+
+/** Thread-safe bounded semantic event history for transport adapters. */
+class BoundedApplicationEventStream : public ApplicationEventStream {
+public:
+  explicit BoundedApplicationEventStream(std::size_t capacity = 256);
+  std::uint64_t Publish(ApplicationEvent event) override;
+  ApplicationEventBatch ReadAfter(std::uint64_t sequence,
+                                  std::size_t maximum) const override;
+  std::uint64_t LatestSequence() const override;
+  void Close() override;
+
+private:
+  const std::size_t capacity_;
+  mutable std::mutex mutex_;
+  std::deque<ApplicationEvent> events_;
+  std::uint64_t next_sequence_ = 1;
+  bool closed_ = false;
 };
 
 enum class ChartSafetyDecision { Pass, Fail, Unknown };
@@ -172,12 +228,109 @@ public:
       const ChartSafetyConstraints& constraints) = 0;
 };
 
+enum class PlanningJobState { Queued, Running, Completed, Failed, Cancelled };
+
+struct PlanningRequest {
+  std::string provider_capability;
+  Coordinate start;
+  Coordinate destination;
+  std::optional<Clock::time_point> departure_time;
+  ChartSafetyConstraints safety;
+  std::string vessel_identity;
+  std::string polar_identity;
+  std::string weather_dataset_identity;
+  std::string current_dataset_identity;
+  std::chrono::hours horizon{240};
+  bool allow_climatology_fallback = false;
+  std::uint64_t effort_limit = 1000000;
+};
+
+struct PlanningResult {
+  RouteMutation draft_route;
+  std::vector<RouteMutation> alternatives;
+  std::vector<std::string> input_provenance;
+  std::string chart_database_identity;
+  ChartSafetyResult final_safety;
+  std::vector<std::string> warnings;
+};
+
+struct PlanningJobSnapshot {
+  std::string id;
+  std::string owner_id;
+  std::string provider_capability;
+  PlanningJobState state = PlanningJobState::Queued;
+  double progress = 0.0;
+  bool cancellation_requested = false;
+  Clock::time_point submitted_time{};
+  Clock::time_point updated_time{};
+  std::optional<ServiceError> error;
+};
+
+class PlanningCancellation {
+public:
+  virtual ~PlanningCancellation() = default;
+  virtual bool IsCancellationRequested() const = 0;
+};
+
+class PlanningProvider {
+public:
+  virtual ~PlanningProvider() = default;
+  virtual std::string Capability() const = 0;
+  virtual Result<PlanningResult> Run(
+      const PlanningRequest& request, const PlanningCancellation& cancellation,
+      const std::function<void(double)>& report_progress) = 0;
+};
+
+class PlanningJobService {
+public:
+  virtual ~PlanningJobService() = default;
+  virtual bool RegisterProvider(std::shared_ptr<PlanningProvider> provider) = 0;
+  virtual bool UnregisterProvider(const std::string& capability) = 0;
+  virtual std::vector<std::string> ProviderCapabilities() const = 0;
+  virtual Result<PlanningJobSnapshot> Submit(const PlanningRequest& request,
+                                             const std::string& owner_id) = 0;
+  virtual Result<PlanningJobSnapshot> Get(const std::string& id,
+                                          const std::string& owner_id) const = 0;
+  virtual Result<PlanningJobSnapshot> Cancel(const std::string& id,
+                                             const std::string& owner_id) = 0;
+  virtual Result<PlanningResult> GetResult(const std::string& id,
+                                           const std::string& owner_id) const = 0;
+  virtual void Shutdown() = 0;
+};
+
+/** Bounded worker-pool job host. Providers are pinned while jobs run. */
+class InProcessPlanningJobService final : public PlanningJobService {
+public:
+  explicit InProcessPlanningJobService(
+      std::shared_ptr<ApplicationEventStream> events = nullptr,
+      std::size_t worker_count = 2, std::size_t maximum_jobs = 64);
+  ~InProcessPlanningJobService() override;
+  bool RegisterProvider(std::shared_ptr<PlanningProvider> provider) override;
+  bool UnregisterProvider(const std::string& capability) override;
+  std::vector<std::string> ProviderCapabilities() const override;
+  Result<PlanningJobSnapshot> Submit(const PlanningRequest& request,
+                                     const std::string& owner_id) override;
+  Result<PlanningJobSnapshot> Get(const std::string& id,
+                                  const std::string& owner_id) const override;
+  Result<PlanningJobSnapshot> Cancel(const std::string& id,
+                                     const std::string& owner_id) override;
+  Result<PlanningResult> GetResult(const std::string& id,
+                                   const std::string& owner_id) const override;
+  void Shutdown() override;
+
+private:
+  class Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
 struct ServiceBundle {
   std::shared_ptr<ReadinessService> readiness;
   std::shared_ptr<NavigationSnapshotService> navigation;
   std::shared_ptr<RouteQueryService> routes;
   std::shared_ptr<RouteCommandService> route_commands;
   std::shared_ptr<ChartSafetyQuery> chart_safety;
+  std::shared_ptr<ApplicationEventStream> events;
+  std::shared_ptr<PlanningJobService> planning;
 };
 
 }  // namespace ocpn::control

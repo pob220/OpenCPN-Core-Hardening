@@ -81,6 +81,21 @@ std::string Iso8601(Clock::time_point time) {
   return stream.str();
 }
 
+std::optional<Clock::time_point> ParseUtcTime(const std::string& value) {
+  std::tm utc{};
+  std::istringstream stream(value);
+  stream >> std::get_time(&utc, "%Y-%m-%dT%H:%M:%SZ");
+  if (stream.fail() || stream.peek() != std::char_traits<char>::eof())
+    return std::nullopt;
+#ifdef _WIN32
+  const auto seconds = _mkgmtime(&utc);
+#else
+  const auto seconds = timegm(&utc);
+#endif
+  if (seconds == static_cast<std::time_t>(-1)) return std::nullopt;
+  return Clock::from_time_t(seconds);
+}
+
 json CoordinateJson(const Coordinate& coordinate) {
   return {{"latitudeDegrees", coordinate.latitude_degrees},
           {"longitudeDegrees", coordinate.longitude_degrees}};
@@ -131,12 +146,58 @@ const char* AuthorityText(ChartSafetyAuthority authority) {
   return "unknown";
 }
 
+const char* EventTypeText(ApplicationEventType type) {
+  switch (type) {
+    case ApplicationEventType::Navigation:
+      return "navigation";
+    case ApplicationEventType::NavigationValidity:
+      return "navigation-validity";
+    case ApplicationEventType::RouteCatalogue:
+      return "route-catalogue";
+    case ApplicationEventType::ActiveRoute:
+      return "active-route";
+    case ApplicationEventType::ChartDatabase:
+      return "chart-database";
+    case ApplicationEventType::Readiness:
+      return "readiness";
+    case ApplicationEventType::PlanningJob:
+      return "planning-job";
+  }
+  return "unknown";
+}
+
+std::uint32_t EventBit(ApplicationEventType type) {
+  return 1U << static_cast<unsigned>(type);
+}
+
+std::optional<ApplicationEventType> ParseEventType(const std::string& type) {
+  if (type == "navigation") return ApplicationEventType::Navigation;
+  if (type == "navigation-validity")
+    return ApplicationEventType::NavigationValidity;
+  if (type == "route-catalogue") return ApplicationEventType::RouteCatalogue;
+  if (type == "active-route") return ApplicationEventType::ActiveRoute;
+  if (type == "chart-database") return ApplicationEventType::ChartDatabase;
+  if (type == "readiness") return ApplicationEventType::Readiness;
+  if (type == "planning-job") return ApplicationEventType::PlanningJob;
+  return std::nullopt;
+}
+
+json EventJson(const ApplicationEvent& event) {
+  json result = {{"type", EventTypeText(event.type)},
+                 {"sequence", event.sequence},
+                 {"timestampUtc", Iso8601(event.timestamp)},
+                 {"schemaVersion", 1}};
+  if (!event.subject_id.empty()) result["subjectId"] = event.subject_id;
+  return result;
+}
+
 HttpResponse ServiceFailure(const ServiceError& error) {
   const bool client_error =
       error.code.rfind("invalid_", 0) == 0 || error.code == "not_ready" ||
       error.code == "active_route" || error.code == "layer_owned";
   const int status = error.code == "not_found" ? 404
                      : error.code == "conflict" ? 409
+                     : error.code == "result_not_ready" ? 409
                      : client_error ? 400
                                     : 503;
   return Error(status, error.code, error.message);
@@ -239,6 +300,120 @@ HttpResponse CommandResponse(int status, const RouteCommandResult& result) {
   return JsonResponse(status, body);
 }
 
+const char* PlanningStateText(PlanningJobState state) {
+  switch (state) {
+    case PlanningJobState::Queued:
+      return "queued";
+    case PlanningJobState::Running:
+      return "running";
+    case PlanningJobState::Completed:
+      return "completed";
+    case PlanningJobState::Failed:
+      return "failed";
+    case PlanningJobState::Cancelled:
+      return "cancelled";
+  }
+  return "failed";
+}
+
+json PlanningJobJson(const PlanningJobSnapshot& job) {
+  json result = {{"id", job.id},
+                 {"providerCapability", job.provider_capability},
+                 {"state", PlanningStateText(job.state)},
+                 {"progress", job.progress},
+                 {"cancellationRequested", job.cancellation_requested},
+                 {"submittedTimeUtc", Iso8601(job.submitted_time)},
+                 {"updatedTimeUtc", Iso8601(job.updated_time)}};
+  result["error"] = job.error
+                        ? json{{"code", job.error->code},
+                               {"message", job.error->message}}
+                        : json(nullptr);
+  return result;
+}
+
+Result<PlanningRequest> ParsePlanningRequest(const json& body) {
+  try {
+    PlanningRequest request;
+    request.provider_capability = body.at("providerCapability").get<std::string>();
+    const auto start = ParseCoordinate(body.at("start"));
+    const auto destination = ParseCoordinate(body.at("destination"));
+    if (start.error)
+      return Result<PlanningRequest>::FromError(start.error->code,
+                                                start.error->message);
+    if (destination.error)
+      return Result<PlanningRequest>::FromError(destination.error->code,
+                                                destination.error->message);
+    request.start = *start.value;
+    request.destination = *destination.value;
+    if (body.contains("departureTimeUtc")) {
+      const auto parsed_time =
+          ParseUtcTime(body.at("departureTimeUtc").get<std::string>());
+      if (!parsed_time)
+        return Result<PlanningRequest>::FromError(
+            "invalid_planning_request",
+            "departureTimeUtc must be an ISO 8601 UTC timestamp ending in Z");
+      request.departure_time = *parsed_time;
+    }
+    request.safety.minimum_depth_meters = body.at("minimumDepthMeters").get<double>();
+    request.safety.land_margin_nautical_miles =
+        body.value("landMarginNauticalMiles", 0.0);
+    request.vessel_identity = body.value("vesselIdentity", std::string());
+    request.polar_identity = body.value("polarIdentity", std::string());
+    request.weather_dataset_identity =
+        body.value("weatherDatasetIdentity", std::string());
+    request.current_dataset_identity =
+        body.value("currentDatasetIdentity", std::string());
+    request.horizon = std::chrono::hours(body.value("horizonHours", 240));
+    request.allow_climatology_fallback =
+        body.value("allowClimatologyFallback", false);
+    request.effort_limit = body.value("effortLimit", std::uint64_t{1000000});
+    if (request.provider_capability.empty() ||
+        !std::isfinite(request.safety.minimum_depth_meters) ||
+        request.safety.minimum_depth_meters < 0.0 ||
+        !std::isfinite(request.safety.land_margin_nautical_miles) ||
+        request.safety.land_margin_nautical_miles < 0.0 ||
+        request.horizon.count() <= 0 || request.horizon.count() > 24 * 365 ||
+        request.effort_limit == 0 || request.effort_limit > 1000000000ULL)
+      return Result<PlanningRequest>::FromError(
+          "invalid_planning_request", "Planning constraints are outside limits");
+    return Result<PlanningRequest>::FromValue(std::move(request));
+  } catch (const json::exception&) {
+    return Result<PlanningRequest>::FromError(
+        "invalid_planning_request",
+        "Planning requires providerCapability, start, destination and minimumDepthMeters");
+  }
+}
+
+json PlanningResultJson(const PlanningResult& result) {
+  const auto route = [](const RouteMutation& value) {
+    json output = {{"name", value.name}, {"waypoints", json::array()}};
+    for (const auto& waypoint : value.waypoints)
+      output["waypoints"].push_back(
+          {{"guid", waypoint.guid}, {"name", waypoint.name},
+           {"position", CoordinateJson(waypoint.position)}});
+    return output;
+  };
+  json alternatives = json::array();
+  for (const auto& alternative : result.alternatives)
+    alternatives.push_back(route(alternative));
+  const auto& safety = result.final_safety;
+  return {{"draftRoute", route(result.draft_route)},
+          {"alternatives", std::move(alternatives)},
+          {"inputProvenance", result.input_provenance},
+          {"chartDatabaseIdentity", result.chart_database_identity},
+          {"warnings", result.warnings},
+          {"finalSafety",
+           {{"decision", DecisionText(safety.decision)},
+            {"authority", AuthorityText(safety.authority)},
+           {"causeCode", safety.cause_code},
+            {"chartDatabaseIdentity", safety.chart_database_identity},
+            {"warnings", safety.warnings},
+            {"constraints",
+             {{"minimumDepthMeters", safety.constraints.minimum_depth_meters},
+              {"landMarginNauticalMiles",
+               safety.constraints.land_margin_nautical_miles}}}}}};
+}
+
 }  // namespace
 
 void TokenAuthorizer::Put(std::string token, Principal principal) {
@@ -313,8 +488,136 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
       capabilities.push_back("routes.guarded-activation.v1");
     if (services_.chart_safety && HasScope(principal, "charts:query"))
       capabilities.push_back("chart-safety.v1");
+    if (services_.events) capabilities.push_back("events.semantic.v1");
+    if (services_.planning && HasScope(principal, "planning:run")) {
+      for (const auto& provider : services_.planning->ProviderCapabilities())
+        capabilities.push_back(provider);
+    }
     return JsonResponse(200, {{"apiVersion", options_.api_version},
                               {"capabilities", capabilities}});
+  }
+  if (request.method == "GET" && path == "/api/v2/events") {
+    if (!services_.events)
+      return Error(503, "capability_unavailable", "Event service is unavailable");
+    std::uint32_t allowed_mask = EventBit(ApplicationEventType::Readiness);
+    if (HasScope(principal, "navigation:read"))
+      allowed_mask |= EventBit(ApplicationEventType::Navigation) |
+                      EventBit(ApplicationEventType::NavigationValidity);
+    if (HasScope(principal, "routes:read"))
+      allowed_mask |= EventBit(ApplicationEventType::RouteCatalogue) |
+                      EventBit(ApplicationEventType::ActiveRoute);
+    if (HasScope(principal, "charts:query"))
+      allowed_mask |= EventBit(ApplicationEventType::ChartDatabase);
+    if (HasScope(principal, "planning:run"))
+      allowed_mask |= EventBit(ApplicationEventType::PlanningJob);
+
+    const auto sequence = services_.events->LatestSequence();
+    json payload = {{"type", "snapshot"},
+                    {"sequence", sequence},
+                    {"timestampUtc", Iso8601(Clock::now())},
+                    {"schemaVersion", 1}};
+    if (services_.readiness) {
+      const auto state = services_.readiness->GetReadiness();
+      payload["readiness"] = {{"ready", state.ready},
+                              {"closing", state.closing},
+                              {"unavailableCapabilities",
+                               state.unavailable_capabilities}};
+    }
+    if (services_.navigation && HasScope(principal, "navigation:read")) {
+      const auto state = services_.navigation->GetSnapshot();
+      if (state.value) {
+        payload["navigation"] = {
+            {"positionValid", state.value->position_valid},
+            {"stale", state.value->stale},
+            {"source", state.value->source}};
+        payload["navigation"]["position"] =
+            state.value->position ? CoordinateJson(*state.value->position)
+                                  : json(nullptr);
+      }
+    }
+    if (services_.routes && HasScope(principal, "routes:read")) {
+      const auto catalogue = services_.routes->ListRoutes();
+      if (catalogue.value) {
+        payload["routes"] = json::array();
+        for (const auto& route : *catalogue.value)
+          payload["routes"].push_back(RouteSummaryJson(route));
+      }
+      const auto active = services_.routes->GetActiveRoute();
+      if (active.value)
+        payload["activeRoute"] = {{"active", active.value->active},
+                                  {"routeGuid", active.value->route_guid},
+                                  {"activeWaypointGuid",
+                                   active.value->active_waypoint_guid},
+                                  {"activeLegIndex", active.value->active_leg_index}};
+    }
+    return {101,
+            {{"X-OpenCPN-Event-Cursor", std::to_string(sequence)},
+             {"X-OpenCPN-Event-Mask", std::to_string(allowed_mask)},
+             {"Cache-Control", "no-store"}},
+            payload.dump()};
+  }
+  constexpr const char* planning_prefix = "/api/v2/planning/jobs/";
+  if (path == "/api/v2/planning/jobs" && request.method == "POST") {
+    if (const auto denied = RequireScope(principal, "planning:run");
+        denied.status != 500)
+      return denied;
+    if (!services_.planning)
+      return Error(503, "capability_unavailable", "Planning service is unavailable");
+    const auto key = Header(request, "Idempotency-Key");
+    if (!key || key->empty() || key->size() > 128)
+      return Error(400, "idempotency_key_required",
+                   "Idempotency-Key must contain 1 to 128 characters");
+    json body;
+    try {
+      body = json::parse(request.body);
+    } catch (const json::exception&) {
+      return Error(400, "malformed_json", "Request body is not valid JSON");
+    }
+    const auto parsed = ParsePlanningRequest(body);
+    if (parsed.error) return ServiceFailure(*parsed.error);
+    const std::string cache_key = principal.id + ":" + *key;
+    const std::string fingerprint = request.method + "\n" + path + "\n" + request.body;
+    std::lock_guard<std::mutex> lock(idempotency_mutex_);
+    if (const auto found = idempotency_results_.find(cache_key);
+        found != idempotency_results_.end()) {
+      if (found->second.first != fingerprint)
+        return Error(409, "idempotency_conflict",
+                     "Idempotency-Key was already used for a different command");
+      return found->second.second;
+    }
+    const auto submitted = services_.planning->Submit(*parsed.value, principal.id);
+    if (submitted.error) return ServiceFailure(*submitted.error);
+    auto response = JsonResponse(202, PlanningJobJson(*submitted.value));
+    idempotency_results_[cache_key] = {fingerprint, response};
+    return response;
+  }
+  if (path.rfind(planning_prefix, 0) == 0) {
+    if (const auto denied = RequireScope(principal, "planning:run");
+        denied.status != 500)
+      return denied;
+    if (!services_.planning)
+      return Error(503, "capability_unavailable", "Planning service is unavailable");
+    auto suffix = path.substr(std::char_traits<char>::length(planning_prefix));
+    const bool result_request =
+        suffix.size() > 7 && suffix.compare(suffix.size() - 7, 7, "/result") == 0;
+    if (result_request) suffix.resize(suffix.size() - 7);
+    if (suffix.empty() || suffix.find('/') != std::string::npos)
+      return Error(404, "not_found", "No matching planning endpoint");
+    if (request.method == "GET" && result_request) {
+      const auto result = services_.planning->GetResult(suffix, principal.id);
+      if (result.error) return ServiceFailure(*result.error);
+      return JsonResponse(200, PlanningResultJson(*result.value));
+    }
+    if (request.method == "GET" && !result_request) {
+      const auto result = services_.planning->Get(suffix, principal.id);
+      if (result.error) return ServiceFailure(*result.error);
+      return JsonResponse(200, PlanningJobJson(*result.value));
+    }
+    if (request.method == "DELETE" && !result_request) {
+      const auto result = services_.planning->Cancel(suffix, principal.id);
+      if (result.error) return ServiceFailure(*result.error);
+      return JsonResponse(200, PlanningJobJson(*result.value));
+    }
   }
   if (request.method == "GET" && path == "/api/v2/readiness") {
     if (!services_.readiness)
@@ -458,6 +761,58 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
   }
 
   return Error(404, "not_found", "No matching API v2 endpoint");
+}
+
+HttpResponse ExternalApiRouter::ReadEvents(std::uint64_t after_sequence,
+                                           std::size_t maximum,
+                                           std::uint32_t type_mask) const {
+  if (!services_.events)
+    return Error(503, "capability_unavailable", "Event service is unavailable");
+  const auto batch = services_.events->ReadAfter(after_sequence, maximum);
+  json events = json::array();
+  for (const auto& event : batch.events) {
+    if ((type_mask & EventBit(event.type)) != 0) events.push_back(EventJson(event));
+  }
+  const auto count = events.size();
+  auto response = JsonResponse(200, {{"type", "events"},
+                                     {"gap", batch.gap},
+                                     {"oldestAvailableSequence",
+                                      batch.oldest_available_sequence},
+                                     {"latestSequence", batch.latest_sequence},
+                                     {"events", std::move(events)}});
+  response.headers["X-OpenCPN-Event-Count"] = std::to_string(count);
+  response.headers["X-OpenCPN-Event-Cursor"] =
+      std::to_string(batch.latest_sequence);
+  response.headers["X-OpenCPN-Event-Gap"] = batch.gap ? "1" : "0";
+  return response;
+}
+
+Result<std::uint32_t> ExternalApiRouter::ParseEventSubscription(
+    const std::string& message) const {
+  try {
+    const auto body = json::parse(message);
+    std::uint32_t mask = 0;
+    for (const auto& value : body.at("subscribe")) {
+      const auto type = ParseEventType(value.get<std::string>());
+      if (!type)
+        return Result<std::uint32_t>::FromError(
+            "invalid_subscription", "Subscription contains an unknown event type");
+      mask |= EventBit(*type);
+    }
+    return Result<std::uint32_t>::FromValue(mask);
+  } catch (const json::exception&) {
+    return Result<std::uint32_t>::FromError(
+        "invalid_subscription", "Expected {\"subscribe\":[event types]}");
+  }
+}
+
+void ExternalApiRouter::CloseEvents() {
+  if (services_.events) services_.events->Close();
+}
+
+void ExternalApiRouter::Shutdown() {
+  if (services_.planning) services_.planning->Shutdown();
+  CloseEvents();
 }
 
 HttpResponse ExternalApiRouter::HandleRouteCommand(

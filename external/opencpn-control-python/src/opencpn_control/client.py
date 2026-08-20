@@ -10,6 +10,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
+from .events import iter_events
+
 
 @dataclass
 class OpenCPNError(RuntimeError):
@@ -27,6 +29,7 @@ class Client:
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.timeout = timeout
+        self.verify_tls = verify_tls
         self._context = (ssl.create_default_context() if verify_tls else
                          ssl._create_unverified_context())
 
@@ -124,3 +127,25 @@ class Client:
         return self._request("POST", "/api/v2/routes/deactivate",
                              idempotency_key=idempotency_key or str(uuid.uuid4()))
 
+    def start_plan(self, request: dict[str, Any], *,
+                   idempotency_key: str | None = None) -> dict[str, Any]:
+        return self._request("POST", "/api/v2/planning/jobs", request,
+                             idempotency_key=idempotency_key or str(uuid.uuid4()))
+
+    def get_plan(self, job_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/api/v2/planning/jobs/{job_id}")
+
+    def cancel_plan(self, job_id: str) -> dict[str, Any]:
+        return self._request("DELETE", f"/api/v2/planning/jobs/{job_id}")
+
+    def get_plan_result(self, job_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/api/v2/planning/jobs/{job_id}/result")
+
+    def events(self, subscriptions: list[str] | None = None):
+        """Iterate the initial snapshot, acknowledgement and event batches."""
+        return iter_events(
+            self.base_url, self.token,
+            subscriptions or ["navigation", "navigation-validity",
+                              "route-catalogue", "active-route", "readiness",
+                              "planning-job"],
+            verify_tls=self.verify_tls, timeout=self.timeout)

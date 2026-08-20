@@ -195,6 +195,7 @@ set(SRC
   ${MODEL_SRC_DIR}/downloader.cpp
   ${MODEL_SRC_DIR}/ds_porttype.cpp
   ${MODEL_SRC_DIR}/external_api.cpp
+  ${MODEL_SRC_DIR}/external_control.cpp
   ${MODEL_SRC_DIR}/filters_on_disk.cpp
   ${MODEL_SRC_DIR}/garmin_protocol_mgr.cpp
   ${MODEL_SRC_DIR}/geodesic.cpp

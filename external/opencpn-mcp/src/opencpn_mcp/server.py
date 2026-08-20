@@ -23,6 +23,14 @@ TOOLS = [
     ("get_active_route", "Inspect the active route without changing it", {}),
     ("validate_route", "Validate a stored route against charts",
      {"guid": "string", "minimum_depth_m": "number", "land_margin_nm": "number"}),
+    ("start_route_plan", "Start a bounded chart/weather planning job",
+     {"request": "object"}),
+    ("get_route_plan", "Inspect a planning job and its completed result",
+     {"job_id": "string"}),
+    ("cancel_route_plan", "Request cancellation of a planning job",
+     {"job_id": "string"}),
+    ("compare_route_plans", "Return completed plan results for comparison",
+     {"job_ids": "array"}),
     ("create_draft_route", "Create a draft; requires separately scoped credentials",
      {"name": "string", "waypoints": "array"}),
 ]
@@ -58,6 +66,17 @@ class Server:
                 [point["position"] for point in route["waypoints"]],
                 minimum_depth_m=float(arguments["minimum_depth_m"]),
                 land_margin_nm=float(arguments.get("land_margin_nm", 0)))
+        if name == "start_route_plan":
+            return self.client.start_plan(arguments["request"])
+        if name == "get_route_plan":
+            job = self.client.get_plan(arguments["job_id"])
+            return ({"job": job, "result": self.client.get_plan_result(arguments["job_id"])}
+                    if job["state"] == "completed" else {"job": job})
+        if name == "cancel_route_plan":
+            return self.client.cancel_plan(arguments["job_id"])
+        if name == "compare_route_plans":
+            return {job_id: self.client.get_plan_result(job_id)
+                    for job_id in arguments["job_ids"]}
         if name == "create_draft_route":
             return self.client.create_draft(arguments["name"], arguments["waypoints"])
         raise ValueError(f"Unknown or prohibited tool: {name}")

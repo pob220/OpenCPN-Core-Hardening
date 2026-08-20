@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+import time
 
 from .client import Client, OpenCPNError
 
@@ -17,6 +18,10 @@ def parser() -> argparse.ArgumentParser:
     commands = result.add_subparsers(dest="command", required=True)
     commands.add_parser("status")
     commands.add_parser("navigation")
+    events = commands.add_parser("events").add_subparsers(
+        dest="events_command", required=True)
+    watch_events = events.add_parser("watch")
+    watch_events.add_argument("types", nargs="*")
     routes = commands.add_parser("routes").add_subparsers(dest="route_command", required=True)
     routes.add_parser("list")
     show = routes.add_parser("show"); show.add_argument("guid")
@@ -26,6 +31,14 @@ def parser() -> argparse.ArgumentParser:
     activate = routes.add_parser("activate"); activate.add_argument("guid")
     activate.add_argument("--waypoint-guid"); activate.add_argument("--confirm", action="store_true")
     commands.add_parser("deactivate").add_argument("--confirm", action="store_true")
+    planning = commands.add_parser("planning").add_subparsers(
+        dest="planning_command", required=True)
+    submit = planning.add_parser("submit")
+    submit.add_argument("scenario", help="JSON planning request")
+    watch = planning.add_parser("watch")
+    watch.add_argument("job_id")
+    watch.add_argument("--interval", type=float, default=1.0)
+    planning.add_parser("cancel").add_argument("job_id")
     return result
 
 
@@ -38,9 +51,28 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "status": output = client.status()
         elif args.command == "navigation": output = client.navigation()
+        elif args.command == "events":
+            for event in client.events(args.types or None):
+                print(json.dumps(event, sort_keys=True), flush=True)
+            return 0
         elif args.command == "deactivate":
             if not args.confirm: raise OpenCPNError(0, "confirmation_required", "use --confirm")
             output = client.deactivate_route()
+        elif args.command == "planning":
+            if args.planning_command == "submit":
+                with open(args.scenario, encoding="utf-8") as scenario_file:
+                    output = client.start_plan(json.load(scenario_file))
+            elif args.planning_command == "cancel":
+                output = client.cancel_plan(args.job_id)
+            else:
+                while True:
+                    output = client.get_plan(args.job_id)
+                    if output["state"] in {"completed", "failed", "cancelled"}:
+                        if output["state"] == "completed":
+                            output = {"job": output,
+                                      "result": client.get_plan_result(args.job_id)}
+                        break
+                    time.sleep(max(0.1, args.interval))
         elif args.route_command == "list": output = client.list_routes()
         elif args.route_command == "show": output = client.get_route(args.guid)
         elif args.route_command == "validate":
@@ -60,4 +92,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

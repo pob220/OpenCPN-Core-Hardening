@@ -10,6 +10,11 @@ export OPENCPN_TOKEN=...
 opencpn-mcp
 ```
 
+The initial tool set covers status, navigation, route inspection and
+validation, active-route inspection, planning submit/status/cancel/compare,
+and optional draft creation. Planning jobs live in OpenCPN, so an MCP adapter
+restart does not terminate them.
+
 Default credentials should contain only `navigation:read`, `routes:read`,
 `charts:query`, and—when planning is installed—`planning:run`. Draft creation
 requires a separately enabled `routes:write` scope. The adapter deliberately

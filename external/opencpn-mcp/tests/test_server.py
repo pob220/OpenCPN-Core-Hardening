@@ -11,6 +11,11 @@ class FakeClient:
     def navigation(self): return {"stale": True}
     def list_routes(self): return []
     def active_route(self): return {"active": False}
+    def start_plan(self, request): return {"id": "job-1", "state": "queued", "request": request}
+    def get_plan(self, job_id): return {"id": job_id, "state": "completed"}
+    def get_plan_result(self, job_id): return {"id": job_id, "draftRoute": {"name": "draft"}}
+    def cancel_plan(self, job_id): return {"id": job_id, "state": "running",
+                                           "cancellationRequested": True}
 
 
 class ServerTest(unittest.TestCase):
@@ -20,6 +25,7 @@ class ServerTest(unittest.TestCase):
         self.assertNotIn("activate_route", names)
         self.assertNotIn("send_message", names)
         self.assertIn("get_navigation_state", names)
+        self.assertIn("start_route_plan", names)
     def test_protocol_without_llm(self):
         result = self.server.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                                      "params": {"name": "get_navigation_state", "arguments": {}}})
@@ -41,6 +47,14 @@ class ServerTest(unittest.TestCase):
         result = self.server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
                                      "params": {"name": "activate_route", "arguments": {}}})
         self.assertIn("error", result)
+
+    def test_planning_tools_are_draft_only(self):
+        started = self.server.call("start_route_plan", {"request": {"minimumDepthMeters": 5}})
+        self.assertEqual(started["id"], "job-1")
+        completed = self.server.call("get_route_plan", {"job_id": "job-1"})
+        self.assertEqual(completed["result"]["draftRoute"]["name"], "draft")
+        compared = self.server.call("compare_route_plans", {"job_ids": ["job-1"]})
+        self.assertIn("job-1", compared)
 
 
 if __name__ == "__main__": unittest.main()

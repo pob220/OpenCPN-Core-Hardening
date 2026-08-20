@@ -13,6 +13,9 @@ export OPENCPN_TOKEN=...
 opencpnctl status
 opencpnctl routes list
 opencpnctl routes validate ROUTE_GUID --minimum-depth-m 5
+opencpnctl events watch navigation active-route
+opencpnctl planning submit scenario.json
+opencpnctl planning watch JOB_ID
 ```
 
 Use `--insecure` only with the isolated development server's self-signed

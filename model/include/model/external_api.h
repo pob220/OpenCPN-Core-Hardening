@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -64,6 +65,14 @@ public:
                     Options options);
 
   HttpResponse Handle(const HttpRequest& request) const;
+  /** Encode a bounded batch for an already-authenticated event connection. */
+  HttpResponse ReadEvents(std::uint64_t after_sequence, std::size_t maximum,
+                          std::uint32_t type_mask) const;
+  /** Parse a WebSocket subscription control message into an event type mask. */
+  Result<std::uint32_t> ParseEventSubscription(
+      const std::string& message) const;
+  void CloseEvents();
+  void Shutdown();
 
 private:
   HttpResponse HandleAuthenticated(const HttpRequest& request,

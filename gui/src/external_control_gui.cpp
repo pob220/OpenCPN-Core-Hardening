@@ -5,15 +5,21 @@
 #include "external_control_gui.h"
 
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <iomanip>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <unordered_set>
 
 #include <wx/log.h>
 #include <wx/thread.h>
+#include <wx/app.h>
 
+#include "observable/observable.h"
+
+#include "model/comm_appmsg.h"
 #include "model/config_vars.h"
 #include "model/gui_events.h"
 #include "model/nav_object_database.h"
@@ -28,6 +34,38 @@
 namespace {
 using namespace ocpn::control;
 constexpr const char* kExternalDraftMarker = "opencpn:external-control:draft:v1";
+
+class LiveApplicationEvents final : public BoundedApplicationEventStream {
+public:
+  LiveApplicationEvents() : BoundedApplicationEventStream(256) {
+    routes_listener_.Init(GuiEvents::GetInstance().on_routes_update,
+                          [this](ObservedEvt&) {
+      Publish({0, {}, ApplicationEventType::RouteCatalogue, {}});
+    });
+    BasicNavDataMsg navigation_key;
+    navigation_listener_.Init(navigation_key, [this](ObservedEvt&) {
+      Publish({0, {}, ApplicationEventType::Navigation, {}});
+    });
+    if (g_pRouteMan)
+      active_route_listener_.Init(g_pRouteMan->json_msg_evt,
+                                  [this](ObservedEvt&) {
+        Publish({0, {}, ApplicationEventType::ActiveRoute,
+                 g_active_route.ToStdString()});
+      });
+    chart_listener_.Init(GuiEvents::GetInstance().on_finalize_chartdbs,
+                         [this](ObservedEvt&) {
+      Publish({0, {}, ApplicationEventType::ChartDatabase, {}});
+    });
+  }
+
+  ~LiveApplicationEvents() override { Close(); }
+
+private:
+  obs::Listener routes_listener_;
+  obs::Listener navigation_listener_;
+  obs::Listener active_route_listener_;
+  obs::Listener chart_listener_;
+};
 
 std::uint64_t Revision(const Route& route) {
   std::ostringstream value;
@@ -449,10 +487,92 @@ public:
   }
 };
 
+/**
+ * Minimal real provider proving the asynchronous planning boundary without
+ * moving a routing engine into core.  It only accepts a direct segment and
+ * completes when the chart service authoritatively validates that segment.
+ */
+class ChartDirectPlanningProvider final : public PlanningProvider {
+public:
+  explicit ChartDirectPlanningProvider(std::shared_ptr<ChartSafetyQuery> safety)
+      : safety_(std::move(safety)) {}
+
+  std::string Capability() const override {
+    return "route-planning.chart-direct.v1";
+  }
+
+  Result<PlanningResult> Run(
+      const PlanningRequest& request, const PlanningCancellation& cancellation,
+      const std::function<void(double)>& report_progress) override {
+    if (!wxTheApp)
+      return Result<PlanningResult>::FromError(
+          "not_ready", "OpenCPN application executor is unavailable");
+    struct QueryState {
+      std::mutex mutex;
+      std::condition_variable changed;
+      bool complete = false;
+      Result<ChartSafetyResult> result;
+    };
+    auto state = std::make_shared<QueryState>();
+    auto safety = safety_;
+    wxTheApp->CallAfter([state, safety, request] {
+      auto answer =
+          safety->ValidateSegment(request.start, request.destination, request.safety);
+      {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->result = std::move(answer);
+        state->complete = true;
+      }
+      state->changed.notify_all();
+    });
+    report_progress(0.25);
+    std::unique_lock<std::mutex> lock(state->mutex);
+    while (!state->complete) {
+      if (cancellation.IsCancellationRequested())
+        return Result<PlanningResult>::FromError(
+            "cancelled", "Planning was cancelled while chart data was queried");
+      state->changed.wait_for(lock, std::chrono::milliseconds(50));
+    }
+    auto answer = std::move(state->result);
+    lock.unlock();
+    if (answer.error)
+      return Result<PlanningResult>{std::nullopt, std::move(answer.error)};
+    if (answer.value->decision != ChartSafetyDecision::Pass ||
+        answer.value->authority != ChartSafetyAuthority::Authoritative)
+      return Result<PlanningResult>::FromError(
+          answer.value->cause_code.empty() ? "unsafe_or_unknown"
+                                           : answer.value->cause_code,
+          "Direct route did not pass authoritative chart validation");
+    report_progress(0.9);
+    PlanningResult result;
+    result.draft_route.name = "Chart-validated direct route";
+    result.draft_route.waypoints = {
+        {"", "Start", request.start}, {"", "Destination", request.destination}};
+    result.input_provenance = {
+        "OpenCPN chart-safety service",
+        "direct segment; no weather or current optimization"};
+    result.chart_database_identity = answer.value->chart_database_identity;
+    result.final_safety = *answer.value;
+    result.warnings = {
+        "Direct chart validation is not a weather-routing optimization"};
+    report_progress(1.0);
+    return Result<PlanningResult>::FromValue(std::move(result));
+  }
+
+private:
+  std::shared_ptr<ChartSafetyQuery> safety_;
+};
+
 }  // namespace
 
 ocpn::control::ServiceBundle MakeExternalControlServices() {
+  auto events = std::make_shared<LiveApplicationEvents>();
+  auto planning = std::make_shared<InProcessPlanningJobService>(events, 2, 64);
+  auto chart_safety = std::make_shared<LiveChartSafety>();
+  planning->RegisterProvider(
+      std::make_shared<ChartDirectPlanningProvider>(chart_safety));
   return {std::make_shared<LiveReadiness>(), std::make_shared<LiveNavigation>(),
           std::make_shared<LiveRoutes>(), std::make_shared<LiveRouteCommands>(),
-          std::make_shared<LiveChartSafety>()};
+          std::move(chart_safety), std::move(events),
+          std::move(planning)};
 }

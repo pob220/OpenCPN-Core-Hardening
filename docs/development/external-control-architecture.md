@@ -10,10 +10,13 @@ values.  Public service headers contain no HTTP, JSON, wxWidgets, canvas, or
 plugin ABI types.  Existing `/api/*`, wxIPC, D-Bus, and native plugin interfaces
 remain compatible.
 
-The first vertical slice is deliberately read-only: readiness and capability
+The first vertical slice was deliberately read-only: readiness and capability
 discovery, navigation snapshots, route queries, active-route state, and chart
-safety queries.  Chart safety has `pass`, `fail`, and `unknown` results; an
-unavailable chart engine or unresolved depth is never reported as safe.
+safety queries.  The developer candidate now also includes semantic event
+subscriptions, transactional draft-route commands, guarded activation, and a
+bounded asynchronous planning-job host. Chart safety has `pass`, `fail`, and
+`unknown` results; an unavailable chart engine or unresolved depth is never
+reported as safe.
 
 Network work is received on the Mongoose I/O thread and represented by a
 per-request context.  Application services run on the wx owner thread.  A
@@ -42,6 +45,13 @@ semantics cannot be bypassed. Draft creation never activates a route. Direct
 autopilot, NMEA/N2K output, arbitrary plugin RPC,
 filesystem access, and configuration mutation are outside the initial API.
 
+Planning uses a provider-neutral capability name and always returns a draft.
+The built-in `route-planning.chart-direct.v1` provider is intentionally small:
+it proves the complete asynchronous boundary and succeeds only after an
+authoritative chart-safety pass. The xWeatherRouting provider remains a plugin
+adapter; its headless result contract carries full route geometry and safety
+provenance so it can be connected without moving its engine into core.
+
 ## Compatibility and versioning
 
 The OpenAPI document is the wire contract.  Additive fields and capabilities
@@ -56,6 +66,13 @@ declare and enforce owner-thread affinity.  Commands will be serialized by the
 application owner.  Request deadlines and cancellation are distinct from
 service completion.  Shutdown cancels or drains outstanding contexts and must
 prevent callbacks after the server or a provider is destroyed.
+
+The WebSocket endpoint is subscription-only. It sends a scoped initial
+snapshot followed by semantic events with monotonic sequence numbers. Queues
+are bounded, high-rate state is coalesced, and a gap or slow-client disconnect
+is explicit. Planning jobs use a bounded worker pool and queue, pin their
+provider for the lifetime of a run, isolate jobs by credential owner, and make
+cancellation observable without treating a request as completed prematurely.
 
 ## Test installation
 

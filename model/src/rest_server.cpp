@@ -22,6 +22,8 @@
  *  Implement rest_server.h -- REST API server
  */
 
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -399,11 +401,54 @@ static void HandleExternalApi(struct mg_connection* c,
         "{\"error\":{\"code\":\"request_timeout\",\"message\":\"Application request timed out\"}}\n");
     return;
   }
+  if (context->response.status == 101) {
+    const auto cursor = context->response.headers.find(
+        "X-OpenCPN-Event-Cursor");
+    const auto mask = context->response.headers.find("X-OpenCPN-Event-Mask");
+    if (cursor == context->response.headers.end() ||
+        mask == context->response.headers.end()) {
+      mg_http_reply(c, 500, "", "Event stream setup failed\n");
+      return;
+    }
+    std::snprintf(c->label, sizeof(c->label), "%s:%s:%s", cursor->second.c_str(),
+                  mask->second.c_str(), mask->second.c_str());
+    mg_ws_upgrade(c, hm, "");
+    mg_ws_send(c, context->response.body.data(), context->response.body.size(),
+               WEBSOCKET_OP_TEXT);
+    return;
+  }
   std::string headers;
   for (const auto& [name, value] : context->response.headers)
     headers += name + ": " + value + "\r\n";
   mg_http_reply(c, context->response.status, headers.c_str(), "%s",
                 context->response.body.c_str());
+}
+
+struct EventConnectionState {
+  std::uint64_t cursor = 0;
+  std::uint32_t mask = 0;
+  std::uint32_t allowed_mask = 0;
+};
+
+static bool ParseEventConnectionState(const char* label,
+                                      EventConnectionState* result) {
+  if (!label || !result) return false;
+  unsigned long long cursor = 0;
+  unsigned mask = 0;
+  unsigned allowed = 0;
+  if (std::sscanf(label, "%llu:%u:%u", &cursor, &mask, &allowed) != 3)
+    return false;
+  result->cursor = static_cast<std::uint64_t>(cursor);
+  result->mask = static_cast<std::uint32_t>(mask);
+  result->allowed_mask = static_cast<std::uint32_t>(allowed);
+  return true;
+}
+
+static void StoreEventConnectionState(struct mg_connection* c,
+                                      const EventConnectionState& state) {
+  std::snprintf(c->label, sizeof(c->label), "%llu:%u:%u",
+                static_cast<unsigned long long>(state.cursor), state.mask,
+                state.allowed_mask);
 }
 
 // We use the same event handler function for HTTP and HTTPS connections
@@ -420,6 +465,51 @@ static void fn(struct mg_connection* c, int ev, void* ev_data, void* fn_data) {
     mg_tls_init(c, &opts);
   } else if (ev == MG_EV_TLS_HS) {  // Think of this as "start of session"
     PostEvent(parent, nullptr, ORS_START_OF_SESSION);
+  } else if (ev == MG_EV_POLL && c->is_websocket) {
+    EventConnectionState state;
+    if (!ParseEventConnectionState(c->label, &state)) return;
+    // A slow consumer cannot grow the Mongoose send queue without bound.
+    if (c->send.len > 512 * 1024) {
+      mg_ws_send(c, "", 0, WEBSOCKET_OP_CLOSE);
+      c->is_draining = 1;
+      return;
+    }
+    const auto response =
+        parent->ReadExternalEvents(state.cursor, 64, state.mask);
+    const auto cursor = response.headers.find("X-OpenCPN-Event-Cursor");
+    const auto count = response.headers.find("X-OpenCPN-Event-Count");
+    const auto gap = response.headers.find("X-OpenCPN-Event-Gap");
+    if (cursor != response.headers.end())
+      state.cursor = std::strtoull(cursor->second.c_str(), nullptr, 10);
+    StoreEventConnectionState(c, state);
+    if ((count != response.headers.end() && count->second != "0") ||
+        (gap != response.headers.end() && gap->second == "1"))
+      mg_ws_send(c, response.body.data(), response.body.size(),
+                 WEBSOCKET_OP_TEXT);
+  } else if (ev == MG_EV_WS_MSG && c->is_websocket) {
+    auto* message = static_cast<struct mg_ws_message*>(ev_data);
+    EventConnectionState state;
+    if (!ParseEventConnectionState(c->label, &state)) return;
+    if (message->data.len > 4096) {
+      const std::string error =
+          "{\"type\":\"subscription-error\",\"code\":\"message-too-large\"}";
+      mg_ws_send(c, error.data(), error.size(), WEBSOCKET_OP_TEXT);
+      return;
+    }
+    const auto subscription = parent->ParseExternalEventSubscription(
+        std::string(message->data.ptr, message->data.len));
+    if (subscription.error) {
+      const std::string error =
+          "{\"type\":\"subscription-error\",\"code\":\"invalid-subscription\"}";
+      mg_ws_send(c, error.data(), error.size(), WEBSOCKET_OP_TEXT);
+      return;
+    }
+    state.mask = *subscription.value & state.allowed_mask;
+    StoreEventConnectionState(c, state);
+    const std::string acknowledgement =
+        "{\"type\":\"subscribed\",\"mask\":" + std::to_string(state.mask) + "}";
+    mg_ws_send(c, acknowledgement.data(), acknowledgement.size(),
+               WEBSOCKET_OP_TEXT);
   } else if (ev == MG_EV_HTTP_MSG) {
     auto hm = (struct mg_http_message*)ev_data;
     const auto uri = MgString(hm->uri);
@@ -565,6 +655,7 @@ bool RestServer::StartServer(const fs::path& certificate_location) {
 
 void RestServer::StopServer() {
   wxLogDebug("Stopping REST service");
+  if (m_external_api) m_external_api->Shutdown();
   //  Kill off the IO Thread if alive
   if (m_std_thread.joinable()) {
     wxLogDebug("Stopping io thread");
@@ -572,6 +663,22 @@ void RestServer::StopServer() {
     m_io_thread.WaitUntilStopped();
     m_std_thread.join();
   }
+}
+
+ocpn::control::HttpResponse RestServer::ReadExternalEvents(
+    std::uint64_t after_sequence, std::size_t maximum,
+    std::uint32_t type_mask) const {
+  if (!m_external_api)
+    return {503, {}, "{\"error\":\"event-service-unavailable\"}"};
+  return m_external_api->ReadEvents(after_sequence, maximum, type_mask);
+}
+
+ocpn::control::Result<std::uint32_t>
+RestServer::ParseExternalEventSubscription(const std::string& message) const {
+  if (!m_external_api)
+    return ocpn::control::Result<std::uint32_t>::FromError(
+        "capability_unavailable", "Event service is unavailable");
+  return m_external_api->ParseEventSubscription(message);
 }
 
 void RestServer::ConfigureExternalApi(

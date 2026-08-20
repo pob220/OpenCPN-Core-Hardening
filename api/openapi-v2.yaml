@@ -64,6 +64,18 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/NavigationSnapshot'}
         default: {$ref: '#/components/responses/Error'}
+  /api/v2/events:
+    get:
+      operationId: subscribeEvents
+      description: >-
+        Upgrade to WebSocket. The server sends one scoped semantic snapshot,
+        then bounded event batches. Send {"subscribe":["navigation", ...]}
+        to replace the connection filter. Gaps are reported explicitly.
+      x-websocket: true
+      responses:
+        '101':
+          description: WebSocket upgrade accepted
+        default: {$ref: '#/components/responses/Error'}
   /api/v2/routes:
     get:
       operationId: listRoutes
@@ -236,6 +248,66 @@ paths:
                       minItems: 2
                       items: {$ref: '#/components/schemas/Coordinate'}
       responses: {$ref: '#/components/x-responses/SafetyResponses'}
+  /api/v2/planning/jobs:
+    post:
+      operationId: startPlanningJob
+      x-required-scope: planning:run
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PlanningRequest'}
+      responses:
+        '202':
+          description: Planning job accepted
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PlanningJob'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v2/planning/jobs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1}
+    get:
+      operationId: getPlanningJob
+      x-required-scope: planning:run
+      responses:
+        '200':
+          description: Current state of an owned planning job
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PlanningJob'}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      operationId: cancelPlanningJob
+      x-required-scope: planning:run
+      responses:
+        '200':
+          description: Cancellation requested or terminal job returned
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PlanningJob'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v2/planning/jobs/{id}/result:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1}
+    get:
+      operationId: getPlanningResult
+      x-required-scope: planning:run
+      responses:
+        '200':
+          description: Completed planning result; routes are drafts only
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PlanningResult'}
+        '409': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
 components:
   parameters:
     IdempotencyKey:
@@ -345,6 +417,17 @@ components:
         activeWaypointGuid: {type: [string, 'null']}
         activeLegIndex: {type: [integer, 'null'], minimum: 0}
         routeRevision: {type: [integer, 'null'], minimum: 0}
+    ApplicationEvent:
+      type: object
+      required: [type, sequence, timestampUtc, schemaVersion]
+      properties:
+        type:
+          enum: [navigation, navigation-validity, route-catalogue,
+                 active-route, chart-database, readiness, planning-job]
+        sequence: {type: integer, minimum: 1}
+        timestampUtc: {type: string, format: date-time}
+        schemaVersion: {type: integer, const: 1}
+        subjectId: {type: string}
     RouteCommandResult:
       type: object
       required: [commandId, changed, route, warnings]
@@ -370,6 +453,56 @@ components:
         constraints: {$ref: '#/components/schemas/SafetyConstraints'}
         warnings: {type: array, items: {type: string}}
         failedSegmentIndex: {type: integer, minimum: 0}
+    PlanningRequest:
+      type: object
+      required: [providerCapability, start, destination, minimumDepthMeters]
+      properties:
+        providerCapability: {type: string, minLength: 1}
+        start: {$ref: '#/components/schemas/Coordinate'}
+        destination: {$ref: '#/components/schemas/Coordinate'}
+        departureTimeUtc: {type: string, format: date-time}
+        minimumDepthMeters: {type: number, minimum: 0}
+        landMarginNauticalMiles: {type: number, minimum: 0, default: 0}
+        vesselIdentity: {type: string}
+        polarIdentity: {type: string}
+        weatherDatasetIdentity: {type: string}
+        currentDatasetIdentity: {type: string}
+        horizonHours: {type: integer, minimum: 1, maximum: 8760, default: 240}
+        allowClimatologyFallback: {type: boolean, default: false}
+        effortLimit: {type: integer, minimum: 1, maximum: 1000000000,
+                      default: 1000000}
+    PlanningJob:
+      type: object
+      required: [id, providerCapability, state, progress,
+                 cancellationRequested, submittedTimeUtc, updatedTimeUtc]
+      properties:
+        id: {type: string}
+        providerCapability: {type: string}
+        state: {enum: [queued, running, completed, failed, cancelled]}
+        progress: {type: number, minimum: 0, maximum: 1}
+        cancellationRequested: {type: boolean}
+        submittedTimeUtc: {type: string, format: date-time}
+        updatedTimeUtc: {type: string, format: date-time}
+        error: {oneOf: [{$ref: '#/components/schemas/Error'}, {type: 'null'}]}
+    PlanningResult:
+      type: object
+      required: [draftRoute, alternatives, inputProvenance,
+                 chartDatabaseIdentity, finalSafety, warnings]
+      properties:
+        draftRoute: {$ref: '#/components/schemas/RouteMutation'}
+        alternatives:
+          type: array
+          items: {$ref: '#/components/schemas/RouteMutation'}
+        inputProvenance: {type: array, items: {type: string}}
+        chartDatabaseIdentity: {type: string}
+        finalSafety: {$ref: '#/components/schemas/ChartSafetyResult'}
+        warnings: {type: array, items: {type: string}}
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: {type: string}
+        message: {type: string}
     ErrorResponse:
       type: object
       required: [error]

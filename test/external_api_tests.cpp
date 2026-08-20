@@ -127,6 +127,30 @@ public:
   std::atomic<int> calls{0};
 };
 
+class DeterministicPlanningProvider final : public PlanningProvider {
+public:
+  std::string Capability() const override {
+    return "route-planning.test.v1";
+  }
+  Result<PlanningResult> Run(
+      const PlanningRequest& request, const PlanningCancellation& cancellation,
+      const std::function<void(double)>& report_progress) override {
+    report_progress(0.5);
+    if (cancellation.IsCancellationRequested())
+      return Result<PlanningResult>::FromError("cancelled", "cancelled");
+    PlanningResult result;
+    result.draft_route.name = "Planned draft";
+    result.draft_route.waypoints = {
+        {"", "Start", request.start}, {"", "Finish", request.destination}};
+    result.input_provenance = {"deterministic-test-provider"};
+    result.final_safety.decision = ChartSafetyDecision::Pass;
+    result.final_safety.authority = ChartSafetyAuthority::Authoritative;
+    result.final_safety.cause_code = "clear";
+    result.final_safety.constraints = request.safety;
+    return Result<PlanningResult>::FromValue(std::move(result));
+  }
+};
+
 struct ExternalApiTest : public testing::Test {
   ExternalApiTest() {
     authorizer->Put("read-token",
@@ -135,7 +159,9 @@ struct ExternalApiTest : public testing::Test {
     authorizer->Put("navigation-only", {"limited", {"navigation:read"}});
     authorizer->Put("write-token",
                     {"writer", {"navigation:read", "routes:read",
-                                "routes:write", "routes:activate"}});
+                                "routes:write", "routes:activate",
+                                "planning:run"}});
+    planning->RegisterProvider(std::make_shared<DeterministicPlanningProvider>());
   }
 
   HttpRequest Request(std::string method, std::string path,
@@ -148,11 +174,17 @@ struct ExternalApiTest : public testing::Test {
   std::shared_ptr<TokenAuthorizer> authorizer =
       std::make_shared<TokenAuthorizer>();
   std::shared_ptr<Commands> commands = std::make_shared<Commands>();
+  std::shared_ptr<BoundedApplicationEventStream> events =
+      std::make_shared<BoundedApplicationEventStream>(4);
+  std::shared_ptr<InProcessPlanningJobService> planning =
+      std::make_shared<InProcessPlanningJobService>(events, 1, 8);
   ServiceBundle services{std::make_shared<Readiness>(),
                          std::make_shared<Navigation>(),
                          std::make_shared<Routes>(),
                          commands,
-                         std::make_shared<Safety>()};
+                         std::make_shared<Safety>(),
+                         events,
+                         planning};
   ExternalApiRouter router{services, authorizer, {true, 1024, "5.16-test"}};
 };
 
@@ -188,7 +220,91 @@ TEST_F(ExternalApiTest, DiscoversOnlyGrantedAndAvailableCapabilities) {
   const auto body = nlohmann::json::parse(response.body);
   EXPECT_EQ(response.status, 200);
   EXPECT_EQ(body["capabilities"],
-            nlohmann::json::array({"readiness.v1", "navigation.snapshot.v1"}));
+            nlohmann::json::array({"readiness.v1", "navigation.snapshot.v1",
+                                   "events.semantic.v1"}));
+}
+
+TEST_F(ExternalApiTest, EventUpgradeStartsWithScopedSnapshot) {
+  const auto response = router.Handle(Request("GET", "/api/v2/events"));
+  ASSERT_EQ(response.status, 101);
+  const auto body = nlohmann::json::parse(response.body);
+  EXPECT_EQ(body["type"], "snapshot");
+  EXPECT_TRUE(body.contains("navigation"));
+  EXPECT_TRUE(body.contains("routes"));
+  EXPECT_TRUE(response.headers.count("X-OpenCPN-Event-Cursor"));
+}
+
+TEST_F(ExternalApiTest, EventFiltersAndBoundedGapAreExplicit) {
+  auto subscription = router.ParseEventSubscription(
+      R"({"subscribe":["navigation"]})");
+  ASSERT_TRUE(subscription.value);
+  events->Publish({0, {}, ApplicationEventType::RouteCatalogue, "route-1"});
+  events->Publish({0, {}, ApplicationEventType::Navigation, {}});
+  auto response = router.ReadEvents(0, 10, *subscription.value);
+  auto body = nlohmann::json::parse(response.body);
+  ASSERT_EQ(body["events"].size(), 1);
+  EXPECT_EQ(body["events"][0]["type"], "navigation");
+
+  events->Publish({0, {}, ApplicationEventType::RouteCatalogue, "route-2"});
+  events->Publish({0, {}, ApplicationEventType::ActiveRoute, "route-2"});
+  events->Publish({0, {}, ApplicationEventType::Readiness, {}});
+  events->Publish({0, {}, ApplicationEventType::ChartDatabase, {}});
+  response = router.ReadEvents(1, 10, 0xffffffffU);
+  EXPECT_TRUE(nlohmann::json::parse(response.body)["gap"]);
+}
+
+TEST(BoundedApplicationEventStreamTest, CoalescesNavigationAndClosesCleanly) {
+  BoundedApplicationEventStream stream(2);
+  EXPECT_EQ(stream.Publish({0, {}, ApplicationEventType::Navigation, {}}), 1);
+  EXPECT_EQ(stream.Publish({0, {}, ApplicationEventType::Navigation, {}}), 2);
+  const auto batch = stream.ReadAfter(1, 10);
+  ASSERT_EQ(batch.events.size(), 1);
+  EXPECT_EQ(batch.events[0].sequence, 2);
+  stream.Close();
+  EXPECT_EQ(stream.Publish({0, {}, ApplicationEventType::Readiness, {}}), 0);
+}
+
+class CancellablePlanningProvider final : public PlanningProvider {
+public:
+  std::string Capability() const override { return "route-planning.blocking.v1"; }
+  Result<PlanningResult> Run(
+      const PlanningRequest&, const PlanningCancellation& cancellation,
+      const std::function<void(double)>& report_progress) override {
+    started.store(true);
+    while (!cancellation.IsCancellationRequested()) {
+      report_progress(0.25);
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return Result<PlanningResult>::FromError("cancelled", "cancelled by test");
+  }
+  std::atomic_bool started{false};
+};
+
+TEST(InProcessPlanningJobServiceTest, CancellationCompletesAndPinsProvider) {
+  auto provider = std::make_shared<CancellablePlanningProvider>();
+  InProcessPlanningJobService service(nullptr, 1, 4);
+  ASSERT_TRUE(service.RegisterProvider(provider));
+  PlanningRequest request;
+  request.provider_capability = provider->Capability();
+  const auto submitted = service.Submit(request, "owner");
+  ASSERT_TRUE(submitted.value);
+  for (int attempt = 0; attempt < 100 && !provider->started.load(); ++attempt)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  ASSERT_TRUE(provider->started.load());
+  EXPECT_FALSE(service.UnregisterProvider(provider->Capability()));
+  ASSERT_TRUE(service.Cancel(submitted.value->id, "owner").value);
+  PlanningJobSnapshot snapshot;
+  for (int attempt = 0; attempt < 100; ++attempt) {
+    auto state = service.Get(submitted.value->id, "owner");
+    ASSERT_TRUE(state.value);
+    snapshot = *state.value;
+    if (snapshot.state == PlanningJobState::Cancelled) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  EXPECT_EQ(snapshot.state, PlanningJobState::Cancelled);
+  EXPECT_TRUE(service.UnregisterProvider(provider->Capability()));
+  EXPECT_TRUE(service.Get(submitted.value->id, "different-owner").error);
+  service.Shutdown();
 }
 
 TEST_F(ExternalApiTest, NavigationUsesExplicitUnitsValidityAndNulls) {
@@ -313,6 +429,35 @@ TEST_F(ExternalApiTest, ActivationHasSeparateScopeAndExplicitWarning) {
   EXPECT_EQ(response.status, 200);
   EXPECT_EQ(nlohmann::json::parse(response.body)["warnings"][0],
             "output-affecting");
+}
+
+TEST_F(ExternalApiTest, PlanningJobCompletesAsDraftWithProvenance) {
+  auto request = Request(
+      "POST", "/api/v2/planning/jobs",
+      R"({"providerCapability":"route-planning.test.v1","start":{"latitudeDegrees":53,"longitudeDegrees":-4},"destination":{"latitudeDegrees":55,"longitudeDegrees":-7},"minimumDepthMeters":5,"landMarginNauticalMiles":0.4,"effortLimit":1000})");
+  request.headers["Authorization"] = "Bearer write-token";
+  request.headers["Idempotency-Key"] = "plan-1";
+  const auto submitted = router.Handle(request);
+  ASSERT_EQ(submitted.status, 202);
+  const auto id = nlohmann::json::parse(submitted.body)["id"].get<std::string>();
+  HttpResponse status;
+  for (int attempt = 0; attempt < 100; ++attempt) {
+    auto status_request = Request("GET", "/api/v2/planning/jobs/" + id);
+    status_request.headers["Authorization"] = "Bearer write-token";
+    status = router.Handle(status_request);
+    auto status_body = nlohmann::json::parse(status.body);
+    if (status_body["state"] == "completed") break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  EXPECT_EQ(nlohmann::json::parse(status.body)["state"], "completed");
+  auto result_request = Request("GET", "/api/v2/planning/jobs/" + id + "/result");
+  result_request.headers["Authorization"] = "Bearer write-token";
+  const auto result = router.Handle(result_request);
+  ASSERT_EQ(result.status, 200);
+  const auto body = nlohmann::json::parse(result.body);
+  EXPECT_EQ(body["draftRoute"]["waypoints"].size(), 2);
+  EXPECT_EQ(body["finalSafety"]["decision"], "pass");
+  EXPECT_EQ(body["inputProvenance"][0], "deterministic-test-provider");
 }
 
 }  // namespace

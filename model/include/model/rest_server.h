@@ -252,6 +252,12 @@ public:
   /** Configure the disabled-by-default v2 API using transport-free services. */
   void ConfigureExternalApi(ocpn::control::ServiceBundle services);
 
+  ocpn::control::HttpResponse ReadExternalEvents(
+      std::uint64_t after_sequence, std::size_t maximum,
+      std::uint32_t type_mask) const;
+  ocpn::control::Result<std::uint32_t> ParseExternalEventSubscription(
+      const std::string& message) const;
+
   /** IoThread interface.*/
   void UpdateReturnStatus(RestServerResult r);
 
