@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opencpn-mcp"
+version = "0.1.0"
+description = "Least-privilege MCP adapter for OpenCPN"
+requires-python = ">=3.10"
+dependencies = ["opencpn-control>=0.1.0"]
+
+[project.scripts]
+opencpn-mcp = "opencpn_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
