@@ -17,6 +17,10 @@ installation.
   an external-control draft;
 - provider discovery removal, cancellation, job pinning, and unload veto while
   callbacks are still active.
+- planning status and cancellation remain available while wx-owned chart work
+  is active; and
+- externally initiated chart prewarm is bounded and cancellation-aware, so a
+  cancelled startup cannot leave a resident xWeatherRouting session behind.
 
 The built-in `route-planning.chart-direct.v1` remains available as the small,
 deterministic baseline.
@@ -58,6 +62,19 @@ Preview B currently identifies only the weather/current datasets active in the
 running plug-ins. Stable dataset discovery and selection are later contract
 work.
 
+## Cancellation contract
+
+Submission is asynchronous. Status/result lookup and cancellation touch only
+thread-safe job state and are served without waiting behind wx application
+work. All other live OpenCPN services retain application-thread dispatch.
+
+xWeatherRouting performs externally initiated raw-chart prewarm in small
+batches and observes the host cancellation token between batches. A terminal
+cancelled job has stopped the calculation and cleared the resident scenario;
+the provider can accept a subsequent job. This special path is active only for
+external jobs. Stock-host and ordinary GUI routing retain their established
+behaviour.
+
 ## Deferred deliberately
 
 - native plug-in ABI changes;
@@ -65,6 +82,7 @@ work.
 - arbitrary plug-in RPC;
 - multiple concurrent jobs inside one xWeatherRouting instance;
 - remote paths or uploads for polar/weather data;
+- enumeration of installed polar and weather/current dataset identities;
 - a general plugin-service framework before this narrow boundary has field
   evidence;
 - signed cross-platform installers.
