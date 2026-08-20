@@ -1460,7 +1460,6 @@ bool MyApp::OnInit() {
 
     make_certificate(ipAddr, data_dir.ToStdString());
 
-    m_rest_server.ConfigureExternalApi(MakeExternalControlServices());
     m_rest_server.StartServer(fs::path(data_dir.ToStdString()));
     StartMDNSService(g_hostname.ToStdString(), "opencpn-object-control-service",
                      8000);
@@ -1710,6 +1709,11 @@ void MyApp::BuildMainFrame() {
     PluginLoader::GetInstance()->SetPluginDefaultIcon(bitmap);
   else
     wxLogWarning("Cannot initiate plugin default jigsaw icon.");
+
+  // Establish application services before initializing extensions. Plugins
+  // may register optional service adapters from Init(); the HTTPS listener is
+  // still started later, after application startup is otherwise complete.
+  m_rest_server.ConfigureExternalApi(MakeExternalControlServices());
 
   AbstractPlatform::ShowBusySpinner();
   PluginLoader::GetInstance()->LoadAllPlugIns(true);
