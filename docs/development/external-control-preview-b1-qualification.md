@@ -22,7 +22,7 @@ The release `SHA256SUMS` is the authority for every binary and archive.
 
 - combined OpenCPN RelWithDebInfo application and test targets built;
 - OpenCPN deterministic suite: 120/120 passed sequentially;
-- focused GCC AddressSanitizer safety/API/package suite: 52/52 passed with
+- complete GCC AddressSanitizer deterministic suite: 120/120 passed with
   `abort_on_error=1`;
 - xWeatherRouting stock-host suite: 176/176 passed;
 - xWeatherRouting hardened-host shared library built against this combined
@@ -42,7 +42,23 @@ plug-in paths consistently, has a deterministic regression test, and is set by
 the supplied launcher. Runtime qualification was restarted from the rebuilt
 package; the failed pre-fix attempt is not counted as a pass.
 
-LeakSanitizer is disabled for the focused run because the managed ptrace
+The rebuilt installed-package gate subsequently caught two additional package
+boundary defects. Relocated plug-in data now takes precedence over unrelated
+user/system data, and xGRIB/xWeatherRouting are admitted by exact plug-in name
+instead of requiring the broad arbitrary-system-plug-in switch. The local
+control listener now also starts with a loopback certificate when no external
+network interface exists; mDNS remains conditional on a real interface.
+
+The final fresh installed run used a private network namespace containing only
+loopback. It loaded xGRIB and xWeatherRouting code and data from the extracted
+root, registered `route-planning.chart-weather.v1`, created the development
+certificate, and passed authenticated version, capabilities and readiness
+requests. The packaged Python CLI passed status, navigation and route-list
+queries, and the WebSocket client received the bounded initial snapshot and
+subscription acknowledgement. Neither running desktop OpenCPN instance was
+stopped or used by this gate.
+
+LeakSanitizer is disabled for the sanitizer run because the managed ptrace
 environment makes LSan itself terminate. The historical aggregate test and
 desktop-session IPC registrations are not counted as deterministic passes.
 
