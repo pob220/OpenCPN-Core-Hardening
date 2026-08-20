@@ -69,3 +69,14 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           make run-tests
+
+      # The historical aggregate suite still contains hardware, IPC and GUI
+      # fixtures which are not deterministic on every hosted runner.  Keep a
+      # small correctness/security gate mandatory while that suite is split
+      # into explicit fixture groups.
+      - name: External-control deterministic safety gate
+        env:
+          ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
+        run: >-
+          build/test/tests
+          --gtest_filter=ExternalApiTest.*:InProcessPlanningJobServiceTest.*:BoundedApplicationEventStreamTest.*:ChartSafetyDepth.*:ChartSafetyService.*

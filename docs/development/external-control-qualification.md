@@ -5,7 +5,8 @@ Date: 2026-08-20
 ## Candidate identity
 
 - OpenCPN branch: `external-control/integration`
-- OpenCPN commit: `e2678db9f` (`Add semantic events and cancellable planning jobs`)
+- OpenCPN implementation commit: `e2678db9f` (`Add semantic events and cancellable planning jobs`)
+- OpenCPN qualification/documentation commit: `7a7ea6638`
 - xWeatherRouting branch: `xweather-routing-alpha`
 - xWeatherRouting commit: `fb10a97` (`Expose route geometry in headless planning results`)
 - Isolated installation: `/home/paul/Test-OpenCPN/candidates/worktree`
@@ -27,6 +28,10 @@ installation.
 - OpenAPI 3.1 parse: 16 paths and 17 component schemas.
 - Python SDK and MCP source archives and wheels built successfully.
 - Core and plugin builds completed without errors.
+- Clean GCC AddressSanitizer build: 26/26 deterministic external-control,
+  planning-host and chart-safety tests passed with abort-on-error enabled.
+  LeakSanitizer was disabled because the managed test environment runs under
+  ptrace, which LeakSanitizer explicitly does not support.
 
 ## Live isolated evidence
 
@@ -55,12 +60,19 @@ listener and chart database:
   capability in this candidate.
 - This qualification is Linux-only. Windows and macOS builds, and an explicit
   Android capability decision, remain outstanding.
-- Focused ASan/UBSan and TSan qualification has not yet been rerun for the new
-  WebSocket and job-host code.
+- Focused UBSan and TSan qualification, beyond the clean ASan gate above, has
+  not yet been run for the WebSocket and job-host code.
 - SDK WebSocket reconnection policy and cross-version server contract matrices
   need broader qualification.
-- Packages are local developer artifacts only; no public repository push,
-  package-index upload, or release publication was performed.
+- Binary and Python packages are developer artifacts only; no package-index
+  upload or platform-signed installer publication has been performed.
+
+The historical aggregate CTest registration is not itself a release gate: it
+contains serial/CAN, user-session IPC and GUI fixtures which are unavailable or
+stateful on some hosts. A mandatory deterministic CI gate now covers the new
+external-control, planning-host and chart-safety slice while those fixtures are
+separated. This qualification does not silently count fixture absence as a
+pass.
 
 These limitations are capability-visible and do not weaken the conservative
 chart-safety rule: fallback or unknown chart evidence cannot complete a plan as
