@@ -1,10 +1,10 @@
 # OpenCPN 5.x hardening build manifest
 
-**Manifest date:** 19 August 2026
+**Manifest date:** 20 August 2026
 **Repository:** `pob220/OpenCPN-Core-Hardening`  
 **Baseline:** OpenCPN upstream `e87d2234509636d8e534f0278fb1c6ad8463eb2e`  
 **Integration branch:** `hardening/5x-integration`  
-**Integration commit:** `f87ee79311e62b09983c5006fe474012cf07da3a`
+**Integration commit:** `606fabf8495f69b4c1cf26acb9f37860ab1e1de3`
 
 The integration commit above is the production/test state before importing
 this documentation. Later documentation-only commits do not alter the tested
@@ -34,6 +34,7 @@ binary.
 | 18 | `9ab548c99` | Recover CM93 boundary omissions conservatively and invalidate v1 caches |
 | 19 | `a77db92ba` | Honour the caller's segment-safety service time budget |
 | 20 | `f87ee7931` | Recover confirmed CM93 depth seams from four authoritative probes, invalidate v2 caches, and add route-endpoint/seam canaries |
+| 21 | `606fabf84` | Accept numeric and legacy string WMM declination JSON without throwing from the GUI event handler |
 
 ## Isolated review branches
 
@@ -60,13 +61,18 @@ equivalent. Compare each topic branch to `master`, not to the integration tip.
 
 - CMake Debug configuration, wxGTK 3.2, OpenGL enabled.
 - Complete `opencpn` target compiled and linked with warnings treated as errors.
-- 84/84 tests labelled `deterministic` passed.
+- 87/87 tests labelled `deterministic` passed. This includes three WMM message
+  parser regressions for numeric, legacy string and malformed declination data.
 - The earlier 71-test deterministic subset passed in a separate no-OpenGL
   AddressSanitizer build. Leak detection was disabled for that run because the
   execution sandbox blocks LeakSanitizer's ptrace mechanism; this is an ASan
   result, not an LSan clean bill of health. The 13 subsequently added cases have
   ordinary Debug coverage but have not all been repeated in that ASan tree.
 - The new standalone type-14 case passed independently before the full suite.
+- An isolated GUI run loaded the real WMM model and Celestial Navigation
+  plug-ins, opened the Celestial Navigation dialog, saved sights while numeric
+  WMM declination messages were exchanged, and shut down cleanly without the
+  former JSON type exception/crash.
 - Known host-dependent IPC/loopback tests are labelled `integration` and are not
   part of the deterministic result.
 - The exact compatible weather-routing plug-in commit
@@ -144,6 +150,10 @@ from plug-in commit `b411e62ed8059549925b2ec66f986cb1ca586db9`. Its unpacked cor
 has SHA-256 `641d812fe0ca7ba07717c28166faf09cb3761d07c73b094d7e3b9ff55b8469fb`;
 the preferred `extra-plugins/libxweather_routing_pi.so` has SHA-256
 `7129556755894f860aa5cd076e9491da595f1bb44411d9f78e1b4544241f0576`.
+
+The v3 binary bundle predates integration commit `606fabf84` and therefore does
+not contain the WMM numeric-declination fix. Build the current integration
+branch from source for that fix until a newer convenience bundle is published.
 
 It was created on the audit Arch Linux x86_64 host and is not a portable,
 signed or official distribution. Prefer rebuilding from the manifest on a

@@ -24,7 +24,8 @@ navigation. Back up configuration and navigation data before field testing.
 | Raster texture jobs | #4842, #4983 | Jobs retain shared factory ownership, cancellation is atomic, result buffers are RAII-owned, and destruction drains workers/events. | Full OpenGL build plus lifecycle test seam. macOS cache-pressure testing remains required. |
 | Plug-in chart catalogue | #5170 | Add/remove no longer deletes and replaces global `ChartData` while asynchronous users can retain it; mutation drains dependent work and reindexes the existing object. | Full OpenGL build. A plug-in-driven catalogue stress test remains required. |
 | AIS safety broadcasts | #5069 | Valid type-14 messages are retained independently of position, published as a typed event, and displayed as a warning for any MMSI without activating CPA/SART audio policy. | `AIS.StandaloneType14PublishesSafetyMessage`. |
-| Chart-aware weather routing | local 5.15 integration | Optional, size-versioned native symbols expose authoritative CM93/S57 land, drying and depth evidence as immutable values. Conservative independent probes recover demonstrable CM93 tile-boundary omissions without treating unknown water as safe; cache identity v3 prevents reuse of older classifications. The existing plug-in ABI remains intact and routing-specific caches stay in the plug-in. | 84/84 core tests and 175/175 plug-in tests pass. Built-in real-chart diagnostics have zero failures. A real xGRIB/polar Holyhead-to-Foyle run at 5 m minimum depth completed six of seven optimized departure candidates and every completed route passed final chart-safety validation. |
+| WMM plug-in messaging | Celestial Navigation crash report | Numeric magnetic-declination JSON is accepted directly, legacy string values remain compatible, and malformed or non-finite values are ignored instead of throwing through the GUI event handler. | Three `PluginComm` parser tests plus an isolated Celestial Navigation/WMM GUI acceptance gate. |
+| Chart-aware weather routing | local 5.15 integration | Optional, size-versioned native symbols expose authoritative CM93/S57 land, drying and depth evidence as immutable values. Conservative independent probes recover demonstrable CM93 tile-boundary omissions without treating unknown water as safe; cache identity v3 prevents reuse of older classifications. The existing plug-in ABI remains intact and routing-specific caches stay in the plug-in. | 87/87 core tests and 175/175 plug-in tests pass. Built-in real-chart diagnostics have zero failures. A real xGRIB/polar Holyhead-to-Foyle run at 5 m minimum depth completed six of seven optimized departure candidates and every completed route passed final chart-safety validation. |
 
 The complete rationale, evidence levels, counterarguments and backlog taxonomy
 are in [the architecture audit](docs/development/open-issue-core-architecture-audit.md).
@@ -47,7 +48,7 @@ cmake -S . -B build-hardening \
   -DCMAKE_BUILD_TYPE=Debug \
   -DOCPN_BUILD_TEST=ON \
   -DCMAKE_INSTALL_PREFIX="$PWD/install-hardening"
-cmake --build build-hardening --target opencpn tests -j2
+cmake --build build-hardening --target opencpn tests buffer_tests -j2
 ctest --test-dir build-hardening --output-on-failure -L deterministic
 cmake --install build-hardening
 ```
@@ -94,6 +95,13 @@ git clone https://github.com/pob220/xweather_routing_pi.git \
 git -C plugins/weather_routing_pi checkout \
   b411e62ed8059549925b2ec66f986cb1ca586db9
 ```
+
+The core repository does not vendor xWeatherRouting or xGRIB. It retains the
+standard bundled `grib_pi`; xWeatherRouting is a separately built, compatible
+consumer of the optional chart-safety symbols. The v3 convenience bundle below
+contains xWeatherRouting but not xGRIB. The separate external-control Preview B
+release contains xGRIB and xWeatherRouting, but is a different preview line and
+must not be described as the default core-hardening branch.
 
 Build and install both projects into an isolated prefix. The published Arch
 Linux convenience bundle is a Debug build so wxWidgets assertions and debug
@@ -154,7 +162,11 @@ Use a copied profile and synthetic/test inputs.
 10. Replay standalone and target-associated AIS type-14 messages from several
     MMSI classes; verify visible warning text, trimming, acknowledgement, and no
     unexpected audible CPA/SART alarm.
-11. Repeat the chart-aware weather-routing acceptance on each target platform
+11. With WMM and Celestial Navigation enabled, open the Celestial Navigation
+    dialog and save a sight while WMM publishes numeric declination JSON; verify
+    there is no assertion, exception or process exit. Repeat with a legacy
+    string-valued message if an older WMM build is supported.
+12. Repeat the chart-aware weather-routing acceptance on each target platform
     with a copied profile, representative GRIB/polar and explicit minimum
     depth. The Linux reference scenario is now automated and accepted; compare
     additional proposed routes to current official charts before field use.
