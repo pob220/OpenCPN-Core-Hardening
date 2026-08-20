@@ -24,6 +24,10 @@
 
 #include <setjmp.h>
 
+#include <cmath>
+#include <locale>
+#include <sstream>
+
 #include <wx/event.h>
 #include <wx/jsonval.h>
 #include <wx/jsonreader.h>
@@ -151,6 +155,31 @@ void SendJsonMessageToAllPlugins(const std::string& message_id,
   SendMessageToAllPlugins(message_id, out);
   wxLogDebug(wxString(message_id) + " " + out);
   LogMessage(msg, "Json message ");
+}
+
+std::optional<double> ParseWmmVariation(const std::string& message_body) {
+  try {
+    const auto root = nlohmann::json::parse(message_body);
+    if (!root.is_object() || !root.contains("Decl")) return std::nullopt;
+
+    const auto& decl = root.at("Decl");
+    double value = 0.0;
+    if (decl.is_number()) {
+      value = decl.get<double>();
+    } else if (decl.is_string()) {
+      std::istringstream input(decl.get<std::string>());
+      input.imbue(std::locale::classic());
+      input >> value;
+      if (!input) return std::nullopt;
+      char trailing = '\0';
+      if (input >> trailing) return std::nullopt;
+    } else {
+      return std::nullopt;
+    }
+    return std::isfinite(value) ? std::optional<double>(value) : std::nullopt;
+  } catch (const nlohmann::json::exception&) {
+    return std::nullopt;
+  }
 }
 
 void SendAISSentenceToAllPlugIns(const wxString& sentence) {
