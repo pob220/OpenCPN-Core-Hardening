@@ -21,6 +21,16 @@ copies. Test-OpenCPN has isolated configuration, charts, plug-ins, token,
 database and TCP listener. The day-to-day desktop OpenCPN core and xGRIB were
 not modified by this qualification.
 
+The published Linux core installer was extracted successfully into an
+unprivileged isolated directory and contained 791 payload files. The published
+resource-complete core and xWeatherRouting package executables have the same
+GNU build IDs as the unstripped binaries used for qualification; packaging
+only strips debug data. Both xWeatherRouting packages contain 853 entries,
+including `Boat.xml`, example polars, plug-in data and locales. The xGRIB
+package contains 23,690 entries, including its private helper runtime and
+plug-in data. Release checksums cover the complete packages as well as the raw
+diagnostic artifacts.
+
 ## Automated evidence
 
 - OpenCPN deterministic eligible CTest suite: 113/113 passed sequentially.

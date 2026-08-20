@@ -87,6 +87,8 @@ behaviour.
   evidence;
 - signed cross-platform installers.
 
-The wire contract is [api/openapi-v2.yaml](../../api/openapi-v2.yaml), and the
+The wire contract is [api/openapi-v2.yaml](../../api/openapi-v2.yaml). The
+[developer test guide](external-control-preview-b-testing.md) contains the
+isolated package layout, exact source builds and acceptance workflow. The
 provider-side lifecycle details are documented in the xWeatherRouting
 repository.
