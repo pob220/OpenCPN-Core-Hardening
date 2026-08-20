@@ -1,11 +1,22 @@
-# External-control Preview B
+# External-control Preview B.1 hardening
 
-Preview B extends Preview A with a resident, cancellable weather-routing
-provider. It is a developer candidate for isolated testing, not yet a
-navigation release and not a replacement for a known-good onboard
-installation.
+Preview B.1 extends Preview B with the complete issue-led core-hardening series
+and numeric WMM message correction. It retains Preview B's resident,
+cancellable weather-routing provider and Preview A's API. It is a developer
+candidate for isolated testing, not yet a navigation release and not a
+replacement for a known-good onboard installation.
 
-## Added vertical slice
+## Integrated hardening
+
+This branch contains the actual production and regression-test commits for the
+N2K unit and teardown fixes, Signal K validation, first-run readiness, atomic
+route deletion, SENC/texture/chart-catalogue lifetimes, route transitions, AIS
+type 14, defensive Actisense and CM93 parsing, private plug-in configuration
+paths, wx/log format safety and WMM numeric messages. It is not the older
+Preview B executable with a new label. The full issue mapping and limitations
+are in [HARDENING.md](../../HARDENING.md).
+
+## External-control vertical slice
 
 - optional plug-in registration of
   `route-planning.chart-weather.v1`;

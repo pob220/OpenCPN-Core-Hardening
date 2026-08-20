@@ -3,7 +3,11 @@
 This repository contains a conservative, issue-led hardening line based on
 OpenCPN upstream commit `e87d2234509636d8e534f0278fb1c6ad8463eb2e`
 (5.15.0 development version on 18 August 2026). The unmodified baseline remains
-on `master`. The combined developer build is `hardening/5x-integration`.
+on `master`. The core-only developer build is `hardening/5x-integration`. The
+`external-control/preview-b.1-hardening` branch includes this complete
+hardening series plus the authenticated external-control API and extension
+service/provider work. Its release supplies the exact tested xGRIB and
+xWeatherRouting packages without vendoring either plug-in into the core tree.
 
 This is not an official OpenCPN release. Do not use it as the sole means of
 navigation. Back up configuration and navigation data before field testing.
@@ -25,7 +29,29 @@ navigation. Back up configuration and navigation data before field testing.
 | Plug-in chart catalogue | #5170 | Add/remove no longer deletes and replaces global `ChartData` while asynchronous users can retain it; mutation drains dependent work and reindexes the existing object. | Full OpenGL build. A plug-in-driven catalogue stress test remains required. |
 | AIS safety broadcasts | #5069 | Valid type-14 messages are retained independently of position, published as a typed event, and displayed as a warning for any MMSI without activating CPA/SART audio policy. | `AIS.StandaloneType14PublishesSafetyMessage`. |
 | WMM plug-in messaging | Celestial Navigation crash report | Numeric magnetic-declination JSON is accepted directly, legacy string values remain compatible, and malformed or non-finite values are ignored instead of throwing through the GUI event handler. | Three `PluginComm` parser tests plus an isolated Celestial Navigation/WMM GUI acceptance gate. |
-| Chart-aware weather routing | local 5.15 integration | Optional, size-versioned native symbols expose authoritative CM93/S57 land, drying and depth evidence as immutable values. Conservative independent probes recover demonstrable CM93 tile-boundary omissions without treating unknown water as safe; cache identity v3 prevents reuse of older classifications. The existing plug-in ABI remains intact and routing-specific caches stay in the plug-in. | 87/87 core tests and 175/175 plug-in tests pass. Built-in real-chart diagnostics have zero failures. A real xGRIB/polar Holyhead-to-Foyle run at 5 m minimum depth completed six of seven optimized departure candidates and every completed route passed final chart-safety validation. |
+| Chart-aware weather routing | local 5.15 integration | Optional, size-versioned native symbols expose authoritative CM93/S57 land, drying and depth evidence as immutable values. Conservative independent probes recover demonstrable CM93 tile-boundary omissions without treating unknown water as safe; cache identity v3 prevents reuse of older classifications. The existing plug-in ABI remains intact and routing-specific caches stay in the plug-in. | Core-only qualification passed 87/87 tests and the latest xWeatherRouting Preview B tip passes 176/176. Built-in real-chart diagnostics have zero failures. A real xGRIB/polar Holyhead-to-Foyle run at 5 m minimum depth completed six of seven optimized departure candidates and every completed route passed final chart-safety validation. |
+
+## Combined external-control Preview B.1
+
+Preview B.1 is the recommended starting point for developers who need to test
+the hardening, external control and chart/weather planning together. It is a
+real descendant of Preview B with the issue-led hardening commits merged; it
+is not a relabelled Preview B binary. In addition to the table above it offers:
+
+- authenticated, scoped `/api/v2` navigation, route and chart queries;
+- transactional draft route operations and restart persistence;
+- bounded semantic WebSocket events;
+- cancellable asynchronous planning jobs;
+- fail-closed chart-direct and resident xWeatherRouting providers;
+- Python SDK, `opencpnctl` and least-privilege MCP packages; and
+- release assets for the latest tested xGRIB `main` and xWeatherRouting
+  `external-control/preview-b` revisions.
+
+The native plug-in API remains version 1.21. The provider registration surface
+is optional and versioned separately, so the same xWeatherRouting source still
+builds and runs on stock OpenCPN. See the
+[Preview B.1 test guide](docs/development/external-control-preview-b-testing.md)
+and [combined qualification](docs/development/external-control-preview-b1-qualification.md).
 
 The complete rationale, evidence levels, counterarguments and backlog taxonomy
 are in [the architecture audit](docs/development/open-issue-core-architecture-audit.md).
@@ -98,10 +124,12 @@ git -C plugins/weather_routing_pi checkout \
 
 The core repository does not vendor xWeatherRouting or xGRIB. It retains the
 standard bundled `grib_pi`; xWeatherRouting is a separately built, compatible
-consumer of the optional chart-safety symbols. The v3 convenience bundle below
-contains xWeatherRouting but not xGRIB. The separate external-control Preview B
-release contains xGRIB and xWeatherRouting, but is a different preview line and
-must not be described as the default core-hardening branch.
+consumer of the optional chart-safety symbols. The historical v3 convenience
+bundle contains xWeatherRouting but not xGRIB. The current external-control
+Preview B.1 release contains the full hardening series, xGRIB and
+xWeatherRouting; use that when testing the combined system. The core-only
+branch remains available for maintainers reviewing the hardening without the
+external-control additions.
 
 Build and install both projects into an isolated prefix. The published Arch
 Linux convenience bundle is a Debug build so wxWidgets assertions and debug

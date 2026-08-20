@@ -2,6 +2,11 @@
 
 Date: 2026-08-20
 
+This document records the original Preview B evidence. Preview B.1 retains
+that contract and adds the complete hardening line; its combined rerun is
+recorded in
+[external-control-preview-b1-qualification.md](external-control-preview-b1-qualification.md).
+
 ## Candidate identity
 
 - OpenCPN branch: `external-control/preview-b` (publication name)

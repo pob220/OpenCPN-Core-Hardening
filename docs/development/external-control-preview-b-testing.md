@@ -1,23 +1,29 @@
-# External-control Preview B developer test guide
+# External-control Preview B.1 hardening developer test guide
 
-Preview B is a Linux x86_64 developer candidate. It must be installed in an
+Preview B.1 is a Linux x86_64 developer candidate. It must be installed in an
 isolated directory with an isolated OpenCPN configuration. Do not overwrite a
-working or onboard installation, and do not use Preview B as the sole source
+working or onboard installation, and do not use Preview B.1 as the sole source
 of navigation information.
 
 ## Published sources and packages
 
 - OpenCPN core: `pob220/OpenCPN-Core-Hardening`, branch
-  `external-control/preview-b`;
+  `external-control/preview-b.1-hardening`;
 - xWeatherRouting: `pob220/xweather_routing_pi`, branch
   `external-control/preview-b`;
 - xGRIB: `pob220/xgrib_pi`, branch `main`;
-- release: `external-control-preview-b-20260820` in the core repository.
+- release: `external-control-preview-b1-hardening-20260820` in the core
+  repository.
 
 The release includes a complete OpenCPN self-extracting package and
 resource-complete xWeatherRouting and xGRIB archives. The raw executable and
 shared libraries are diagnostic build artifacts, not complete installations.
 Verify every downloaded file with `SHA256SUMS` before using it.
+
+`OpenCPN-5.15.0-Preview-B1-Hardening-complete-linux-x86_64.tar.gz` is the
+single-download form of the same installer, both plug-in archives, Python/MCP
+packages, API contract, checksums and this guide. Its contents are not a
+different build.
 
 The package extraction layout is deliberately visible and does not modify the
 system package database. The xWeatherRouting archive includes its locales,
@@ -29,7 +35,7 @@ private helper runtime.
 Download these four release assets into an empty directory:
 
 ```text
-opencpn-5.15.0-preview-b-linux-x86_64-installer.sh
+opencpn-5.15.0-preview-b1-hardening-linux-x86_64-installer.sh
 xweather-routing-preview-b-hardened-arch-x86_64.tar.gz
 xgrib-preview-b-0.2.4.0-arch-x86_64.tar.gz
 SHA256SUMS
@@ -40,11 +46,11 @@ write to `/usr/local` on the host:
 
 ```sh
 sha256sum --check SHA256SUMS --ignore-missing
-export OCPN_PREVIEW_ROOT="$PWD/Test-OpenCPN-Preview-B"
+export OCPN_PREVIEW_ROOT="$PWD/Test-OpenCPN-Preview-B1-Hardening"
 mkdir -p "$OCPN_PREVIEW_ROOT/usr/local" "$OCPN_PREVIEW_ROOT/config"
 
-chmod u+x opencpn-5.15.0-preview-b-linux-x86_64-installer.sh
-./opencpn-5.15.0-preview-b-linux-x86_64-installer.sh \
+chmod u+x opencpn-5.15.0-preview-b1-hardening-linux-x86_64-installer.sh
+./opencpn-5.15.0-preview-b1-hardening-linux-x86_64-installer.sh \
   --skip-license --exclude-subdir --prefix="$OCPN_PREVIEW_ROOT"
 
 tar -xzf xweather-routing-preview-b-hardened-arch-x86_64.tar.gz \
@@ -94,7 +100,7 @@ Route activation is deliberately absent from this ordinary test token. If it
 must be tested, use a second isolated profile and explicitly add
 `routes:activate`; the CLI also requires `--confirm`.
 
-Restart Preview B. OpenCPN creates its self-signed development certificate in
+Restart Preview B.1. OpenCPN creates its self-signed development certificate in
 the isolated configuration directory. Install the SDK wheel in a virtual
 environment and perform the first checks:
 
@@ -177,7 +183,7 @@ must not fail with `provider_busy`. This checks resident-provider cleanup.
 Core:
 
 ```sh
-git clone --branch external-control/preview-b \
+git clone --branch external-control/preview-b.1-hardening \
   https://github.com/pob220/OpenCPN-Core-Hardening.git opencpn-preview-b
 cmake -S opencpn-preview-b -B opencpn-preview-b/build -G Ninja \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo -DOCPN_BUILD_TEST=ON
@@ -189,7 +195,7 @@ cpack --config opencpn-preview-b/build/CPackConfig.cmake \
 ```
 
 The exclusion matches the three desktop-session-dependent `IpcClient.*`
-tests, `IpcServer.Commands`, and the historical aggregate wrapper. The 113
+tests, `IpcServer.Commands`, and the historical aggregate wrapper. The 119
 independently runnable registrations must pass sequentially; some older tests
 share `opencpn.conf` and are not parallel-safe.
 
@@ -243,4 +249,3 @@ chart or depth evidence is unavailable.
 The complete qualification record is
 [external-control-qualification.md](external-control-qualification.md), and
 the normative wire contract is [api/openapi-v2.yaml](../../api/openapi-v2.yaml).
-
