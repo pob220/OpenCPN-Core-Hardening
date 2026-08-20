@@ -6646,17 +6646,9 @@ void MyFrame::OnEvtPlugInMessage(OCPN_MsgEvent &event) {
   }
 
   if (message_ID == "WMM_VARIATION") {
-    nlohmann::json root;
-    try {
-      root = nlohmann::json::parse(message_JSONText);
-    } catch (nlohmann::json::exception &) {
-      return;
-    }
-    wxString decl = root["Decl"].get<std::string>();
-    double decl_val;
-    decl.ToDouble(&decl_val);
-
-    gQueryVar = decl_val;
+    const auto variation = ParseWmmVariation(message_JSONText.ToStdString());
+    if (!variation) return;
+    gQueryVar = *variation;
   }
 
   if (message_ID == "GRIB_TIMELINE") {

@@ -53,6 +53,7 @@ set(SRC
   navobj_db_transaction_tests.cpp
   renderer_config_tests.cpp
   navutil_base_tests.cpp
+  plugin_comm_tests.cpp
   route_leg_state_tests.cpp
   route_point_tests.cpp
   ${CMAKE_SOURCE_DIR}/cli/api_shim.cpp

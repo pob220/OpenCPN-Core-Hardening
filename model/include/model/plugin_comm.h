@@ -24,6 +24,9 @@
 #ifndef PLUGIN_COMM_H
 #define PLUGIN_COMM_H
 
+#include <optional>
+#include <string>
+
 #include <wx/event.h>
 #include <wx/jsonval.h>
 #include <wx/string.h>
@@ -37,6 +40,14 @@ void SendMessageToAllPlugins(const std::string& message_id,
 
 void SendJsonMessageToAllPlugins(const std::string& message_id,
                                  const nlohmann::json& v);
+
+/** Parse the Decl field used by WMM_VARIATION plugin messages.
+ *
+ * The WMM plugin has historically emitted a JSON number, while older
+ * consumers also accepted a numeric string through wxJSON::AsString().
+ * Accept both representations and reject malformed or non-finite values.
+ */
+std::optional<double> ParseWmmVariation(const std::string& message_body);
 
 void SendAISSentenceToAllPlugIns(const wxString& sentence);
 
