@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencpn.org/external-control/scheduler-schedule-v1.schema.json",
+  "title": "OpenCPN Scheduler definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "name", "enabled", "trigger", "workflow", "policy"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "name": {"type": "string", "minLength": 1, "maxLength": 128},
+    "enabled": {"type": "boolean"},
+    "trigger": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "hours"],
+          "properties": {
+            "type": {"const": "interval"},
+            "hours": {"type": "integer", "minimum": 1, "maximum": 8760}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "hourUtc", "minuteUtc"],
+          "properties": {
+            "type": {"const": "daily-utc"},
+            "hourUtc": {"type": "integer", "minimum": 0, "maximum": 23},
+            "minuteUtc": {"type": "integer", "minimum": 0, "maximum": 59}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {"type": {"const": "manual"}}
+        }
+      ]
+    },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "environment"],
+      "properties": {
+        "type": {"enum": ["environment-refresh", "environment-and-route"]},
+        "environment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["providerCapability", "parameters", "activateForDisplay"],
+          "properties": {
+            "providerCapability": {"type": "string", "minLength": 1},
+            "parameters": {"type": "object"},
+            "activateForDisplay": {"type": "boolean"}
+          }
+        },
+        "route": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["providerCapability", "start", "destination", "minimumDepthMeters", "draftName"],
+          "properties": {
+            "providerCapability": {"type": "string", "minLength": 1},
+            "start": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["type", "maximumAgeSeconds"],
+                  "properties": {
+                    "type": {"const": "ownship"},
+                    "maximumAgeSeconds": {"type": "integer", "minimum": 1, "maximum": 3600}
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["type", "latitudeDegrees", "longitudeDegrees"],
+                  "properties": {
+                    "type": {"const": "fixed"},
+                    "latitudeDegrees": {"type": "number", "minimum": -90, "maximum": 90},
+                    "longitudeDegrees": {"type": "number", "minimum": -180, "maximum": 180}
+                  }
+                }
+              ]
+            },
+            "destination": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["latitudeDegrees", "longitudeDegrees"],
+              "properties": {
+                "latitudeDegrees": {"type": "number", "minimum": -90, "maximum": 90},
+                "longitudeDegrees": {"type": "number", "minimum": -180, "maximum": 180}
+              }
+            },
+            "minimumDepthMeters": {"type": "number", "minimum": 0},
+            "landMarginNauticalMiles": {"type": "number", "minimum": 0, "default": 0},
+            "polarIdentity": {"type": "string"},
+            "departureOffsetMinutes": {"type": "integer", "minimum": 0, "maximum": 525600},
+            "allowClimatologyFallback": {"type": "boolean", "default": false},
+            "draftName": {"type": "string", "minLength": 1, "maxLength": 128}
+          }
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["concurrency", "missedRun", "maximumRuntimeSeconds", "retryCount", "retryBackoffSeconds"],
+      "properties": {
+        "concurrency": {"enum": ["skip", "queue", "replace"]},
+        "missedRun": {"enum": ["skip", "run-once"]},
+        "maximumRuntimeSeconds": {"type": "integer", "minimum": 1, "maximum": 86400},
+        "retryCount": {"type": "integer", "minimum": 0, "maximum": 10},
+        "retryBackoffSeconds": {"type": "integer", "minimum": 1, "maximum": 3600}
+      }
+    }
+  }
+}
