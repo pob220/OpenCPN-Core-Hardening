@@ -23,6 +23,31 @@ The demonstration exercises two useful vertical slices:
    with independent core chart/land/depth validation before publishing a
    non-active draft.
 
+## Moving-vessel scheduled replanning example
+
+The combined workflow can be configured to run at an anchored four-hour
+interval with `ownship` as its route start. Each occurrence:
+
+1. acquires and validates a new xGRIB environmental dataset;
+2. activates that exact dataset in the running OpenCPN display;
+3. samples OpenCPN's current ownship position immediately before planning;
+4. asks xWeatherRouting for a route from that position to the configured
+   destination; and
+5. publishes the result only after authoritative core chart/land/depth
+   validation succeeds.
+
+Ownship position has a configurable maximum age (30 seconds is a useful test
+value). Missing, invalid or stale navigation data fails the route step
+explicitly. Acquisition, planning or safety failure does not replace the
+schedule's last known-good draft. A successful run transactionally replaces
+only that schedule-owned, non-active draft; it does not activate navigation,
+control the vessel or send autopilot output.
+
+The current xGRIB acquisition area is a fixed bounding box, not an
+automatically moving corridor. Testers must configure it to cover the moving
+boat-to-destination route. Automatic area derivation is deliberately deferred
+contract work rather than hidden plug-in UI automation.
+
 It is a Linux x86_64 developer demonstration, not a navigation release. The
 release page and bundled qualification document state the tested platform,
 evidence and limitations. Existing onboard profiles and installations must
