@@ -96,11 +96,23 @@
             "landMarginNauticalMiles": {"type": "number", "minimum": 0, "default": 0},
             "polarIdentity": {"type": "string"},
             "departureOffsetMinutes": {"type": "integer", "minimum": 0, "maximum": 525600},
+            "departureWindowBeforeMinutes": {"type": "integer", "minimum": 0, "maximum": 10080},
+            "departureWindowAfterMinutes": {"type": "integer", "minimum": 0, "maximum": 10080},
+            "departureStepMinutes": {"type": "integer", "minimum": 1, "maximum": 1440},
+            "concurrentRoutes": {"type": "integer", "minimum": 1, "maximum": 16},
+            "routingEffortPercent": {"type": "integer", "minimum": 10, "maximum": 400},
+            "horizonHours": {"type": "integer", "minimum": 1, "maximum": 8760},
             "allowClimatologyFallback": {"type": "boolean", "default": false},
             "draftName": {"type": "string", "minLength": 1, "maxLength": 128}
           }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "environment-and-route"}}},
+          "then": {"required": ["route"]}
+        }
+      ]
     },
     "policy": {
       "type": "object",

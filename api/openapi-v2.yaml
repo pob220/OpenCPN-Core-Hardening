@@ -629,7 +629,8 @@ components:
       properties:
         type:
           enum: [navigation, navigation-validity, route-catalogue,
-                 active-route, chart-database, readiness, planning-job]
+                 active-route, chart-database, readiness, planning-job,
+                 environmental-job, environmental-dataset]
         sequence: {type: integer, minimum: 1}
         timestampUtc: {type: string, format: date-time}
         schemaVersion: {type: integer, const: 1}

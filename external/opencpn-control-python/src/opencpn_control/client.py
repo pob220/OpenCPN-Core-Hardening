@@ -70,6 +70,9 @@ class Client:
     def capabilities(self) -> dict[str, Any]:
         return self._request("GET", "/api/v2/capabilities")
 
+    def providers(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/api/v2/providers")["providers"]
+
     def readiness(self) -> dict[str, Any]:
         return self._request("GET", "/api/v2/readiness")
 
@@ -141,11 +144,33 @@ class Client:
     def get_plan_result(self, job_id: str) -> dict[str, Any]:
         return self._request("GET", f"/api/v2/planning/jobs/{job_id}/result")
 
+    def start_environment(self, request: dict[str, Any], *,
+                          idempotency_key: str | None = None) -> dict[str, Any]:
+        return self._request("POST", "/api/v2/environment/jobs", request,
+                             idempotency_key=idempotency_key or str(uuid.uuid4()))
+
+    def get_environment_job(self, job_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/api/v2/environment/jobs/{job_id}")
+
+    def cancel_environment_job(self, job_id: str) -> dict[str, Any]:
+        return self._request("DELETE", f"/api/v2/environment/jobs/{job_id}")
+
+    def get_environment_result(self, job_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/api/v2/environment/jobs/{job_id}/result")
+
+    def list_environment_datasets(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/api/v2/environment/datasets")["datasets"]
+
+    def activate_environment_dataset(self, identity: str) -> dict[str, Any]:
+        return self._request(
+            "POST", f"/api/v2/environment/datasets/{identity}/activate")
+
     def events(self, subscriptions: list[str] | None = None):
         """Iterate the initial snapshot, acknowledgement and event batches."""
         return iter_events(
             self.base_url, self.token,
             subscriptions or ["navigation", "navigation-validity",
                               "route-catalogue", "active-route", "readiness",
-                              "planning-job"],
+                              "planning-job", "environmental-job",
+                              "environmental-dataset"],
             verify_tls=self.verify_tls, timeout=self.timeout)
