@@ -1,4 +1,5 @@
 #include <atomic>
+#include <future>
 #include <thread>
 
 #include <gtest/gtest.h>
@@ -365,6 +366,38 @@ TEST_F(ExternalApiTest, EnvironmentalDatasetPublishesThenActivatesAtomically) {
   const auto listed = router.Handle(list);
   ASSERT_EQ(listed.status, 200);
   EXPECT_TRUE(nlohmann::json::parse(listed.body)["datasets"][0]["active"]);
+}
+
+TEST(InProcessEnvironmentalJobServiceTest,
+     ExactActiveDatasetLeaseBlocksReplacement) {
+  auto provider = std::make_shared<DeterministicEnvironmentProvider>();
+  InProcessEnvironmentalJobService service(nullptr, 1, 4, 4);
+  ASSERT_TRUE(service.RegisterProvider(provider));
+  EnvironmentalRequest request;
+  request.provider_capability = provider->Describe().capability;
+  const auto submitted = service.Submit(request, "owner");
+  ASSERT_TRUE(submitted.value);
+  for (int attempt = 0; attempt < 100; ++attempt) {
+    const auto status = service.Get(submitted.value->id, "owner");
+    ASSERT_TRUE(status.value);
+    if (status.value->state == PlanningJobState::Completed) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  }
+  const auto result = service.GetResult(submitted.value->id, "owner");
+  ASSERT_TRUE(result.value);
+  ASSERT_TRUE(service.Activate(result.value->identity).value);
+  auto lease = service.PinActive(result.value->identity);
+  ASSERT_TRUE(lease.value);
+  auto replacement = std::async(std::launch::async, [&] {
+    return service.Activate(result.value->identity);
+  });
+  EXPECT_EQ(replacement.wait_for(std::chrono::milliseconds(20)),
+            std::future_status::timeout);
+  lease.value.reset();
+  EXPECT_EQ(replacement.wait_for(std::chrono::seconds(1)),
+            std::future_status::ready);
+  EXPECT_TRUE(replacement.get().value);
+  service.Shutdown();
 }
 
 TEST_F(ExternalApiTest, EventUpgradeStartsWithScopedSnapshot) {

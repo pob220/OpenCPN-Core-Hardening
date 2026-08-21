@@ -7779,6 +7779,8 @@ struct PlugInPlanningProviderV1 {
   const char *display_name;
   void *provider_context;
   PlugInPlanningRunV1 run;
+  // Optional when struct_size includes this field. JSON is copied at register.
+  const char *descriptor_json;
 };
 
 extern "C" DECL_EXP bool PlugIn_RegisterPlanningProviderV1(

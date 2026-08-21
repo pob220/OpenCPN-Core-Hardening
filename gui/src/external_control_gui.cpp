@@ -666,34 +666,67 @@ Result<ChartSafetyResult> ValidateProviderRoute(
   return std::move(state->result);
 }
 
+std::optional<ProviderDescriptor> ParseEnvironmentDescriptor(
+    const PlugInEnvironmentProviderV1& provider);
+
 class PluginPlanningProvider final : public PlanningProvider {
 public:
   PluginPlanningProvider(std::string plugin_name,
                          const PlugInPlanningProviderV1& provider,
-                         std::shared_ptr<ChartSafetyQuery> safety)
+                         std::shared_ptr<ChartSafetyQuery> safety,
+                         std::shared_ptr<EnvironmentalJobService> environment)
       : plugin_name_(std::move(plugin_name)),
         capability_(provider.capability),
         display_name_(provider.display_name ? provider.display_name
                                             : provider.capability),
         context_(provider.provider_context),
         run_(provider.run),
-        safety_(std::move(safety)) {}
+        safety_(std::move(safety)),
+        environment_(std::move(environment)) {
+    descriptor_.capability = capability_;
+    descriptor_.display_name = display_name_;
+    descriptor_.kind = ProviderKind::RoutePlanning;
+    descriptor_.required_scope = "planning:run";
+    if (provider.struct_size >= sizeof(PlugInPlanningProviderV1) &&
+        provider.descriptor_json) {
+      PlugInEnvironmentProviderV1 compatible{};
+      compatible.capability = provider.capability;
+      compatible.display_name = provider.display_name;
+      compatible.descriptor_json = provider.descriptor_json;
+      if (auto parsed = ParseEnvironmentDescriptor(compatible)) {
+        descriptor_ = std::move(*parsed);
+        descriptor_.kind = ProviderKind::RoutePlanning;
+        descriptor_.required_scope = "planning:run";
+      }
+    }
+  }
 
   std::string Capability() const override { return capability_; }
 
-  ProviderDescriptor Describe() const override {
-    ProviderDescriptor descriptor;
-    descriptor.capability = capability_;
-    descriptor.display_name = display_name_;
-    descriptor.kind = ProviderKind::RoutePlanning;
-    descriptor.required_scope = "planning:run";
-    return descriptor;
-  }
+  ProviderDescriptor Describe() const override { return descriptor_; }
 
   Result<PlanningResult> Run(
       const PlanningRequest& request, const PlanningCancellation& cancellation,
       const std::function<void(double)>& report_progress) override {
     using nlohmann::json;
+    std::vector<EnvironmentalDatasetLease> dataset_leases;
+    for (const auto* identity : {&request.weather_dataset_identity,
+                                 &request.current_dataset_identity}) {
+      if (identity->empty() || *identity == "active" ||
+          std::any_of(dataset_leases.begin(), dataset_leases.end(),
+                      [&](const auto& lease) {
+                        return lease.dataset.identity == *identity;
+                      }))
+        continue;
+      if (!environment_)
+        return Result<PlanningResult>::FromError(
+            "environment_unavailable",
+            "Exact environmental dataset pinning is unavailable");
+      auto pinned = environment_->PinActive(*identity);
+      if (pinned.error)
+        return Result<PlanningResult>{std::nullopt, pinned.error};
+      dataset_leases.push_back(std::move(*pinned.value));
+    }
     json encoded = {
         {"schemaVersion", 1},
         {"providerCapability", request.provider_capability},
@@ -891,9 +924,11 @@ private:
   std::string plugin_name_;
   std::string capability_;
   std::string display_name_;
+  ProviderDescriptor descriptor_;
   void* context_;
   PlugInPlanningRunV1 run_;
   std::shared_ptr<ChartSafetyQuery> safety_;
+  std::shared_ptr<EnvironmentalJobService> environment_;
 };
 
 std::optional<ProviderDescriptor> ParseEnvironmentDescriptor(
@@ -1123,8 +1158,11 @@ PluginPlanningRegistry& PlanningRegistry() {
 
 extern "C" bool PlugIn_RegisterPlanningProviderV1(
     const char* plugin_name, const PlugInPlanningProviderV1* provider) {
+  constexpr std::size_t required_size =
+      offsetof(PlugInPlanningProviderV1, run) +
+      sizeof(PlugInPlanningRunV1);
   if (!plugin_name || !*plugin_name || !provider ||
-      provider->struct_size < sizeof(PlugInPlanningProviderV1) ||
+      provider->struct_size < required_size ||
       !provider->capability || !*provider->capability || !provider->run)
     return false;
   const std::string capability(provider->capability);
@@ -1134,9 +1172,10 @@ extern "C" bool PlugIn_RegisterPlanningProviderV1(
   std::lock_guard<std::mutex> lock(registry.mutex);
   auto planning = registry.planning.lock();
   auto safety = registry.safety.lock();
+  auto environment = registry.environment.lock();
   if (!planning || !safety) return false;
   auto adapter = std::make_shared<PluginPlanningProvider>(
-      plugin_name, *provider, std::move(safety));
+      plugin_name, *provider, std::move(safety), std::move(environment));
   if (!planning->RegisterProvider(std::move(adapter))) return false;
   registry.capabilities[plugin_name].push_back(capability);
   wxLogMessage("Plugin %s registered external planning provider %s",

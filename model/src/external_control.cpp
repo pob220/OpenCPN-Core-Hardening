@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <condition_variable>
 #include <exception>
+#include <shared_mutex>
 #include <thread>
 #include <unordered_map>
 
@@ -544,6 +545,7 @@ public:
   }
 
   mutable std::mutex mutex;
+  mutable std::shared_mutex dataset_use_gate;
   std::mutex activation_mutex;
   std::condition_variable changed;
   std::unordered_map<std::string, std::shared_ptr<EnvironmentalProvider>>
@@ -723,8 +725,23 @@ InProcessEnvironmentalJobService::ListDatasets() const {
   return result;
 }
 
+Result<EnvironmentalDatasetLease>
+InProcessEnvironmentalJobService::PinActive(const std::string& identity) const {
+  auto pin = std::make_shared<std::shared_lock<std::shared_mutex>>(
+      impl_->dataset_use_gate);
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  const auto found = impl_->datasets.find(identity);
+  if (found == impl_->datasets.end() || !found->second.active)
+    return Result<EnvironmentalDatasetLease>::FromError(
+        "dataset_not_active",
+        "Requested environmental dataset is not the active dataset");
+  return Result<EnvironmentalDatasetLease>::FromValue(
+      EnvironmentalDatasetLease{found->second, std::move(pin)});
+}
+
 Result<EnvironmentalDataset> InProcessEnvironmentalJobService::Activate(
     const std::string& identity) {
+  std::unique_lock<std::shared_mutex> use_lock(impl_->dataset_use_gate);
   std::lock_guard<std::mutex> activation_lock(impl_->activation_mutex);
   EnvironmentalDataset dataset;
   std::shared_ptr<EnvironmentalProvider> provider;

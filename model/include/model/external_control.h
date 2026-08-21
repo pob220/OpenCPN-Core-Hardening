@@ -322,6 +322,12 @@ struct EnvironmentalJobSnapshot {
   std::optional<ServiceError> error;
 };
 
+/** Keeps the selected active dataset stable for the lifetime of a consumer. */
+struct EnvironmentalDatasetLease {
+  EnvironmentalDataset dataset;
+  std::shared_ptr<void> pin;
+};
+
 class EnvironmentalProvider {
 public:
   virtual ~EnvironmentalProvider() = default;
@@ -350,6 +356,8 @@ public:
   virtual Result<EnvironmentalDataset> GetResult(
       const std::string& id, const std::string& owner_id) const = 0;
   virtual std::vector<EnvironmentalDataset> ListDatasets() const = 0;
+  virtual Result<EnvironmentalDatasetLease> PinActive(
+      const std::string& identity) const = 0;
   virtual Result<EnvironmentalDataset> Activate(
       const std::string& identity) = 0;
   virtual void Shutdown() = 0;
@@ -377,6 +385,8 @@ public:
   Result<EnvironmentalDataset> GetResult(
       const std::string& id, const std::string& owner_id) const override;
   std::vector<EnvironmentalDataset> ListDatasets() const override;
+  Result<EnvironmentalDatasetLease> PinActive(
+      const std::string& identity) const override;
   Result<EnvironmentalDataset> Activate(const std::string& identity) override;
   void Shutdown() override;
 
