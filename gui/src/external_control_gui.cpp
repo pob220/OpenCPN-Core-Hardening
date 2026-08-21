@@ -545,6 +545,22 @@ public:
     return "route-planning.chart-direct.v1";
   }
 
+  ProviderDescriptor Describe() const override {
+    ProviderDescriptor descriptor;
+    descriptor.capability = Capability();
+    descriptor.display_name = "Chart-validated direct route";
+    descriptor.kind = ProviderKind::RoutePlanning;
+    descriptor.required_scope = "planning:run";
+    descriptor.fields = {
+        {"start", "Start", ProviderFieldType::Coordinate, true},
+        {"destination", "Destination", ProviderFieldType::Coordinate, true},
+        {"minimumDepthMeters", "Minimum safe depth",
+         ProviderFieldType::Number, true, "m", "0", 0.0},
+        {"landMarginNauticalMiles", "Land margin",
+         ProviderFieldType::Number, false, "NM", "0", 0.0}};
+    return descriptor;
+  }
+
   Result<PlanningResult> Run(
       const PlanningRequest& request, const PlanningCancellation& cancellation,
       const std::function<void(double)>& report_progress) override {
@@ -655,6 +671,15 @@ public:
         safety_(std::move(safety)) {}
 
   std::string Capability() const override { return capability_; }
+
+  ProviderDescriptor Describe() const override {
+    ProviderDescriptor descriptor;
+    descriptor.capability = capability_;
+    descriptor.display_name = display_name_;
+    descriptor.kind = ProviderKind::RoutePlanning;
+    descriptor.required_scope = "planning:run";
+    return descriptor;
+  }
 
   Result<PlanningResult> Run(
       const PlanningRequest& request, const PlanningCancellation& cancellation,

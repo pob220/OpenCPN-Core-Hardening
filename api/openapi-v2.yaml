@@ -41,6 +41,22 @@ paths:
                   capabilities:
                     type: array
                     items: {type: string}
+  /api/v2/providers:
+    get:
+      operationId: listExternalProviders
+      summary: Discover typed providers visible to the authenticated principal
+      responses:
+        '200':
+          description: Provider descriptors and dynamic resources
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [providers]
+                properties:
+                  providers:
+                    type: array
+                    items: {$ref: '#/components/schemas/ProviderDescriptor'}
         default: {$ref: '#/components/responses/Error'}
   /api/v2/readiness:
     get:
@@ -340,6 +356,51 @@ components:
             schema: {$ref: '#/components/schemas/ChartSafetyResult'}
       default: {$ref: '#/components/responses/Error'}
   schemas:
+    ProviderChoice:
+      type: object
+      required: [value, label]
+      properties:
+        value: {type: string}
+        label: {type: string}
+    ProviderField:
+      type: object
+      required: [name, label, type, required]
+      properties:
+        name: {type: string}
+        label: {type: string}
+        type: {enum: [string, integer, number, boolean, coordinate, resource]}
+        required: {type: boolean}
+        unit: {type: string}
+        defaultValue: {type: string}
+        minimum: {type: number}
+        maximum: {type: number}
+        resourceKind: {type: string}
+        choices:
+          type: array
+          items: {$ref: '#/components/schemas/ProviderChoice'}
+    ProviderResource:
+      type: object
+      required: [kind, identity, label, available, metadata]
+      properties:
+        kind: {type: string}
+        identity: {type: string}
+        label: {type: string}
+        available: {type: boolean}
+        metadata: {type: object, additionalProperties: {type: string}}
+    ProviderDescriptor:
+      type: object
+      required: [capability, displayName, kind, schemaVersion, cancellable,
+                 maximumConcurrentJobs, requiredScope, fields, resources]
+      properties:
+        capability: {type: string}
+        displayName: {type: string}
+        kind: {enum: [route-planning, environmental-data]}
+        schemaVersion: {type: integer, minimum: 1}
+        cancellable: {type: boolean}
+        maximumConcurrentJobs: {type: integer, minimum: 1}
+        requiredScope: {type: string}
+        fields: {type: array, items: {$ref: '#/components/schemas/ProviderField'}}
+        resources: {type: array, items: {$ref: '#/components/schemas/ProviderResource'}}
     Coordinate:
       type: object
       required: [latitudeDegrees, longitudeDegrees]

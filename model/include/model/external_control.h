@@ -163,6 +163,55 @@ struct ServiceError {
   std::string message;
 };
 
+enum class ProviderKind { RoutePlanning, EnvironmentalData };
+enum class ProviderFieldType {
+  String,
+  Integer,
+  Number,
+  Boolean,
+  Coordinate,
+  Resource
+};
+
+struct ProviderChoice {
+  std::string value;
+  std::string label;
+};
+
+struct ProviderFieldDescriptor {
+  std::string name;
+  std::string label;
+  ProviderFieldType type = ProviderFieldType::String;
+  bool required = false;
+  std::string unit;
+  std::string default_value;
+  std::optional<double> minimum;
+  std::optional<double> maximum;
+  std::string resource_kind;
+  std::vector<ProviderChoice> choices;
+};
+
+struct ProviderResource {
+  std::string kind;
+  std::string identity;
+  std::string label;
+  bool available = true;
+  std::vector<std::pair<std::string, std::string>> metadata;
+};
+
+/** Typed provider description; no transport, JSON or wxWidgets types. */
+struct ProviderDescriptor {
+  std::string capability;
+  std::string display_name;
+  ProviderKind kind = ProviderKind::RoutePlanning;
+  std::uint32_t schema_version = 1;
+  bool cancellable = true;
+  std::size_t maximum_concurrent_jobs = 1;
+  std::string required_scope;
+  std::vector<ProviderFieldDescriptor> fields;
+  std::vector<ProviderResource> resources;
+};
+
 template <typename T>
 struct Result {
   std::optional<T> value;
@@ -281,6 +330,14 @@ class PlanningProvider {
 public:
   virtual ~PlanningProvider() = default;
   virtual std::string Capability() const = 0;
+  virtual ProviderDescriptor Describe() const {
+    ProviderDescriptor descriptor;
+    descriptor.capability = Capability();
+    descriptor.display_name = Capability();
+    descriptor.kind = ProviderKind::RoutePlanning;
+    descriptor.required_scope = "planning:run";
+    return descriptor;
+  }
   virtual Result<PlanningResult> Run(
       const PlanningRequest& request, const PlanningCancellation& cancellation,
       const std::function<void(double)>& report_progress) = 0;
@@ -292,6 +349,7 @@ public:
   virtual bool RegisterProvider(std::shared_ptr<PlanningProvider> provider) = 0;
   virtual bool UnregisterProvider(const std::string& capability) = 0;
   virtual std::vector<std::string> ProviderCapabilities() const = 0;
+  virtual std::vector<ProviderDescriptor> ProviderDescriptors() const = 0;
   virtual Result<PlanningJobSnapshot> Submit(const PlanningRequest& request,
                                              const std::string& owner_id) = 0;
   virtual Result<PlanningJobSnapshot> Get(
@@ -313,6 +371,7 @@ public:
   bool RegisterProvider(std::shared_ptr<PlanningProvider> provider) override;
   bool UnregisterProvider(const std::string& capability) override;
   std::vector<std::string> ProviderCapabilities() const override;
+  std::vector<ProviderDescriptor> ProviderDescriptors() const override;
   Result<PlanningJobSnapshot> Submit(const PlanningRequest& request,
                                      const std::string& owner_id) override;
   Result<PlanningJobSnapshot> Get(const std::string& id,

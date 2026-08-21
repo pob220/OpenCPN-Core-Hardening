@@ -131,6 +131,17 @@ public:
 class DeterministicPlanningProvider final : public PlanningProvider {
 public:
   std::string Capability() const override { return "route-planning.test.v1"; }
+  ProviderDescriptor Describe() const override {
+    ProviderDescriptor descriptor;
+    descriptor.capability = Capability();
+    descriptor.display_name = "Deterministic test planner";
+    descriptor.fields = {
+        {"polarIdentity", "Polar", ProviderFieldType::Resource, false, {},
+         {}, std::nullopt, std::nullopt, "polar"}};
+    descriptor.resources = {
+        {"polar", "test.pol", "Test polar", true, {{"format", "pol"}}}};
+    return descriptor;
+  }
   Result<PlanningResult> Run(
       const PlanningRequest& request, const PlanningCancellation& cancellation,
       const std::function<void(double)>& report_progress) override {
@@ -228,6 +239,23 @@ TEST_F(ExternalApiTest, DiscoversOnlyGrantedAndAvailableCapabilities) {
   EXPECT_EQ(body["capabilities"],
             nlohmann::json::array({"readiness.v1", "navigation.snapshot.v1",
                                    "events.semantic.v1"}));
+}
+
+TEST_F(ExternalApiTest, DiscoversTypedProviderDescriptorsByScope) {
+  auto denied = Request("GET", "/api/v2/providers");
+  EXPECT_TRUE(nlohmann::json::parse(router.Handle(denied).body)["providers"]
+                  .empty());
+
+  auto request = Request("GET", "/api/v2/providers");
+  request.headers["Authorization"] = "Bearer write-token";
+  const auto response = router.Handle(request);
+  ASSERT_EQ(response.status, 200);
+  const auto body = nlohmann::json::parse(response.body);
+  ASSERT_EQ(body["providers"].size(), 1);
+  EXPECT_EQ(body["providers"][0]["capability"],
+            "route-planning.test.v1");
+  EXPECT_EQ(body["providers"][0]["fields"][0]["resourceKind"], "polar");
+  EXPECT_EQ(body["providers"][0]["resources"][0]["identity"], "test.pol");
 }
 
 TEST_F(ExternalApiTest, EventUpgradeStartsWithScopedSnapshot) {

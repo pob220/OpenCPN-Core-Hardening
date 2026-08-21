@@ -100,6 +100,73 @@ json CoordinateJson(const Coordinate& coordinate) {
           {"longitudeDegrees", coordinate.longitude_degrees}};
 }
 
+const char* ProviderKindText(ProviderKind kind) {
+  return kind == ProviderKind::EnvironmentalData ? "environmental-data"
+                                                  : "route-planning";
+}
+
+const char* ProviderFieldTypeText(ProviderFieldType type) {
+  switch (type) {
+    case ProviderFieldType::String:
+      return "string";
+    case ProviderFieldType::Integer:
+      return "integer";
+    case ProviderFieldType::Number:
+      return "number";
+    case ProviderFieldType::Boolean:
+      return "boolean";
+    case ProviderFieldType::Coordinate:
+      return "coordinate";
+    case ProviderFieldType::Resource:
+      return "resource";
+  }
+  return "string";
+}
+
+json ProviderDescriptorJson(const ProviderDescriptor& descriptor) {
+  json fields = json::array();
+  for (const auto& field : descriptor.fields) {
+    json encoded = {{"name", field.name},
+                    {"label", field.label},
+                    {"type", ProviderFieldTypeText(field.type)},
+                    {"required", field.required}};
+    if (!field.unit.empty()) encoded["unit"] = field.unit;
+    if (!field.default_value.empty())
+      encoded["defaultValue"] = field.default_value;
+    if (field.minimum) encoded["minimum"] = *field.minimum;
+    if (field.maximum) encoded["maximum"] = *field.maximum;
+    if (!field.resource_kind.empty())
+      encoded["resourceKind"] = field.resource_kind;
+    if (!field.choices.empty()) {
+      encoded["choices"] = json::array();
+      for (const auto& choice : field.choices)
+        encoded["choices"].push_back(
+            {{"value", choice.value}, {"label", choice.label}});
+    }
+    fields.push_back(std::move(encoded));
+  }
+  json resources = json::array();
+  for (const auto& resource : descriptor.resources) {
+    json metadata = json::object();
+    for (const auto& [name, value] : resource.metadata)
+      metadata[name] = value;
+    resources.push_back({{"kind", resource.kind},
+                         {"identity", resource.identity},
+                         {"label", resource.label},
+                         {"available", resource.available},
+                         {"metadata", std::move(metadata)}});
+  }
+  return {{"capability", descriptor.capability},
+          {"displayName", descriptor.display_name},
+          {"kind", ProviderKindText(descriptor.kind)},
+          {"schemaVersion", descriptor.schema_version},
+          {"cancellable", descriptor.cancellable},
+          {"maximumConcurrentJobs", descriptor.maximum_concurrent_jobs},
+          {"requiredScope", descriptor.required_scope},
+          {"fields", std::move(fields)},
+          {"resources", std::move(resources)}};
+}
+
 json RouteSummaryJson(const RouteSummary& route) {
   return {{"guid", route.guid},         {"name", route.name},
           {"revision", route.revision}, {"waypointCount", route.waypoint_count},
@@ -529,6 +596,14 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
     }
     return JsonResponse(200, {{"apiVersion", options_.api_version},
                               {"capabilities", capabilities}});
+  }
+  if (request.method == "GET" && path == "/api/v2/providers") {
+    json providers = json::array();
+    if (services_.planning && HasScope(principal, "planning:run")) {
+      for (const auto& descriptor : services_.planning->ProviderDescriptors())
+        providers.push_back(ProviderDescriptorJson(descriptor));
+    }
+    return JsonResponse(200, {{"providers", std::move(providers)}});
   }
   if (request.method == "GET" && path == "/api/v2/events") {
     if (!services_.events)
