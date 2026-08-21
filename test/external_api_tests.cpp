@@ -659,7 +659,7 @@ TEST_F(ExternalApiTest, ActivationHasSeparateScopeAndExplicitWarning) {
 TEST_F(ExternalApiTest, PlanningJobCompletesAsDraftWithProvenance) {
   auto request = Request(
       "POST", "/api/v2/planning/jobs",
-      R"({"providerCapability":"route-planning.test.v1","start":{"latitudeDegrees":53,"longitudeDegrees":-4},"destination":{"latitudeDegrees":55,"longitudeDegrees":-7},"minimumDepthMeters":5,"landMarginNauticalMiles":0.4,"allowClimatologyFallback":true,"departureWindowBeforeMinutes":180,"departureWindowAfterMinutes":240,"departureStepMinutes":60,"concurrentRoutes":7,"routingEffortPercent":200,"effortLimit":1000})");
+      R"({"providerCapability":"route-planning.test.v1","start":{"latitudeDegrees":53,"longitudeDegrees":-4},"destination":{"latitudeDegrees":55,"longitudeDegrees":-7},"departureTimeUtc":"2026-08-21T17:05:47.125516Z","minimumDepthMeters":5,"landMarginNauticalMiles":0.4,"allowClimatologyFallback":true,"departureWindowBeforeMinutes":180,"departureWindowAfterMinutes":240,"departureStepMinutes":60,"concurrentRoutes":7,"routingEffortPercent":200,"effortLimit":1000})");
   request.headers["Authorization"] = "Bearer write-token";
   request.headers["Idempotency-Key"] = "plan-1";
   const auto submitted = router.Handle(request);

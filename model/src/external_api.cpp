@@ -81,8 +81,20 @@ std::string Iso8601(Clock::time_point time) {
 }
 
 std::optional<Clock::time_point> ParseUtcTime(const std::string& value) {
+  if (value.size() < 20 || value.back() != 'Z') return std::nullopt;
+  std::string whole_seconds = value;
+  const auto fraction = value.find('.');
+  if (fraction != std::string::npos) {
+    if (fraction != 19 || fraction + 1 == value.size() - 1 ||
+        !std::all_of(value.begin() + fraction + 1, value.end() - 1,
+                     [](unsigned char character) {
+                       return std::isdigit(character) != 0;
+                     }))
+      return std::nullopt;
+    whole_seconds = value.substr(0, fraction) + "Z";
+  }
   std::tm utc{};
-  std::istringstream stream(value);
+  std::istringstream stream(whole_seconds);
   stream >> std::get_time(&utc, "%Y-%m-%dT%H:%M:%SZ");
   if (stream.fail() || stream.peek() != std::char_traits<char>::eof())
     return std::nullopt;
