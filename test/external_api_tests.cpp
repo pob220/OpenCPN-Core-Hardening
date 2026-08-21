@@ -163,6 +163,58 @@ public:
   std::optional<PlanningRequest> last_request;
 };
 
+class DeterministicEnvironmentProvider final : public EnvironmentalProvider {
+public:
+  ProviderDescriptor Describe() const override {
+    ProviderDescriptor descriptor;
+    descriptor.capability = "environmental-data.test.v1";
+    descriptor.display_name = "Deterministic environment provider";
+    descriptor.kind = ProviderKind::EnvironmentalData;
+    descriptor.fields = {
+        {"hours", "Duration", ProviderFieldType::Integer, true, "h", "72",
+         1.0, 8760.0}};
+    descriptor.resources = {
+        {"weather-provider", "fixture", "Fixture model", true, {}}};
+    return descriptor;
+  }
+
+  Result<EnvironmentalDataset> Run(
+      const EnvironmentalRequest& request,
+      const PlanningCancellation& cancellation,
+      const std::function<void(double)>& report_progress) override {
+    last_request = request;
+    report_progress(0.5);
+    if (cancellation.IsCancellationRequested())
+      return Result<EnvironmentalDataset>::FromError("cancelled", "cancelled");
+    EnvironmentalDataset dataset;
+    dataset.identity = "fixture-20260821T0000Z";
+    dataset.provider_capability = Describe().capability;
+    dataset.provider_handle = "/private/not-serialized.grb2";
+    dataset.model = "fixture";
+    dataset.cycle = "2026-08-21T00:00:00Z";
+    dataset.south_west = {50.0, -9.0};
+    dataset.north_east = {56.0, -4.0};
+    dataset.valid_from = Clock::from_time_t(1787270400);
+    dataset.valid_to = Clock::from_time_t(1787533200);
+    dataset.fields = {"wind-u-10m", "wind-v-10m"};
+    dataset.checksum_sha256 = std::string(64, 'a');
+    dataset.byte_size = 1024;
+    dataset.provenance = {"deterministic fixture"};
+    return Result<EnvironmentalDataset>::FromValue(std::move(dataset));
+  }
+
+  Result<EnvironmentalDataset> Activate(
+      const EnvironmentalDataset& dataset) override {
+    ++activation_calls;
+    auto activated = dataset;
+    activated.active = true;
+    return Result<EnvironmentalDataset>::FromValue(std::move(activated));
+  }
+
+  std::optional<EnvironmentalRequest> last_request;
+  std::atomic<int> activation_calls{0};
+};
+
 struct ExternalApiTest : public testing::Test {
   ExternalApiTest() {
     authorizer->Put(
@@ -172,8 +224,10 @@ struct ExternalApiTest : public testing::Test {
     authorizer->Put("write-token",
                     {"writer",
                      {"navigation:read", "routes:read", "routes:write",
-                      "routes:activate", "planning:run"}});
+                      "routes:activate", "planning:run", "environment:read",
+                      "environment:acquire", "environment:activate"}});
     planning->RegisterProvider(provider);
+    environment->RegisterProvider(environment_provider);
   }
 
   HttpRequest Request(std::string method, std::string path,
@@ -194,13 +248,18 @@ struct ExternalApiTest : public testing::Test {
       std::make_shared<InProcessPlanningJobService>(events, 1, 8);
   std::shared_ptr<DeterministicPlanningProvider> provider =
       std::make_shared<DeterministicPlanningProvider>();
+  std::shared_ptr<InProcessEnvironmentalJobService> environment =
+      std::make_shared<InProcessEnvironmentalJobService>(events, 1, 8, 4);
+  std::shared_ptr<DeterministicEnvironmentProvider> environment_provider =
+      std::make_shared<DeterministicEnvironmentProvider>();
   ServiceBundle services{std::make_shared<Readiness>(),
                          std::make_shared<Navigation>(),
                          std::make_shared<Routes>(),
                          commands,
                          std::make_shared<Safety>(),
                          events,
-                         planning};
+                         planning,
+                         environment};
   ExternalApiRouter router{services, authorizer, {true, 1024, "5.16-test"}};
 };
 
@@ -251,11 +310,61 @@ TEST_F(ExternalApiTest, DiscoversTypedProviderDescriptorsByScope) {
   const auto response = router.Handle(request);
   ASSERT_EQ(response.status, 200);
   const auto body = nlohmann::json::parse(response.body);
-  ASSERT_EQ(body["providers"].size(), 1);
+  ASSERT_EQ(body["providers"].size(), 2);
   EXPECT_EQ(body["providers"][0]["capability"],
             "route-planning.test.v1");
   EXPECT_EQ(body["providers"][0]["fields"][0]["resourceKind"], "polar");
   EXPECT_EQ(body["providers"][0]["resources"][0]["identity"], "test.pol");
+  EXPECT_EQ(body["providers"][1]["capability"],
+            "environmental-data.test.v1");
+}
+
+TEST_F(ExternalApiTest, EnvironmentalDatasetPublishesThenActivatesAtomically) {
+  auto submit = Request(
+      "POST", "/api/v2/environment/jobs",
+      R"({"providerCapability":"environmental-data.test.v1","parameters":{"hours":72,"includeWaves":false}})");
+  submit.headers["Authorization"] = "Bearer write-token";
+  submit.headers["Idempotency-Key"] = "environment-fixture-1";
+  const auto accepted = router.Handle(submit);
+  ASSERT_EQ(accepted.status, 202);
+  const auto id = nlohmann::json::parse(accepted.body)["id"].get<std::string>();
+
+  nlohmann::json status;
+  for (int attempt = 0; attempt < 100; ++attempt) {
+    auto query = Request("GET", "/api/v2/environment/jobs/" + id);
+    query.headers["Authorization"] = "Bearer write-token";
+    const auto response = router.Handle(query);
+    ASSERT_EQ(response.status, 200);
+    status = nlohmann::json::parse(response.body);
+    if (status["state"] == "completed") break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  ASSERT_EQ(status["state"], "completed");
+
+  auto result_request =
+      Request("GET", "/api/v2/environment/jobs/" + id + "/result");
+  result_request.headers["Authorization"] = "Bearer write-token";
+  const auto result = router.Handle(result_request);
+  ASSERT_EQ(result.status, 200);
+  const auto dataset = nlohmann::json::parse(result.body);
+  EXPECT_EQ(dataset["identity"], "fixture-20260821T0000Z");
+  EXPECT_FALSE(dataset.contains("providerHandle"));
+  EXPECT_FALSE(dataset["active"]);
+
+  auto activate = Request(
+      "POST",
+      "/api/v2/environment/datasets/fixture-20260821T0000Z/activate");
+  activate.headers["Authorization"] = "Bearer write-token";
+  const auto activated = router.Handle(activate);
+  ASSERT_EQ(activated.status, 200);
+  EXPECT_TRUE(nlohmann::json::parse(activated.body)["active"]);
+  EXPECT_EQ(environment_provider->activation_calls, 1);
+
+  auto list = Request("GET", "/api/v2/environment/datasets");
+  list.headers["Authorization"] = "Bearer write-token";
+  const auto listed = router.Handle(list);
+  ASSERT_EQ(listed.status, 200);
+  EXPECT_TRUE(nlohmann::json::parse(listed.body)["datasets"][0]["active"]);
 }
 
 TEST_F(ExternalApiTest, EventUpgradeStartsWithScopedSnapshot) {

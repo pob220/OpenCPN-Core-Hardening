@@ -7786,4 +7786,39 @@ extern "C" DECL_EXP bool PlugIn_RegisterPlanningProviderV1(
 extern "C" DECL_EXP bool PlugIn_UnregisterPlanningProvidersV1(
     const char *plugin_name);
 
+/*
+ * Optional environmental-data provider ABI.  Like planning-provider v1 this
+ * is outside the numbered plugin class ABI and may be resolved dynamically.
+ * descriptor_json and callback strings remain plugin-owned; the host copies
+ * them before returning.  Dataset provider handles are never exposed by the
+ * external HTTP API.
+ */
+#define OCPN_HAVE_ENVIRONMENT_PROVIDER_V1 1
+
+typedef int (*PlugInEnvironmentRunV1)(
+    void *provider_context, const char *request_json,
+    PlugInPlanningCancelledV1 is_cancelled, void *cancellation_context,
+    PlugInPlanningProgressV1 report_progress, void *progress_context,
+    const char **result_json, const char **error_code,
+    const char **error_message);
+typedef int (*PlugInEnvironmentActivateV1)(
+    void *provider_context, const char *provider_handle,
+    const char **result_json, const char **error_code,
+    const char **error_message);
+
+struct PlugInEnvironmentProviderV1 {
+  std::size_t struct_size;
+  const char *capability;
+  const char *display_name;
+  const char *descriptor_json;
+  void *provider_context;
+  PlugInEnvironmentRunV1 run;
+  PlugInEnvironmentActivateV1 activate;
+};
+
+extern "C" DECL_EXP bool PlugIn_RegisterEnvironmentProviderV1(
+    const char *plugin_name, const PlugInEnvironmentProviderV1 *provider);
+extern "C" DECL_EXP bool PlugIn_UnregisterEnvironmentProvidersV1(
+    const char *plugin_name);
+
 #endif  //_PLUGIN_H_

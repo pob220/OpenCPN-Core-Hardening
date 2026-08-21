@@ -225,6 +225,10 @@ const char* EventTypeText(ApplicationEventType type) {
       return "readiness";
     case ApplicationEventType::PlanningJob:
       return "planning-job";
+    case ApplicationEventType::EnvironmentalJob:
+      return "environmental-job";
+    case ApplicationEventType::EnvironmentalDataset:
+      return "environmental-dataset";
   }
   return "unknown";
 }
@@ -242,6 +246,10 @@ std::optional<ApplicationEventType> ParseEventType(const std::string& type) {
   if (type == "chart-database") return ApplicationEventType::ChartDatabase;
   if (type == "readiness") return ApplicationEventType::Readiness;
   if (type == "planning-job") return ApplicationEventType::PlanningJob;
+  if (type == "environmental-job")
+    return ApplicationEventType::EnvironmentalJob;
+  if (type == "environmental-dataset")
+    return ApplicationEventType::EnvironmentalDataset;
   return std::nullopt;
 }
 
@@ -395,6 +403,91 @@ json PlanningJobJson(const PlanningJobSnapshot& job) {
   return result;
 }
 
+json EnvironmentalJobJson(const EnvironmentalJobSnapshot& job) {
+  json result = {{"id", job.id},
+                 {"providerCapability", job.provider_capability},
+                 {"state", PlanningStateText(job.state)},
+                 {"progress", job.progress},
+                 {"cancellationRequested", job.cancellation_requested},
+                 {"submittedTimeUtc", Iso8601(job.submitted_time)},
+                 {"updatedTimeUtc", Iso8601(job.updated_time)}};
+  result["error"] = job.error ? json{{"code", job.error->code},
+                                     {"message", job.error->message}}
+                              : json(nullptr);
+  return result;
+}
+
+json EnvironmentalDatasetJson(const EnvironmentalDataset& dataset) {
+  return {{"identity", dataset.identity},
+          {"providerCapability", dataset.provider_capability},
+          {"model", dataset.model},
+          {"cycle", dataset.cycle},
+          {"coverage",
+           {{"southWest", CoordinateJson(dataset.south_west)},
+            {"northEast", CoordinateJson(dataset.north_east)}}},
+          {"validFromUtc", Iso8601(dataset.valid_from)},
+          {"validToUtc", Iso8601(dataset.valid_to)},
+          {"fields", dataset.fields},
+          {"checksumSha256", dataset.checksum_sha256},
+          {"byteSize", dataset.byte_size},
+          {"provenance", dataset.provenance},
+          {"active", dataset.active}};
+}
+
+Result<EnvironmentalRequest> ParseEnvironmentalRequest(const json& body) {
+  try {
+    EnvironmentalRequest request;
+    request.provider_capability =
+        body.at("providerCapability").get<std::string>();
+    const auto& parameters = body.at("parameters");
+    if (request.provider_capability.empty() ||
+        request.provider_capability.size() > 128 || !parameters.is_object() ||
+        parameters.size() > 128)
+      return Result<EnvironmentalRequest>::FromError(
+          "invalid_environmental_request",
+          "Environmental provider or parameter object is invalid");
+    for (const auto& [name, value] : parameters.items()) {
+      if (name.empty() || name.size() > 128)
+        return Result<EnvironmentalRequest>::FromError(
+            "invalid_environmental_request", "Parameter name is invalid");
+      if (value.is_boolean()) {
+        request.parameters[name] = value.get<bool>();
+      } else if (value.is_number_integer()) {
+        request.parameters[name] = value.get<std::int64_t>();
+      } else if (value.is_number()) {
+        const auto number = value.get<double>();
+        if (!std::isfinite(number))
+          return Result<EnvironmentalRequest>::FromError(
+              "invalid_environmental_request",
+              "Numeric parameters must be finite");
+        request.parameters[name] = number;
+      } else if (value.is_string()) {
+        auto text = value.get<std::string>();
+        if (text.size() > 4096)
+          return Result<EnvironmentalRequest>::FromError(
+              "invalid_environmental_request", "Parameter value is too long");
+        request.parameters[name] = std::move(text);
+      } else if (value.is_object()) {
+        const auto coordinate = ParseCoordinate(value);
+        if (coordinate.error)
+          return Result<EnvironmentalRequest>::FromError(
+              "invalid_environmental_request",
+              "Object parameters must be WGS84 coordinates");
+        request.parameters[name] = *coordinate.value;
+      } else {
+        return Result<EnvironmentalRequest>::FromError(
+            "invalid_environmental_request",
+            "Parameters must be scalar values or coordinates");
+      }
+    }
+    return Result<EnvironmentalRequest>::FromValue(std::move(request));
+  } catch (const json::exception&) {
+    return Result<EnvironmentalRequest>::FromError(
+        "invalid_environmental_request",
+        "Environmental request requires providerCapability and parameters");
+  }
+}
+
 Result<PlanningRequest> ParsePlanningRequest(const json& body) {
   try {
     PlanningRequest request;
@@ -534,8 +627,14 @@ bool ExternalApiRouter::CanHandleOnTransportThread(
     const HttpRequest& request) {
   if (request.method != "GET" && request.method != "DELETE") return false;
   const auto path = request.path.substr(0, request.path.find('?'));
-  constexpr const char* prefix = "/api/v2/planning/jobs/";
-  if (path.rfind(prefix, 0) != 0) return false;
+  constexpr const char* planning_prefix = "/api/v2/planning/jobs/";
+  constexpr const char* environment_prefix = "/api/v2/environment/jobs/";
+  const char* prefix = path.rfind(planning_prefix, 0) == 0
+                           ? planning_prefix
+                           : path.rfind(environment_prefix, 0) == 0
+                                 ? environment_prefix
+                                 : nullptr;
+  if (!prefix) return false;
   auto suffix = path.substr(std::char_traits<char>::length(prefix));
   if (suffix.size() > 7 &&
       suffix.compare(suffix.size() - 7, 7, "/result") == 0) {
@@ -594,6 +693,13 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
       for (const auto& provider : services_.planning->ProviderCapabilities())
         capabilities.push_back(provider);
     }
+    if (services_.environment && HasScope(principal, "environment:read"))
+      capabilities.push_back("environment.datasets.v1");
+    if (services_.environment && HasScope(principal, "environment:acquire")) {
+      for (const auto& descriptor :
+           services_.environment->ProviderDescriptors())
+        capabilities.push_back(descriptor.capability);
+    }
     return JsonResponse(200, {{"apiVersion", options_.api_version},
                               {"capabilities", capabilities}});
   }
@@ -601,6 +707,13 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
     json providers = json::array();
     if (services_.planning && HasScope(principal, "planning:run")) {
       for (const auto& descriptor : services_.planning->ProviderDescriptors())
+        providers.push_back(ProviderDescriptorJson(descriptor));
+    }
+    if (services_.environment &&
+        (HasScope(principal, "environment:read") ||
+         HasScope(principal, "environment:acquire"))) {
+      for (const auto& descriptor :
+           services_.environment->ProviderDescriptors())
         providers.push_back(ProviderDescriptorJson(descriptor));
     }
     return JsonResponse(200, {{"providers", std::move(providers)}});
@@ -620,6 +733,10 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
       allowed_mask |= EventBit(ApplicationEventType::ChartDatabase);
     if (HasScope(principal, "planning:run"))
       allowed_mask |= EventBit(ApplicationEventType::PlanningJob);
+    if (HasScope(principal, "environment:read") ||
+        HasScope(principal, "environment:acquire"))
+      allowed_mask |= EventBit(ApplicationEventType::EnvironmentalJob) |
+                      EventBit(ApplicationEventType::EnvironmentalDataset);
 
     const auto sequence = services_.events->LatestSequence();
     json payload = {{"type", "snapshot"},
@@ -665,6 +782,110 @@ HttpResponse ExternalApiRouter::HandleAuthenticated(
              {"Cache-Control", "no-store"}},
             payload.dump()};
   }
+  constexpr const char* environment_prefix = "/api/v2/environment/jobs/";
+  if (path == "/api/v2/environment/jobs" && request.method == "POST") {
+    if (const auto denied = RequireScope(principal, "environment:acquire");
+        denied.status != 500)
+      return denied;
+    if (!services_.environment)
+      return Error(503, "capability_unavailable",
+                   "Environmental service is unavailable");
+    const auto key = Header(request, "Idempotency-Key");
+    if (!key || key->empty() || key->size() > 128)
+      return Error(400, "idempotency_key_required",
+                   "Idempotency-Key must contain 1 to 128 characters");
+    json body;
+    try {
+      body = json::parse(request.body);
+    } catch (const json::exception&) {
+      return Error(400, "malformed_json", "Request body is not valid JSON");
+    }
+    const auto parsed = ParseEnvironmentalRequest(body);
+    if (parsed.error) return ServiceFailure(*parsed.error);
+    const std::string cache_key = principal.id + ":" + *key;
+    const std::string fingerprint =
+        request.method + "\n" + path + "\n" + request.body;
+    std::lock_guard<std::mutex> lock(idempotency_mutex_);
+    if (const auto found = idempotency_results_.find(cache_key);
+        found != idempotency_results_.end()) {
+      if (found->second.first != fingerprint)
+        return Error(
+            409, "idempotency_conflict",
+            "Idempotency-Key was already used for a different command");
+      return found->second.second;
+    }
+    const auto submitted =
+        services_.environment->Submit(*parsed.value, principal.id);
+    if (submitted.error) return ServiceFailure(*submitted.error);
+    auto response = JsonResponse(202, EnvironmentalJobJson(*submitted.value));
+    idempotency_results_[cache_key] = {fingerprint, response};
+    return response;
+  }
+  if (path.rfind(environment_prefix, 0) == 0) {
+    if (const auto denied = RequireScope(principal, "environment:acquire");
+        denied.status != 500)
+      return denied;
+    if (!services_.environment)
+      return Error(503, "capability_unavailable",
+                   "Environmental service is unavailable");
+    auto suffix =
+        path.substr(std::char_traits<char>::length(environment_prefix));
+    const bool result_request =
+        suffix.size() > 7 &&
+        suffix.compare(suffix.size() - 7, 7, "/result") == 0;
+    if (result_request) suffix.resize(suffix.size() - 7);
+    if (suffix.empty() || suffix.find('/') != std::string::npos)
+      return Error(404, "not_found", "No matching environmental endpoint");
+    if (request.method == "GET" && result_request) {
+      const auto result =
+          services_.environment->GetResult(suffix, principal.id);
+      if (result.error) return ServiceFailure(*result.error);
+      return JsonResponse(200, EnvironmentalDatasetJson(*result.value));
+    }
+    if (request.method == "GET" && !result_request) {
+      const auto result = services_.environment->Get(suffix, principal.id);
+      if (result.error) return ServiceFailure(*result.error);
+      return JsonResponse(200, EnvironmentalJobJson(*result.value));
+    }
+    if (request.method == "DELETE" && !result_request) {
+      const auto result = services_.environment->Cancel(suffix, principal.id);
+      if (result.error) return ServiceFailure(*result.error);
+      return JsonResponse(200, EnvironmentalJobJson(*result.value));
+    }
+  }
+  if (request.method == "GET" && path == "/api/v2/environment/datasets") {
+    if (const auto denied = RequireScope(principal, "environment:read");
+        denied.status != 500)
+      return denied;
+    if (!services_.environment)
+      return Error(503, "capability_unavailable",
+                   "Environmental service is unavailable");
+    json datasets = json::array();
+    for (const auto& dataset : services_.environment->ListDatasets())
+      datasets.push_back(EnvironmentalDatasetJson(dataset));
+    return JsonResponse(200, {{"datasets", std::move(datasets)}});
+  }
+  constexpr const char* dataset_prefix = "/api/v2/environment/datasets/";
+  if (request.method == "POST" && path.rfind(dataset_prefix, 0) == 0 &&
+      path.size() > std::char_traits<char>::length(dataset_prefix) + 9 &&
+      path.compare(path.size() - 9, 9, "/activate") == 0) {
+    if (const auto denied = RequireScope(principal, "environment:activate");
+        denied.status != 500)
+      return denied;
+    if (!services_.environment)
+      return Error(503, "capability_unavailable",
+                   "Environmental service is unavailable");
+    const auto identity = path.substr(
+        std::char_traits<char>::length(dataset_prefix),
+        path.size() - std::char_traits<char>::length(dataset_prefix) - 9);
+    if (identity.empty() || identity.find('/') != std::string::npos)
+      return Error(400, "invalid_dataset_identity",
+                   "Dataset identity is invalid");
+    const auto result = services_.environment->Activate(identity);
+    if (result.error) return ServiceFailure(*result.error);
+    return JsonResponse(200, EnvironmentalDatasetJson(*result.value));
+  }
+
   constexpr const char* planning_prefix = "/api/v2/planning/jobs/";
   if (path == "/api/v2/planning/jobs" && request.method == "POST") {
     if (const auto denied = RequireScope(principal, "planning:run");
@@ -945,6 +1166,7 @@ void ExternalApiRouter::CloseEvents() {
 
 void ExternalApiRouter::Shutdown() {
   if (services_.planning) services_.planning->Shutdown();
+  if (services_.environment) services_.environment->Shutdown();
   CloseEvents();
 }
 

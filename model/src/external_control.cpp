@@ -387,4 +387,375 @@ void InProcessPlanningJobService::Shutdown() {
   if (impl_) impl_->Shutdown();
 }
 
+class InProcessEnvironmentalJobService::Impl {
+public:
+  struct Job {
+    EnvironmentalRequest request;
+    EnvironmentalJobSnapshot snapshot;
+    std::shared_ptr<EnvironmentalProvider> provider;
+    std::shared_ptr<AtomicPlanningCancellation> cancellation;
+    std::optional<EnvironmentalDataset> result;
+  };
+
+  Impl(std::shared_ptr<ApplicationEventStream> event_stream,
+       std::size_t worker_count, std::size_t maximum_jobs,
+       std::size_t maximum_datasets)
+      : events(std::move(event_stream)),
+        maximum_jobs(std::max<std::size_t>(1, maximum_jobs)),
+        maximum_datasets(std::max<std::size_t>(1, maximum_datasets)) {
+    for (std::size_t index = 0; index < std::max<std::size_t>(1, worker_count);
+         ++index)
+      workers.emplace_back([this] { WorkerLoop(); });
+  }
+
+  ~Impl() { Shutdown(); }
+
+  void PublishJob(const std::string& id) const {
+    if (events)
+      events->Publish({0, {}, ApplicationEventType::EnvironmentalJob, id});
+  }
+
+  void PublishDataset(const std::string& id) const {
+    if (events)
+      events->Publish({0, {}, ApplicationEventType::EnvironmentalDataset, id});
+  }
+
+  void WorkerLoop() {
+    while (true) {
+      std::shared_ptr<Job> job;
+      bool cancelled = false;
+      {
+        std::unique_lock<std::mutex> lock(mutex);
+        changed.wait(lock, [&] { return stopping || !queue.empty(); });
+        if (stopping && queue.empty()) return;
+        job = queue.front();
+        queue.pop_front();
+        if (job->cancellation->IsCancellationRequested()) {
+          job->snapshot.state = PlanningJobState::Cancelled;
+          job->snapshot.updated_time = Clock::now();
+          cancelled = true;
+        } else {
+          job->snapshot.state = PlanningJobState::Running;
+          job->snapshot.updated_time = Clock::now();
+        }
+      }
+      PublishJob(job->snapshot.id);
+      if (cancelled) continue;
+
+      Result<EnvironmentalDataset> result;
+      try {
+        result = job->provider->Run(
+            job->request, *job->cancellation,
+            [this, weak_job = std::weak_ptr<Job>(job)](double progress) {
+              auto current = weak_job.lock();
+              if (!current) return;
+              bool publish = false;
+              {
+                std::lock_guard<std::mutex> lock(mutex);
+                if (current->snapshot.state != PlanningJobState::Running)
+                  return;
+                const double bounded = std::max(0.0, std::min(1.0, progress));
+                if (bounded >= current->snapshot.progress + 0.01 ||
+                    bounded == 1.0) {
+                  current->snapshot.progress =
+                      std::max(current->snapshot.progress, bounded);
+                  current->snapshot.updated_time = Clock::now();
+                  publish = true;
+                }
+              }
+              if (publish) PublishJob(current->snapshot.id);
+            });
+      } catch (const std::exception& error) {
+        result = Result<EnvironmentalDataset>::FromError("provider_exception",
+                                                          error.what());
+      } catch (...) {
+        result = Result<EnvironmentalDataset>::FromError(
+            "provider_exception",
+            "Environmental provider threw an unknown exception");
+      }
+
+      std::string published_identity;
+      {
+        std::lock_guard<std::mutex> lock(mutex);
+        job->snapshot.updated_time = Clock::now();
+        if (job->cancellation->IsCancellationRequested()) {
+          job->snapshot.state = PlanningJobState::Cancelled;
+          job->snapshot.cancellation_requested = true;
+        } else if (result.error) {
+          job->snapshot.state = PlanningJobState::Failed;
+          job->snapshot.error = result.error;
+        } else if (!result.value || result.value->identity.empty()) {
+          job->snapshot.state = PlanningJobState::Failed;
+          job->snapshot.error = ServiceError{
+              "invalid_provider_result", "Provider returned no dataset identity"};
+        } else {
+          auto dataset = std::move(*result.value);
+          dataset.provider_capability = job->request.provider_capability;
+          dataset.active = false;
+          published_identity = dataset.identity;
+          if (!datasets.count(dataset.identity)) {
+            while (datasets.size() >= maximum_datasets &&
+                   !dataset_order.empty()) {
+              const auto oldest = dataset_order.front();
+              dataset_order.pop_front();
+              const auto found = datasets.find(oldest);
+              if (found != datasets.end() && !found->second.active)
+                datasets.erase(found);
+              if (datasets.size() < maximum_datasets) break;
+            }
+          }
+          if (datasets.size() >= maximum_datasets &&
+              !datasets.count(dataset.identity)) {
+            job->snapshot.state = PlanningJobState::Failed;
+            job->snapshot.error = ServiceError{
+                "resource_limit", "Maximum retained datasets reached"};
+            published_identity.clear();
+          } else {
+            const bool new_identity = !datasets.count(dataset.identity);
+            datasets[dataset.identity] = dataset;
+            if (new_identity) dataset_order.push_back(dataset.identity);
+            job->result = std::move(dataset);
+            job->snapshot.state = PlanningJobState::Completed;
+            job->snapshot.progress = 1.0;
+          }
+        }
+      }
+      PublishJob(job->snapshot.id);
+      if (!published_identity.empty()) PublishDataset(published_identity);
+    }
+  }
+
+  void Shutdown() {
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      if (stopping) return;
+      stopping = true;
+      for (const auto& [id, job] : jobs) {
+        if (!Terminal(job->snapshot.state)) {
+          job->cancellation->requested.store(true, std::memory_order_relaxed);
+          job->snapshot.cancellation_requested = true;
+        }
+      }
+    }
+    changed.notify_all();
+    for (auto& worker : workers)
+      if (worker.joinable()) worker.join();
+    workers.clear();
+  }
+
+  mutable std::mutex mutex;
+  std::mutex activation_mutex;
+  std::condition_variable changed;
+  std::unordered_map<std::string, std::shared_ptr<EnvironmentalProvider>>
+      providers;
+  std::unordered_map<std::string, std::shared_ptr<Job>> jobs;
+  std::unordered_map<std::string, EnvironmentalDataset> datasets;
+  std::deque<std::string> dataset_order;
+  std::deque<std::shared_ptr<Job>> queue;
+  std::vector<std::thread> workers;
+  std::shared_ptr<ApplicationEventStream> events;
+  const std::size_t maximum_jobs;
+  const std::size_t maximum_datasets;
+  std::uint64_t next_id = 1;
+  bool stopping = false;
+};
+
+InProcessEnvironmentalJobService::InProcessEnvironmentalJobService(
+    std::shared_ptr<ApplicationEventStream> events, std::size_t worker_count,
+    std::size_t maximum_jobs, std::size_t maximum_datasets)
+    : impl_(std::make_unique<Impl>(std::move(events), worker_count,
+                                   maximum_jobs, maximum_datasets)) {}
+
+InProcessEnvironmentalJobService::~InProcessEnvironmentalJobService() {
+  Shutdown();
+}
+
+bool InProcessEnvironmentalJobService::RegisterProvider(
+    std::shared_ptr<EnvironmentalProvider> provider) {
+  if (!provider) return false;
+  const auto descriptor = provider->Describe();
+  if (descriptor.capability.empty()) return false;
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  if (impl_->stopping) return false;
+  return impl_->providers.emplace(descriptor.capability, std::move(provider))
+      .second;
+}
+
+bool InProcessEnvironmentalJobService::UnregisterProvider(
+    const std::string& capability) {
+  std::vector<std::string> cancelled;
+  bool active = false;
+  {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    impl_->providers.erase(capability);
+    for (const auto& [id, job] : impl_->jobs) {
+      if (job->snapshot.provider_capability != capability ||
+          Terminal(job->snapshot.state))
+        continue;
+      active = true;
+      job->cancellation->requested.store(true, std::memory_order_relaxed);
+      job->snapshot.cancellation_requested = true;
+      job->snapshot.updated_time = Clock::now();
+      cancelled.push_back(id);
+    }
+  }
+  for (const auto& id : cancelled) impl_->PublishJob(id);
+  return !active;
+}
+
+std::vector<ProviderDescriptor>
+InProcessEnvironmentalJobService::ProviderDescriptors() const {
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  std::vector<ProviderDescriptor> result;
+  for (const auto& [capability, provider] : impl_->providers) {
+    auto descriptor = provider->Describe();
+    descriptor.capability = capability;
+    descriptor.kind = ProviderKind::EnvironmentalData;
+    descriptor.required_scope = "environment:acquire";
+    result.push_back(std::move(descriptor));
+  }
+  std::sort(result.begin(), result.end(),
+            [](const auto& left, const auto& right) {
+              return left.capability < right.capability;
+            });
+  return result;
+}
+
+Result<EnvironmentalJobSnapshot> InProcessEnvironmentalJobService::Submit(
+    const EnvironmentalRequest& request, const std::string& owner_id) {
+  std::shared_ptr<Impl::Job> job;
+  {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    if (impl_->stopping)
+      return Result<EnvironmentalJobSnapshot>::FromError(
+          "not_ready", "Environmental job service is shutting down");
+    const auto provider = impl_->providers.find(request.provider_capability);
+    if (provider == impl_->providers.end())
+      return Result<EnvironmentalJobSnapshot>::FromError(
+          "provider_unavailable",
+          "Requested environmental capability is unavailable");
+    if (impl_->jobs.size() >= impl_->maximum_jobs)
+      return Result<EnvironmentalJobSnapshot>::FromError(
+          "resource_limit", "Maximum retained environmental jobs reached");
+    job = std::make_shared<Impl::Job>();
+    job->request = request;
+    job->provider = provider->second;
+    job->cancellation = std::make_shared<AtomicPlanningCancellation>();
+    job->snapshot.id = "environment-" + std::to_string(impl_->next_id++);
+    job->snapshot.owner_id = owner_id;
+    job->snapshot.provider_capability = request.provider_capability;
+    job->snapshot.submitted_time = Clock::now();
+    job->snapshot.updated_time = job->snapshot.submitted_time;
+    impl_->jobs[job->snapshot.id] = job;
+    impl_->queue.push_back(job);
+  }
+  impl_->changed.notify_one();
+  impl_->PublishJob(job->snapshot.id);
+  return Result<EnvironmentalJobSnapshot>::FromValue(job->snapshot);
+}
+
+Result<EnvironmentalJobSnapshot> InProcessEnvironmentalJobService::Get(
+    const std::string& id, const std::string& owner_id) const {
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  const auto found = impl_->jobs.find(id);
+  if (found == impl_->jobs.end() ||
+      found->second->snapshot.owner_id != owner_id)
+    return Result<EnvironmentalJobSnapshot>::FromError(
+        "not_found", "Environmental job not found");
+  return Result<EnvironmentalJobSnapshot>::FromValue(found->second->snapshot);
+}
+
+Result<EnvironmentalJobSnapshot> InProcessEnvironmentalJobService::Cancel(
+    const std::string& id, const std::string& owner_id) {
+  EnvironmentalJobSnapshot snapshot;
+  {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    const auto found = impl_->jobs.find(id);
+    if (found == impl_->jobs.end() ||
+        found->second->snapshot.owner_id != owner_id)
+      return Result<EnvironmentalJobSnapshot>::FromError(
+          "not_found", "Environmental job not found");
+    auto& job = *found->second;
+    if (!Terminal(job.snapshot.state)) {
+      job.cancellation->requested.store(true, std::memory_order_relaxed);
+      job.snapshot.cancellation_requested = true;
+      job.snapshot.updated_time = Clock::now();
+      if (job.snapshot.state == PlanningJobState::Queued)
+        job.snapshot.state = PlanningJobState::Cancelled;
+    }
+    snapshot = job.snapshot;
+  }
+  impl_->PublishJob(id);
+  return Result<EnvironmentalJobSnapshot>::FromValue(std::move(snapshot));
+}
+
+Result<EnvironmentalDataset> InProcessEnvironmentalJobService::GetResult(
+    const std::string& id, const std::string& owner_id) const {
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  const auto found = impl_->jobs.find(id);
+  if (found == impl_->jobs.end() ||
+      found->second->snapshot.owner_id != owner_id)
+    return Result<EnvironmentalDataset>::FromError(
+        "not_found", "Environmental job not found");
+  const auto& job = *found->second;
+  if (job.snapshot.state == PlanningJobState::Failed && job.snapshot.error)
+    return {std::nullopt, job.snapshot.error};
+  if (job.snapshot.state == PlanningJobState::Cancelled)
+    return Result<EnvironmentalDataset>::FromError(
+        "cancelled", "Environmental job was cancelled");
+  if (!job.result)
+    return Result<EnvironmentalDataset>::FromError(
+        "result_not_ready", "Environmental result is not complete");
+  return Result<EnvironmentalDataset>::FromValue(*job.result);
+}
+
+std::vector<EnvironmentalDataset>
+InProcessEnvironmentalJobService::ListDatasets() const {
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+  std::vector<EnvironmentalDataset> result;
+  result.reserve(impl_->datasets.size());
+  for (const auto& [identity, dataset] : impl_->datasets)
+    result.push_back(dataset);
+  std::sort(result.begin(), result.end(),
+            [](const auto& left, const auto& right) {
+              return left.identity < right.identity;
+            });
+  return result;
+}
+
+Result<EnvironmentalDataset> InProcessEnvironmentalJobService::Activate(
+    const std::string& identity) {
+  std::lock_guard<std::mutex> activation_lock(impl_->activation_mutex);
+  EnvironmentalDataset dataset;
+  std::shared_ptr<EnvironmentalProvider> provider;
+  {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    const auto found = impl_->datasets.find(identity);
+    if (found == impl_->datasets.end())
+      return Result<EnvironmentalDataset>::FromError("not_found",
+                                                      "Dataset not found");
+    const auto provider_found =
+        impl_->providers.find(found->second.provider_capability);
+    if (provider_found == impl_->providers.end())
+      return Result<EnvironmentalDataset>::FromError(
+          "provider_unavailable", "Dataset provider is unavailable");
+    dataset = found->second;
+    provider = provider_found->second;
+  }
+  auto activated = provider->Activate(dataset);
+  if (activated.error) return activated;
+  {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    for (auto& [dataset_id, retained] : impl_->datasets)
+      retained.active = dataset_id == identity;
+    dataset = impl_->datasets.at(identity);
+  }
+  impl_->PublishDataset(identity);
+  return Result<EnvironmentalDataset>::FromValue(std::move(dataset));
+}
+
+void InProcessEnvironmentalJobService::Shutdown() {
+  if (impl_) impl_->Shutdown();
+}
+
 }  // namespace ocpn::control

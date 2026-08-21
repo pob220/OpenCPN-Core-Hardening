@@ -324,6 +324,99 @@ paths:
               schema: {$ref: '#/components/schemas/PlanningResult'}
         '409': {$ref: '#/components/responses/Error'}
         default: {$ref: '#/components/responses/Error'}
+  /api/v2/environment/jobs:
+    post:
+      operationId: startEnvironmentalJob
+      x-required-scope: environment:acquire
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnvironmentalRequest'}
+      responses:
+        '202':
+          description: Environmental acquisition job accepted
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EnvironmentalJob'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v2/environment/jobs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1}
+    get:
+      operationId: getEnvironmentalJob
+      x-required-scope: environment:acquire
+      responses:
+        '200':
+          description: Current state of an owned acquisition job
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EnvironmentalJob'}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      operationId: cancelEnvironmentalJob
+      x-required-scope: environment:acquire
+      responses:
+        '200':
+          description: Cancellation requested or terminal job returned
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EnvironmentalJob'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v2/environment/jobs/{id}/result:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1}
+    get:
+      operationId: getEnvironmentalResult
+      x-required-scope: environment:acquire
+      responses:
+        '200':
+          description: Validated immutable dataset metadata
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EnvironmentalDataset'}
+        '409': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v2/environment/datasets:
+    get:
+      operationId: listEnvironmentalDatasets
+      x-required-scope: environment:read
+      responses:
+        '200':
+          description: Retained immutable datasets
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [datasets]
+                properties:
+                  datasets:
+                    type: array
+                    items: {$ref: '#/components/schemas/EnvironmentalDataset'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v2/environment/datasets/{id}/activate:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1}
+    post:
+      operationId: activateEnvironmentalDataset
+      x-required-scope: environment:activate
+      responses:
+        '200':
+          description: Dataset atomically activated by its owning provider
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EnvironmentalDataset'}
+        default: {$ref: '#/components/responses/Error'}
 components:
   parameters:
     IdempotencyKey:
@@ -401,6 +494,58 @@ components:
         requiredScope: {type: string}
         fields: {type: array, items: {$ref: '#/components/schemas/ProviderField'}}
         resources: {type: array, items: {$ref: '#/components/schemas/ProviderResource'}}
+    EnvironmentalRequest:
+      type: object
+      additionalProperties: false
+      required: [providerCapability, parameters]
+      properties:
+        providerCapability: {type: string, minLength: 1, maxLength: 128}
+        parameters:
+          type: object
+          maxProperties: 128
+          additionalProperties:
+            oneOf:
+              - {type: string, maxLength: 4096}
+              - {type: integer}
+              - {type: number}
+              - {type: boolean}
+              - {$ref: '#/components/schemas/Coordinate'}
+    EnvironmentalJob:
+      type: object
+      required: [id, providerCapability, state, progress,
+                 cancellationRequested, submittedTimeUtc, updatedTimeUtc]
+      properties:
+        id: {type: string}
+        providerCapability: {type: string}
+        state: {enum: [queued, running, completed, failed, cancelled]}
+        progress: {type: number, minimum: 0, maximum: 1}
+        cancellationRequested: {type: boolean}
+        submittedTimeUtc: {type: string, format: date-time}
+        updatedTimeUtc: {type: string, format: date-time}
+        error: {oneOf: [{$ref: '#/components/schemas/Error'}, {type: 'null'}]}
+    EnvironmentalDataset:
+      type: object
+      required: [identity, providerCapability, model, cycle, coverage,
+                 validFromUtc, validToUtc, fields, checksumSha256, byteSize,
+                 provenance, active]
+      properties:
+        identity: {type: string}
+        providerCapability: {type: string}
+        model: {type: string}
+        cycle: {type: string}
+        coverage:
+          type: object
+          required: [southWest, northEast]
+          properties:
+            southWest: {$ref: '#/components/schemas/Coordinate'}
+            northEast: {$ref: '#/components/schemas/Coordinate'}
+        validFromUtc: {type: string, format: date-time}
+        validToUtc: {type: string, format: date-time}
+        fields: {type: array, minItems: 1, items: {type: string}}
+        checksumSha256: {type: string, pattern: '^[0-9a-fA-F]{64}$'}
+        byteSize: {type: integer, minimum: 0}
+        provenance: {type: array, items: {type: string}}
+        active: {type: boolean}
     Coordinate:
       type: object
       required: [latitudeDegrees, longitudeDegrees]

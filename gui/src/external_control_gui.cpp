@@ -13,6 +13,7 @@
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -42,6 +43,14 @@ constexpr const char* kExternalDraftMarker =
 constexpr std::size_t kMaximumProviderResultBytes = 32U * 1024U * 1024U;
 constexpr std::size_t kMaximumProviderCandidates = 64;
 constexpr std::size_t kMaximumProviderRoutePoints = 200000;
+
+bool ValidProviderCoordinate(const Coordinate& point) {
+  return std::isfinite(point.latitude_degrees) &&
+         std::isfinite(point.longitude_degrees) &&
+         point.latitude_degrees >= -90.0 && point.latitude_degrees <= 90.0 &&
+         point.longitude_degrees >= -180.0 &&
+         point.longitude_degrees <= 180.0;
+}
 
 bool SameRequestedEndpoint(const Coordinate& actual,
                            const Coordinate& requested) {
@@ -887,11 +896,222 @@ private:
   std::shared_ptr<ChartSafetyQuery> safety_;
 };
 
+std::optional<ProviderDescriptor> ParseEnvironmentDescriptor(
+    const PlugInEnvironmentProviderV1& provider) {
+  if (!provider.descriptor_json) return std::nullopt;
+  using nlohmann::json;
+  try {
+    const auto value = json::parse(provider.descriptor_json);
+    if (!value.is_object() || !value.contains("fields") ||
+        !value["fields"].is_array() || !value.contains("resources") ||
+        !value["resources"].is_array())
+      return std::nullopt;
+    ProviderDescriptor descriptor;
+    descriptor.capability = provider.capability;
+    descriptor.display_name = provider.display_name ? provider.display_name
+                                                     : provider.capability;
+    descriptor.kind = ProviderKind::EnvironmentalData;
+    descriptor.schema_version = value.value("schemaVersion", 1U);
+    descriptor.cancellable = value.value("cancellable", true);
+    descriptor.maximum_concurrent_jobs =
+        value.value("maximumConcurrentJobs", std::size_t{1});
+    descriptor.required_scope = "environment:acquire";
+    if (descriptor.schema_version == 0 ||
+        descriptor.maximum_concurrent_jobs == 0 ||
+        descriptor.maximum_concurrent_jobs > 32 ||
+        value["fields"].size() > 128 || value["resources"].size() > 512)
+      return std::nullopt;
+    for (const auto& encoded : value["fields"]) {
+      ProviderFieldDescriptor field;
+      field.name = encoded.at("name").get<std::string>();
+      field.label = encoded.value("label", field.name);
+      const auto type = encoded.at("type").get<std::string>();
+      if (type == "string") field.type = ProviderFieldType::String;
+      else if (type == "integer") field.type = ProviderFieldType::Integer;
+      else if (type == "number") field.type = ProviderFieldType::Number;
+      else if (type == "boolean") field.type = ProviderFieldType::Boolean;
+      else if (type == "coordinate") field.type = ProviderFieldType::Coordinate;
+      else if (type == "resource") field.type = ProviderFieldType::Resource;
+      else return std::nullopt;
+      field.required = encoded.value("required", false);
+      field.unit = encoded.value("unit", std::string());
+      field.default_value = encoded.value("defaultValue", std::string());
+      field.resource_kind = encoded.value("resourceKind", std::string());
+      if (encoded.contains("minimum"))
+        field.minimum = encoded["minimum"].get<double>();
+      if (encoded.contains("maximum"))
+        field.maximum = encoded["maximum"].get<double>();
+      if (field.name.empty() || field.name.size() > 128 ||
+          field.label.size() > 256)
+        return std::nullopt;
+      descriptor.fields.push_back(std::move(field));
+    }
+    for (const auto& encoded : value["resources"]) {
+      ProviderResource resource;
+      resource.kind = encoded.at("kind").get<std::string>();
+      resource.identity = encoded.at("identity").get<std::string>();
+      resource.label = encoded.value("label", resource.identity);
+      resource.available = encoded.value("available", true);
+      if (encoded.contains("metadata") && encoded["metadata"].is_object()) {
+        for (const auto& [name, item] : encoded["metadata"].items())
+          if (item.is_string())
+            resource.metadata.emplace_back(name, item.get<std::string>());
+      }
+      if (resource.kind.empty() || resource.identity.empty() ||
+          resource.kind.size() > 128 || resource.identity.size() > 256 ||
+          resource.label.size() > 256)
+        return std::nullopt;
+      descriptor.resources.push_back(std::move(resource));
+    }
+    return descriptor;
+  } catch (const json::exception&) {
+    return std::nullopt;
+  }
+}
+
+class PluginEnvironmentProvider final : public EnvironmentalProvider {
+public:
+  PluginEnvironmentProvider(std::string plugin_name,
+                            ProviderDescriptor descriptor,
+                            const PlugInEnvironmentProviderV1& provider)
+      : plugin_name_(std::move(plugin_name)),
+        descriptor_(std::move(descriptor)),
+        context_(provider.provider_context),
+        run_(provider.run),
+        activate_(provider.activate) {}
+
+  ProviderDescriptor Describe() const override { return descriptor_; }
+
+  Result<EnvironmentalDataset> Run(
+      const EnvironmentalRequest& request,
+      const PlanningCancellation& cancellation,
+      const std::function<void(double)>& report_progress) override {
+    using nlohmann::json;
+    json parameters = json::object();
+    for (const auto& [name, value] : request.parameters) {
+      std::visit(
+          [&](const auto& item) {
+            using Value = std::decay_t<decltype(item)>;
+            if constexpr (std::is_same_v<Value, Coordinate>)
+              parameters[name] = {
+                  {"latitudeDegrees", item.latitude_degrees},
+                  {"longitudeDegrees", item.longitude_degrees}};
+            else
+              parameters[name] = item;
+          },
+          value);
+    }
+    json encoded = {{"schemaVersion", 1},
+                    {"providerCapability", request.provider_capability},
+                    {"parameters", std::move(parameters)}};
+    const char* output = nullptr;
+    const char* error_code = nullptr;
+    const char* error_message = nullptr;
+    const int ok = run_(
+        context_, encoded.dump().c_str(),
+        [](void* value) {
+          return static_cast<const PlanningCancellation*>(value)
+                         ->IsCancellationRequested()
+                     ? 1
+                     : 0;
+        },
+        const_cast<PlanningCancellation*>(&cancellation),
+        [](void* value, double progress) {
+          (*static_cast<std::function<void(double)>*>(value))(
+              std::max(0.0, std::min(1.0, progress)));
+        },
+        const_cast<std::function<void(double)>*>(&report_progress), &output,
+        &error_code, &error_message);
+    if (!ok)
+      return Result<EnvironmentalDataset>::FromError(
+          error_code && *error_code ? error_code : "provider_failed",
+          error_message && *error_message ? error_message
+                                          : "Environmental provider failed");
+    if (!output)
+      return Result<EnvironmentalDataset>::FromError(
+          "invalid_provider_result", "Provider returned no result");
+    const auto size = strnlen(output, kMaximumProviderResultBytes + 1);
+    if (size > kMaximumProviderResultBytes)
+      return Result<EnvironmentalDataset>::FromError(
+          "provider_result_too_large", "Provider result exceeds size limit");
+    try {
+      const auto value = json::parse(output, output + size);
+      EnvironmentalDataset dataset;
+      dataset.identity = value.at("identity").get<std::string>();
+      dataset.provider_handle = value.at("providerHandle").get<std::string>();
+      dataset.provider_capability = descriptor_.capability;
+      dataset.model = value.value("model", std::string());
+      dataset.cycle = value.value("cycle", std::string());
+      const auto& coverage = value.at("coverage");
+      dataset.south_west = {
+          coverage.at("south").get<double>(),
+          coverage.at("west").get<double>()};
+      dataset.north_east = {
+          coverage.at("north").get<double>(),
+          coverage.at("east").get<double>()};
+      dataset.valid_from = Clock::time_point(std::chrono::seconds(
+          value.at("validFromEpochSeconds").get<std::int64_t>()));
+      dataset.valid_to = Clock::time_point(std::chrono::seconds(
+          value.at("validToEpochSeconds").get<std::int64_t>()));
+      dataset.fields = value.at("fields").get<std::vector<std::string>>();
+      dataset.checksum_sha256 =
+          value.at("checksumSha256").get<std::string>();
+      dataset.byte_size = value.at("byteSize").get<std::uint64_t>();
+      dataset.provenance =
+          value.value("provenance", std::vector<std::string>{});
+      if (dataset.identity.empty() || dataset.identity.size() > 256 ||
+          dataset.provider_handle.empty() ||
+          dataset.provider_handle.size() > 4096 ||
+          !ValidProviderCoordinate(dataset.south_west) ||
+          !ValidProviderCoordinate(dataset.north_east) ||
+          dataset.valid_to <= dataset.valid_from ||
+          dataset.fields.empty() || dataset.fields.size() > 256 ||
+          dataset.checksum_sha256.size() != 64)
+        return Result<EnvironmentalDataset>::FromError(
+            "invalid_provider_result", "Provider dataset metadata is invalid");
+      dataset.provenance.insert(dataset.provenance.begin(),
+                                plugin_name_ + ": " +
+                                    descriptor_.display_name);
+      return Result<EnvironmentalDataset>::FromValue(std::move(dataset));
+    } catch (const json::exception&) {
+      return Result<EnvironmentalDataset>::FromError(
+          "invalid_provider_result", "Provider returned malformed metadata");
+    }
+  }
+
+  Result<EnvironmentalDataset> Activate(
+      const EnvironmentalDataset& dataset) override {
+    const char* output = nullptr;
+    const char* error_code = nullptr;
+    const char* error_message = nullptr;
+    if (!activate_(context_, dataset.provider_handle.c_str(), &output,
+                   &error_code, &error_message))
+      return Result<EnvironmentalDataset>::FromError(
+          error_code && *error_code ? error_code : "activation_failed",
+          error_message && *error_message
+              ? error_message
+              : "Environmental dataset activation failed");
+    auto activated = dataset;
+    activated.active = true;
+    return Result<EnvironmentalDataset>::FromValue(std::move(activated));
+  }
+
+private:
+  std::string plugin_name_;
+  ProviderDescriptor descriptor_;
+  void* context_;
+  PlugInEnvironmentRunV1 run_;
+  PlugInEnvironmentActivateV1 activate_;
+};
+
 struct PluginPlanningRegistry {
   std::mutex mutex;
   std::weak_ptr<PlanningJobService> planning;
   std::weak_ptr<ChartSafetyQuery> safety;
+  std::weak_ptr<EnvironmentalJobService> environment;
   std::unordered_map<std::string, std::vector<std::string>> capabilities;
+  std::unordered_map<std::string, std::vector<std::string>>
+      environment_capabilities;
 };
 
 PluginPlanningRegistry& PlanningRegistry() {
@@ -928,23 +1148,65 @@ extern "C" bool PlugIn_UnregisterPlanningProvidersV1(const char* plugin_name) {
   return plugin_name && PrepareExternalPlanningProviderUnload(plugin_name);
 }
 
+extern "C" bool PlugIn_RegisterEnvironmentProviderV1(
+    const char* plugin_name, const PlugInEnvironmentProviderV1* provider) {
+  if (!plugin_name || !*plugin_name || !provider ||
+      provider->struct_size < sizeof(PlugInEnvironmentProviderV1) ||
+      !provider->capability || !*provider->capability || !provider->run ||
+      !provider->activate)
+    return false;
+  const std::string capability(provider->capability);
+  if (capability.size() > 128 ||
+      capability.rfind("environmental-data.", 0) != 0)
+    return false;
+  const auto descriptor = ParseEnvironmentDescriptor(*provider);
+  if (!descriptor) return false;
+  auto& registry = PlanningRegistry();
+  std::lock_guard<std::mutex> lock(registry.mutex);
+  auto environment = registry.environment.lock();
+  if (!environment) return false;
+  auto adapter = std::make_shared<PluginEnvironmentProvider>(
+      plugin_name, *descriptor, *provider);
+  if (!environment->RegisterProvider(std::move(adapter))) return false;
+  registry.environment_capabilities[plugin_name].push_back(capability);
+  wxLogMessage("Plugin %s registered environmental provider %s", plugin_name,
+               capability);
+  return true;
+}
+
+extern "C" bool PlugIn_UnregisterEnvironmentProvidersV1(
+    const char* plugin_name) {
+  return plugin_name && PrepareExternalPlanningProviderUnload(plugin_name);
+}
+
 bool PrepareExternalPlanningProviderUnload(const std::string& plugin_name) {
   auto& registry = PlanningRegistry();
   std::lock_guard<std::mutex> lock(registry.mutex);
   const auto found = registry.capabilities.find(plugin_name);
-  if (found == registry.capabilities.end()) return true;
-  auto planning = registry.planning.lock();
-  if (!planning) {
-    registry.capabilities.erase(found);
+  const auto environment_found =
+      registry.environment_capabilities.find(plugin_name);
+  if (found == registry.capabilities.end() &&
+      environment_found == registry.environment_capabilities.end())
     return true;
-  }
+  auto planning = registry.planning.lock();
+  auto environment = registry.environment.lock();
   bool drained = true;
-  for (const auto& capability : found->second)
-    if (!planning->UnregisterProvider(capability)) drained = false;
+  if (found != registry.capabilities.end()) {
+    if (planning) {
+      for (const auto& capability : found->second)
+        if (!planning->UnregisterProvider(capability)) drained = false;
+    }
+  }
+  if (environment_found != registry.environment_capabilities.end()) {
+    if (environment) {
+      for (const auto& capability : environment_found->second)
+        if (!environment->UnregisterProvider(capability)) drained = false;
+    }
+  }
   if (drained) {
-    registry.capabilities.erase(found);
-    wxLogMessage("Plugin %s unregistered all external planning providers",
-                 plugin_name);
+    registry.capabilities.erase(plugin_name);
+    registry.environment_capabilities.erase(plugin_name);
+    wxLogMessage("Plugin %s unregistered all external providers", plugin_name);
   }
   return drained;
 }
@@ -952,6 +1214,8 @@ bool PrepareExternalPlanningProviderUnload(const std::string& plugin_name) {
 ocpn::control::ServiceBundle MakeExternalControlServices() {
   auto events = std::make_shared<LiveApplicationEvents>();
   auto planning = std::make_shared<InProcessPlanningJobService>(events, 2, 64);
+  auto environment =
+      std::make_shared<InProcessEnvironmentalJobService>(events, 2, 64, 32);
   auto chart_safety = std::make_shared<LiveChartSafety>();
   planning->RegisterProvider(
       std::make_shared<ChartDirectPlanningProvider>(chart_safety));
@@ -959,8 +1223,10 @@ ocpn::control::ServiceBundle MakeExternalControlServices() {
     auto& registry = PlanningRegistry();
     std::lock_guard<std::mutex> lock(registry.mutex);
     registry.planning = planning;
+    registry.environment = environment;
     registry.safety = chart_safety;
     registry.capabilities.clear();
+    registry.environment_capabilities.clear();
   }
   return {std::make_shared<LiveReadiness>(),
           std::make_shared<LiveNavigation>(),
@@ -968,5 +1234,6 @@ ocpn::control::ServiceBundle MakeExternalControlServices() {
           std::make_shared<LiveRouteCommands>(),
           std::move(chart_safety),
           std::move(events),
-          std::move(planning)};
+          std::move(planning),
+          std::move(environment)};
 }
