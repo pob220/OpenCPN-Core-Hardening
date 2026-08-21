@@ -6,9 +6,11 @@ This fork contains an evidence-led OpenCPN 5.x hardening programme.  See
 HARDENING.md for the exact fixes, review branches, test commands, known
 limitations and package instructions.  The upstream-compatible baseline is
 unchanged on master.  The conservative core-only line is
-hardening/5x-integration; the all-in-one external-control developer candidate,
+hardening/5x-integration. The current all-in-one External Control Demo source,
 which also contains the complete hardening series, is
-external-control/preview-b.1-hardening.
+external-control/preview-c-scheduler. A single isolated developer download and
+test guide is published at:
+https://github.com/pob220/OpenCPN-Core-Hardening/releases/tag/external-control-demo-20260821
 
 a.  Opencpn was built with the following objectives in mind.
 
