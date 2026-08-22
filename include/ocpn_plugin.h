@@ -46,6 +46,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -1290,6 +1291,46 @@ struct PlugIn_TideStation {
   double lat;
   double lon;
 };
+
+/** Versioned POD bridge for optional native tide-station metadata.
+ *
+ * Plugins should resolve the corresponding PlugIn_*V1 functions at runtime
+ * when they must remain loadable on API 1.21 hosts which predate this bridge.
+ */
+struct PlugIn_TideStationInfoV1 {
+  std::uint32_t struct_size;
+  std::uint32_t api_version;
+  int index;
+  double lat;
+  double lon;
+  double distance_nm;
+  int subordinate;
+  int datum_status;       // 0 unknown, 1 declared, 2 inherited
+  int datum_approximate;  // non-zero when libtcd says "Approximate Level"
+  int height_in_metres_available;
+  double datum_offset_m;  // libtcd Z0 in metres; NaN when unavailable
+  char name[90];
+  char stable_id[256];
+  char reference_name[90];
+  char station_id_context[90];
+  char station_id[90];
+  char source_dataset_id[256];
+  char source_dataset_name[90];
+  char source_dataset_version[180];
+  char source_description[180];
+  char datum_name[90];
+  char datum_equivalence_key[32];
+  char level_units[40];
+};
+
+extern "C" DECL_EXP int PlugIn_GetTideStationMaximumIndexV1();
+extern "C" DECL_EXP bool PlugIn_GetTideStationInfoV1(
+    int station_index, PlugIn_TideStationInfoV1 *station);
+extern "C" DECL_EXP int PlugIn_GetNearestTideStationsV1(
+    double lat, double lon, double maximum_distance_nm,
+    PlugIn_TideStationInfoV1 *stations, int capacity);
+extern "C" DECL_EXP bool PlugIn_GetTideHeightMetersV1(
+    int station_index, time_t time, double *height_m);
 
 /**
  * Base class for OpenCPN plugins.
@@ -7702,6 +7743,40 @@ public:
   enum class EventType {
     kNewMessageType = 1  // A new message type is detected
   };
+
+  enum class TideDatumStatus { kUnknown = 0, kDeclared = 1, kInherited = 2 };
+
+  struct VerticalDatumInfo {
+    std::string name;
+    std::string equivalence_key;
+    TideDatumStatus status{TideDatumStatus::kUnknown};
+    bool approximate{};
+    std::optional<double> datum_offset_m;
+  };
+
+  struct TideStationInfo {
+    int index{};
+    std::string stable_id;
+    std::string display_name;
+    double latitude{};
+    double longitude{};
+    double distance_nm{};
+    bool subordinate{};
+    std::string reference_name;
+    std::string station_id_context;
+    std::string station_id;
+    std::string source_dataset_id;
+    std::string source_dataset_name;
+    std::string source_dataset_version;
+    std::string source_description;
+    std::string level_units;
+    VerticalDatumInfo vertical_datum;
+  };
+
+  std::vector<TideStationInfo> GetNearestTideStations(
+      double latitude, double longitude, double maximum_distance_nm = 100.0,
+      std::size_t maximum_results = 4);
+  std::optional<double> GetTideHeightMeters(int station_index, time_t time);
 
   /**
    * Register a new callback invoked when an EventType event occurs.

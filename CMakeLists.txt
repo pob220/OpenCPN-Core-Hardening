@@ -906,6 +906,7 @@ set(GUI_HDRS
     ${GUI_HDR_DIR}/tc_win.h
     ${GUI_HDR_DIR}/thumbwin.h
     ${GUI_HDR_DIR}/tide_time.h
+    ${GUI_HDR_DIR}/tide_station_metadata.h
     ${GUI_HDR_DIR}/timers.h
     ${GUI_HDR_DIR}/time_textbox.h
     ${GUI_HDR_DIR}/toolbar.h
@@ -1034,6 +1035,7 @@ set(GUI_SRC
     ${GUI_SRC_DIR}/tcds_ascii_harmonic.cpp
     ${GUI_SRC_DIR}/tcds_binary_harmonic.cpp
     ${GUI_SRC_DIR}/tcmgr.cpp
+    ${GUI_SRC_DIR}/tide_station_metadata.cpp
     ${GUI_SRC_DIR}/tc_win.cpp
     ${GUI_SRC_DIR}/thumbwin.cpp
     ${GUI_SRC_DIR}/toolbar.cpp

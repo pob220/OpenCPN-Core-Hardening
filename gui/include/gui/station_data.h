@@ -44,6 +44,11 @@ public:
   char units_conv[40];   // printable converted units
   char units_abbrv[20];  // and abbreviation
   int have_BOGUS;
+  char datum_name[90];
+  char datum_equivalence_key[32];
+  char source_name[90];
+  int datum_status;
+  bool datum_approximate;
 };
 
 WX_DECLARE_OBJARRAY(Station_Data, ArrayOfStationData);

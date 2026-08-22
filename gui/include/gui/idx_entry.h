@@ -55,6 +55,11 @@ public:
   TCDataSource *pDataSource;  ///< Pointer to the associated data source
   char source_ident[MAXNAMELEN];  ///< Identifier of the source (typically file
                                   ///< name)
+  char source_version[MAXNAMELEN];  ///< Dataset version/last-modified identity
+  char record_source[MAXNAMELEN];   ///< Station record provenance
+  char station_id_context[MAXNAMELEN];
+  char station_id[MAXNAMELEN];
+  int source_record_number;
 
   int IDX_rec_num;    ///< Record number for multiple entries with same name
   char IDX_type;      ///< Entry type identifier "TCtcIUu"

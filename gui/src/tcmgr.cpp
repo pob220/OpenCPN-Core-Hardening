@@ -31,6 +31,11 @@
 #include <math.h>
 #include <time.h>
 
+#include <algorithm>
+#include <filesystem>
+#include <limits>
+#include <sstream>
+
 #include "model/georef.h"
 #include "model/logger.h"
 
@@ -1060,6 +1065,88 @@ std::map<double, const IDX_entry *> TCMgr::GetStationsForLL(double xlat,
   }
 
   return x;
+}
+
+std::optional<TideStationMetadata> TCMgr::GetTideStationMetadata(int index) {
+  if (index < 1 || index > Get_max_IDX()) return std::nullopt;
+  IDX_entry *entry = m_Combined_IDX_array[index];
+  if (!entry || (entry->IDX_type != 'T' && entry->IDX_type != 't'))
+    return std::nullopt;
+  if (entry->pDataSource &&
+      entry->pDataSource->LoadHarmonicData(entry) != TC_NO_ERROR)
+    return std::nullopt;
+  Station_Data *station_data = entry->pref_sta_data;
+  if (!station_data) return std::nullopt;
+
+  TideStationMetadata result;
+  result.index = index;
+  result.name = entry->IDX_station_name;
+  result.latitude = entry->IDX_lat;
+  result.longitude = entry->IDX_lon;
+  result.subordinate = entry->IDX_type == 't';
+  result.reference_name = entry->IDX_reference_name;
+  result.station_id_context = entry->station_id_context;
+  result.station_id = entry->station_id;
+  result.source_dataset_name =
+      std::filesystem::path(entry->source_ident).filename().string();
+  result.source_dataset_version = entry->source_version;
+  result.source_dataset_id = result.source_dataset_name;
+  result.source_description = entry->record_source;
+  if (result.source_description.empty())
+    result.source_description = station_data->source_name;
+  result.level_units = station_data->unit;
+
+  TideDatumStatus status =
+      static_cast<TideDatumStatus>(station_data->datum_status);
+  if (result.subordinate && status != TideDatumStatus::kUnknown)
+    status = TideDatumStatus::kInherited;
+  result.vertical_datum = DescribeTideDatum(station_data->datum_name, status);
+  result.vertical_datum.approximate = station_data->datum_approximate;
+
+  const int unit = TCDataFactory::findunit(station_data->unit);
+  if (unit >= 0 && TCDataFactory::known_units[unit].type == LENGTH) {
+    result.height_in_metres_available = true;
+    result.datum_offset_m =
+        station_data->DATUM * TCDataFactory::known_units[unit].conv_factor;
+  }
+
+  result.stable_id = BuildStableTideStationId(
+      result.source_dataset_id, result.station_id_context, result.station_id,
+      entry->source_record_number);
+  return result;
+}
+
+std::vector<NearbyTideStation> TCMgr::GetNearestTideStations(
+    double latitude, double longitude, double maximum_distance_nm,
+    std::size_t maximum_results) {
+  std::vector<NearbyTideStation> result;
+  if (!std::isfinite(latitude) || !std::isfinite(longitude) ||
+      !std::isfinite(maximum_distance_nm) || maximum_distance_nm < 0.0 ||
+      maximum_results == 0)
+    return result;
+
+  for (int index = 1; index <= Get_max_IDX(); ++index) {
+    const IDX_entry *entry = GetIDX_entry(index);
+    if (!entry || (entry->IDX_type != 'T' && entry->IDX_type != 't')) continue;
+    double bearing = 0.0;
+    double distance_nm = 0.0;
+    DistanceBearingMercator(latitude, longitude, entry->IDX_lat,
+                            entry->IDX_lon, &bearing, &distance_nm);
+    if (!std::isfinite(distance_nm) || distance_nm > maximum_distance_nm)
+      continue;
+    auto metadata = GetTideStationMetadata(index);
+    if (metadata)
+      result.push_back({std::move(*metadata), distance_nm});
+  }
+  std::stable_sort(result.begin(), result.end(),
+                   [](const NearbyTideStation &first,
+                      const NearbyTideStation &second) {
+                     if (first.distance_nm != second.distance_nm)
+                       return first.distance_nm < second.distance_nm;
+                     return first.station.index < second.station.index;
+                   });
+  if (result.size() > maximum_results) result.resize(maximum_results);
+  return result;
 }
 
 int TCMgr::GetStationIDXbyName(const wxString &prefix, double xlat,

@@ -64,6 +64,7 @@ public:
   static const unit known_units[NUMUNITS];
 
   wxString source_ident;
+  wxString source_version;
 };
 
 #endif

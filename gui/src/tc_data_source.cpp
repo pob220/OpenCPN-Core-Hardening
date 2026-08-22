@@ -82,6 +82,9 @@ TC_Error_Code TCDataSource::LoadData(const wxString &data_file_path) {
         strncpy(pIDX->source_ident, m_data_source_path.mb_str(),
                 MAXNAMELEN - 1);
         pIDX->source_ident[MAXNAMELEN - 1] = '\0';
+        strncpy(pIDX->source_version, m_pfactory->source_version.mb_str(),
+                MAXNAMELEN - 1);
+        pIDX->source_version[MAXNAMELEN - 1] = '\0';
       }
     }
   } else

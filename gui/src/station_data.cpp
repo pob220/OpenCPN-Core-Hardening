@@ -22,6 +22,7 @@
  */
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "station_data.h"
 
@@ -33,6 +34,19 @@ Station_Data::Station_Data() {
   station_name = NULL;
   amplitude = NULL;
   epoch = NULL;
+  DATUM = 0.0;
+  meridian = 0;
+  zone_offset = 0.0;
+  memset(tzfile, 0, sizeof(tzfile));
+  memset(unit, 0, sizeof(unit));
+  memset(units_conv, 0, sizeof(units_conv));
+  memset(units_abbrv, 0, sizeof(units_abbrv));
+  have_BOGUS = 0;
+  memset(datum_name, 0, sizeof(datum_name));
+  memset(datum_equivalence_key, 0, sizeof(datum_equivalence_key));
+  memset(source_name, 0, sizeof(source_name));
+  datum_status = 0;
+  datum_approximate = false;
 }
 
 Station_Data::~Station_Data() {

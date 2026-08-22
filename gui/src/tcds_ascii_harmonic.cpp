@@ -24,10 +24,13 @@
 
 #include <math.h>
 
+#include <string>
+
 #include <wx/filename.h>
 #include <wx/tokenzr.h>
 
 #include "tcds_ascii_harmonic.h"
+#include "tide_station_metadata.h"
 
 #ifndef M_PI
 #define M_PI ((2) * (acos(0.0)))
@@ -80,6 +83,7 @@ TC_Error_Code TCDS_Ascii_Harmonic::LoadData(const wxString &data_file_path) {
   if (m_IndexFile) IndexFileIO(IFF_CLOSE, 0);
 
   m_indexfile_name = data_file_path;
+  source_version = "legacy HARMONIC/IDX";
 
   TC_Error_Code error_return = init_index_file();
   if (error_return != TC_NO_ERROR) return error_return;
@@ -94,6 +98,7 @@ TC_Error_Code TCDS_Ascii_Harmonic::LoadData(const wxString &data_file_path) {
   for (unsigned int i = 0; i < max_index; i++) {
     IDX_entry *pIDX = GetIndexEntry(i);
     if (pIDX) {
+      pIDX->source_record_number = static_cast<int>(i);
       pIDX->num_nodes = num_nodes;
       pIDX->num_csts = num_csts;
       pIDX->num_epochs = num_epochs;
@@ -451,9 +456,21 @@ TC_Error_Code TCDS_Ascii_Harmonic::LoadHarmonicData(IDX_entry *pIDX) {
   fp = fopen(m_harmfile_name.mb_str(), "r");
   if (fp == 0) return TC_MASTER_HARMONICS_NOT_FOUND;
 
-  while (read_next_line(fp, linrec, 1)) {
+  std::string pending_datum;
+  std::string pending_source;
+  while (fgets(linrec, linelen, fp)) {
+    if (linrec[0] == '#') {
+      ParseLegacyHarmonicMetadataComment(linrec, &pending_datum,
+                                         &pending_source);
+      continue;
+    }
+    if (linrec[0] == '\r' || linrec[0] == '\n') continue;
     nojunk(linrec);
-    if (slackcmp(linrec, pIDX->IDX_reference_name)) continue;
+    if (slackcmp(linrec, pIDX->IDX_reference_name)) {
+      pending_datum.clear();
+      pending_source.clear();
+      continue;
+    }
 
     //    Got the right location, so load the data
 
@@ -474,6 +491,17 @@ TC_Error_Code TCDS_Ascii_Harmonic::LoadHarmonicData(IDX_entry *pIDX) {
       psd->station_type = 'C';
     else
       psd->station_type = 'T';
+
+    const auto datum =
+        DescribeTideDatum(pending_datum, TideDatumStatus::kDeclared);
+    strncpy(psd->datum_name, datum.name.c_str(),
+            sizeof(psd->datum_name) - 1);
+    strncpy(psd->datum_equivalence_key, datum.equivalence_key.c_str(),
+            sizeof(psd->datum_equivalence_key) - 1);
+    strncpy(psd->source_name, pending_source.c_str(),
+            sizeof(psd->source_name) - 1);
+    psd->datum_status = static_cast<int>(datum.status);
+    psd->datum_approximate = datum.approximate;
 
     /* Get meridian */
     read_next_line(fp, linrec, 0);

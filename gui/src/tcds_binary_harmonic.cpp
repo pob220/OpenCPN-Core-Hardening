@@ -23,11 +23,14 @@
  */
 
 /* Declarations for zoneinfo compatibility */
+#include <algorithm>
 #include <climits>
+#include <cstring>
 #include <string>
 
 #include "tcds_binary_harmonic.h"
 #include "tcmgr.h"
+#include "tide_station_metadata.h"
 
 /* Most of these entries are loaded from the tzdata.h include file. That
  *   file was generated from tzdata200c.                                  */
@@ -37,6 +40,22 @@ static const char *tz_names[][2] = {
 
     /* Terminator */
     {NULL, NULL}};
+
+namespace {
+
+template <std::size_t N>
+void CopyTideString(char (&destination)[N], const char *source) {
+  const std::size_t length = source ? std::min(N - 1, std::strlen(source)) : 0;
+  if (length) std::memcpy(destination, source, length);
+  destination[length] = '\0';
+}
+
+template <std::size_t N>
+void CopyTideString(char (&destination)[N], const std::string &source) {
+  CopyTideString(destination, source.c_str());
+}
+
+}  // namespace
 
 /*  Timelib  Time services.
  *    Original XTide source code date: 1997-08-15
@@ -334,6 +353,8 @@ TC_Error_Code TCDS_Binary_Harmonic::LoadData(const wxString &data_file_path) {
   DB_HEADER_PUBLIC hdr = get_tide_db_header();
 
   source_ident = wxString(hdr.version, wxConvUTF8);
+  source_version = wxString::Format("%s; modified %s", hdr.version,
+                                    hdr.last_modified);
 
   num_csts = hdr.constituents;
   if (0 == num_csts) return TC_GENERIC_ERROR;
@@ -391,6 +412,10 @@ TC_Error_Code TCDS_Binary_Harmonic::LoadData(const wxString &data_file_path) {
     IDX_entry *pIDX = new IDX_entry;
     pIDX->source_data_type = SOURCE_TYPE_BINARY_HARMONIC;
     pIDX->pDataSource = NULL;
+    pIDX->source_record_number = static_cast<int>(i);
+    CopyTideString(pIDX->record_source, ptiderec->source);
+    CopyTideString(pIDX->station_id_context, ptiderec->station_id_context);
+    CopyTideString(pIDX->station_id, ptiderec->station_id);
 
     pIDX->Valid15 = 0;
 
@@ -489,6 +514,13 @@ TC_Error_Code TCDS_Binary_Harmonic::LoadData(const wxString &data_file_path) {
       }
 
       psd->DATUM = ptiderec->datum_offset;
+      const auto datum = DescribeTideDatum(
+          get_datum(ptiderec->datum), TideDatumStatus::kDeclared);
+      CopyTideString(psd->datum_name, datum.name);
+      CopyTideString(psd->datum_equivalence_key, datum.equivalence_key);
+      CopyTideString(psd->source_name, ptiderec->source);
+      psd->datum_status = static_cast<int>(datum.status);
+      psd->datum_approximate = datum.approximate;
 
       m_msd_array.Add(psd);  // add it to the member array
       pIDX->pref_sta_data = psd;

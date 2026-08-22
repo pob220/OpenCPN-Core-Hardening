@@ -34,6 +34,7 @@
 #include "idx_entry.h"
 #include "tc_error_code.h"
 #include "tc_data_source.h"
+#include "tide_station_metadata.h"
 
 // ----------------------------------------------------------------------------
 // external C linkages
@@ -119,6 +120,11 @@ public:
 
   std::map<double, const IDX_entry *> GetStationsForLL(double xlat,
                                                        double xlon) const;
+
+  std::optional<TideStationMetadata> GetTideStationMetadata(int index);
+  std::vector<NearbyTideStation> GetNearestTideStations(
+      double latitude, double longitude, double maximum_distance_nm,
+      std::size_t maximum_results);
 
   int GetStationIDXbyName(const wxString &prefix, double xlat,
                           double xlon) const;

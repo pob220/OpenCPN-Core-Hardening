@@ -51,6 +51,8 @@ set(SRC
   navutil_base_tests.cpp
   plugin_comm_tests.cpp
   route_point_tests.cpp
+  tide_station_metadata_tests.cpp
+  ${CMAKE_SOURCE_DIR}/gui/src/tide_station_metadata.cpp
   ${CMAKE_SOURCE_DIR}/cli/api_shim.cpp
 )
 
@@ -70,7 +72,8 @@ if (CURL)
 endif ()
 
 add_executable(tests ${SRC})
-target_include_directories(tests PRIVATE ${CMAKE_SOURCE_DIR}/gui/include)
+target_include_directories(tests PRIVATE ${CMAKE_SOURCE_DIR}/gui/include
+                                         ${CMAKE_SOURCE_DIR}/gui/include/gui)
 
 if (DEFINED ENV{FLATPAK_ID})
   target_compile_definitions(tests PRIVATE OCPN_FLATPAK)

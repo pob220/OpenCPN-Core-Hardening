@@ -22,6 +22,8 @@
  * ocpn_plugin.h HostApi121 implementation
  */
 #include <algorithm>
+#include <cmath>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <string>
@@ -866,6 +868,101 @@ bool GetTideHeight(int stationIndex, time_t time, float* height) {
   if (!ptcmgr || !ptcmgr->IsReady() || !height) return false;
   float dir = 0.0f;
   return ptcmgr->GetTideOrCurrent(time, stationIndex, *height, dir);
+}
+
+namespace {
+
+template <std::size_t N>
+void CopyTideMetadataString(char (&destination)[N],
+                            const std::string& source) {
+  std::strncpy(destination, source.c_str(), N - 1);
+  destination[N - 1] = '\0';
+}
+
+bool PopulateTideStationInfo(const TideStationMetadata& source,
+                             double distance_nm,
+                             PlugIn_TideStationInfoV1* destination) {
+  if (!destination ||
+      destination->struct_size < sizeof(PlugIn_TideStationInfoV1))
+    return false;
+  const std::uint32_t size = destination->struct_size;
+  std::memset(destination, 0, sizeof(*destination));
+  destination->struct_size = size;
+  destination->api_version = 1;
+  destination->index = source.index;
+  destination->lat = source.latitude;
+  destination->lon = source.longitude;
+  destination->distance_nm = distance_nm;
+  destination->subordinate = source.subordinate;
+  destination->datum_status =
+      static_cast<int>(source.vertical_datum.status);
+  destination->datum_approximate = source.vertical_datum.approximate;
+  destination->height_in_metres_available =
+      source.height_in_metres_available;
+  destination->datum_offset_m = source.datum_offset_m;
+  CopyTideMetadataString(destination->name, source.name);
+  CopyTideMetadataString(destination->stable_id, source.stable_id);
+  CopyTideMetadataString(destination->reference_name, source.reference_name);
+  CopyTideMetadataString(destination->station_id_context,
+                         source.station_id_context);
+  CopyTideMetadataString(destination->station_id, source.station_id);
+  CopyTideMetadataString(destination->source_dataset_id,
+                         source.source_dataset_id);
+  CopyTideMetadataString(destination->source_dataset_name,
+                         source.source_dataset_name);
+  CopyTideMetadataString(destination->source_dataset_version,
+                         source.source_dataset_version);
+  CopyTideMetadataString(destination->source_description,
+                         source.source_description);
+  CopyTideMetadataString(destination->datum_name,
+                         source.vertical_datum.name);
+  CopyTideMetadataString(destination->datum_equivalence_key,
+                         source.vertical_datum.equivalence_key);
+  CopyTideMetadataString(destination->level_units, source.level_units);
+  return true;
+}
+
+}  // namespace
+
+extern "C" DECL_EXP int PlugIn_GetTideStationMaximumIndexV1() {
+  if (!ptcmgr || !ptcmgr->IsReady()) return 0;
+  return ptcmgr->Get_max_IDX();
+}
+
+extern "C" DECL_EXP bool PlugIn_GetTideStationInfoV1(
+    int station_index, PlugIn_TideStationInfoV1* station) {
+  if (!ptcmgr || !ptcmgr->IsReady()) return false;
+  const auto metadata = ptcmgr->GetTideStationMetadata(station_index);
+  return metadata && PopulateTideStationInfo(*metadata, 0.0, station);
+}
+
+extern "C" DECL_EXP int PlugIn_GetNearestTideStationsV1(
+    double lat, double lon, double maximum_distance_nm,
+    PlugIn_TideStationInfoV1* stations, int capacity) {
+  if (!ptcmgr || !ptcmgr->IsReady() || !stations || capacity <= 0)
+    return 0;
+  const auto nearby = ptcmgr->GetNearestTideStations(
+      lat, lon, maximum_distance_nm, static_cast<std::size_t>(capacity));
+  int written = 0;
+  for (const auto& candidate : nearby) {
+    if (!PopulateTideStationInfo(candidate.station, candidate.distance_nm,
+                                 &stations[written]))
+      break;
+    ++written;
+  }
+  return written;
+}
+
+extern "C" DECL_EXP bool PlugIn_GetTideHeightMetersV1(
+    int station_index, time_t time, double* height_m) {
+  if (!ptcmgr || !ptcmgr->IsReady() || !height_m) return false;
+  float value = 0.0f;
+  float direction = 0.0f;
+  if (!ptcmgr->GetTideOrCurrentMeters(time, station_index, value, direction) ||
+      !std::isfinite(value))
+    return false;
+  *height_m = value;
+  return true;
 }
 
 bool HostApi121::AddRoute(HostApi121::Route* route, bool permanent) {

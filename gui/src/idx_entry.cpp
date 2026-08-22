@@ -32,6 +32,7 @@ WX_DEFINE_OBJARRAY(ArrayOfIDXEntry);
 IDX_entry::IDX_entry()
     : source_data_type(SOURCE_TYPE_UNKNOWN),
       pDataSource(nullptr),
+      source_record_number(-1),
       IDX_rec_num(0),
       IDX_type(0),
       IDX_lon(0.0),
@@ -76,6 +77,10 @@ IDX_entry::IDX_entry()
       recent_low_level(0.0f),
       recent_low_time(0) {
   memset(source_ident, 0, sizeof(source_ident));
+  memset(source_version, 0, sizeof(source_version));
+  memset(record_source, 0, sizeof(record_source));
+  memset(station_id_context, 0, sizeof(station_id_context));
+  memset(station_id, 0, sizeof(station_id));
   memset(IDX_zone, 0, sizeof(IDX_zone));
   memset(IDX_station_name, 0, sizeof(IDX_station_name));
   memset(IDX_reference_name, 0, sizeof(IDX_reference_name));
