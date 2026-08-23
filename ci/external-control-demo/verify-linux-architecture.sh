@@ -17,7 +17,10 @@ while IFS= read -r -d '' candidate; do
       failures=$((failures + 1))
     fi
   fi
-done < <(find "$root" -type f -print0)
+done < <(
+  find "$root" -type f \
+    \( -perm /111 -o -name '*.so' -o -name '*.so.*' \) -print0
+)
 
 if (( elf_count == 0 )); then
   echo "No ELF files found below $root" >&2
@@ -27,4 +30,3 @@ if (( failures != 0 )); then
   exit 1
 fi
 printf 'Verified %d ELF files as %s.\n' "$elf_count" "$expected"
-

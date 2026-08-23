@@ -102,7 +102,7 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 | Component | Revision |
 |---|---|
 | OpenCPN hardened core and API | $(git -C "$source_root" rev-parse HEAD) (external-control code based on release tag external-control-demo-20260821) |
-| xGRIB provider implementation | 6674c70583d285cdcbc622f3377da810fde0d3ba |
+| xGRIB provider build | 369b6fc8a4c461d54eec75d949e1f2e30cccdc48 (provider behavior based on 6674c70583d285cdcbc622f3377da810fde0d3ba) |
 | xWeatherRouting provider implementation | 5dc04608945e1917e8cbb4e8df274619c1b5203d |
 | OpenCPN Scheduler | $(git -C "$scheduler_repo" rev-parse HEAD) |
 

@@ -41,3 +41,73 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  assemble-debian12-arm64:
+    name: Assemble and qualify Debian 12 ARM64 bundle
+    needs: debian12-arm64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    container:
+      image: arm64v8/debian:bookworm
+    steps:
+      - name: Bootstrap checkout requirements
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Install qualification requirements
+        run: |
+          ci/external-control-demo/install-debian-build-deps.sh
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            curl iproute2 python3-build python3-pip python3-setuptools \
+            python3-tk python3-venv util-linux
+      - uses: actions/download-artifact@v4
+        with:
+          name: opencpn-external-control-core-debian12-arm64
+          path: inputs/core
+      - name: Fetch exact qualified plug-in packages
+        run: |
+          mkdir -p inputs/plugins
+          curl --fail --location \
+            'https://output.circle-artifacts.com/output/job/f4676173-d84d-478b-a490-a8d79d477990/artifacts/0/artifacts/bookworm-arm64/package/xgrib_pi-0.2.4.0-debian-arm64-12-bookworm-arm64.tar.gz' \
+            --output inputs/plugins/xgrib.tar.gz
+          curl --fail --location \
+            'https://output.circle-artifacts.com/output/job/0263610a-cef4-4d07-8ffe-7a1bb256f848/artifacts/0/artifacts/bookworm-arm64/package/xweather_routing_pi-0.1.0.0-debian-arm64-12-bookworm-arm64.tar.gz' \
+            --output inputs/plugins/xweather.tar.gz
+          echo 'dabb9bd92fe6f8269eedcc8b2dadabcfa2738537e6218d166fa0ae0ae6262db7  inputs/plugins/xgrib.tar.gz' | sha256sum --check
+          echo 'd1aa47b950f7b807691c1f9057972735be75bf56ff2d987f38f9bab239da2127  inputs/plugins/xweather.tar.gz' | sha256sum --check
+      - name: Check out exact Scheduler source
+        run: |
+          git clone https://github.com/pob220/opencpn-scheduler.git inputs/opencpn-scheduler
+          git -C inputs/opencpn-scheduler checkout 539e1e80a00aa2ca0df0853fc9ebd0f4c8bffa9e
+      - name: Assemble isolated bundle
+        run: |
+          core_installer=$(find inputs/core/package -maxdepth 1 -type f -name '*.sh' -print -quit)
+          test -n "$core_installer"
+          EXTERNAL_CONTROL_DEMO_DATE=2026-08-23 \
+            tools/external-control-demo/assemble-linux.sh \
+              "$core_installer" \
+              inputs/plugins/xgrib.tar.gz \
+              inputs/plugins/xweather.tar.gz \
+              inputs/opencpn-scheduler \
+              candidate debian12-arm64 aarch64
+      - name: Clean-install and API smoke qualification
+        env:
+          RUN_GUI_SMOKE: '1'
+        run: |
+          tools/external-control-demo/qualify-linux-bundle.sh \
+            candidate/OpenCPN-External-Control-Demo-2026-08-23-debian12-arm64 \
+            AArch64 | tee candidate/qualification.log
+      - name: Publish qualified candidate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencpn-external-control-demo-debian12-arm64
+          path: |
+            candidate/OpenCPN-External-Control-Demo-2026-08-23-debian12-arm64.tar.gz
+            candidate/OpenCPN-External-Control-Demo-2026-08-23-debian12-arm64.tar.gz.sha256
+            candidate/qualification.log
+          if-no-files-found: error
+          retention-days: 14
