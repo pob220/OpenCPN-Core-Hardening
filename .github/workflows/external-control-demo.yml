@@ -8,10 +8,16 @@ on:
     paths-ignore:
       - 'manual/**'
   workflow_dispatch:
+    inputs:
+      core_run_id:
+        description: Optional successful workflow run containing the ARM64 core artifact
+        required: false
+        type: string
 
 jobs:
   debian12-arm64:
     name: Debian 12 ARM64 core
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.core_run_id == '' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     container:
@@ -44,6 +50,10 @@ jobs:
   assemble-debian12-arm64:
     name: Assemble and qualify Debian 12 ARM64 bundle
     needs: debian12-arm64
+    if: >-
+      ${{ always() &&
+          (needs.debian12-arm64.result == 'success' ||
+           (github.event_name == 'workflow_dispatch' && inputs.core_run_id != '')) }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     container:
@@ -66,11 +76,14 @@ jobs:
             curl iproute2 python3-build python3-pip python3-setuptools \
             python3-tk python3-venv util-linux
           python3 -m pip install --break-system-packages \
-            'setuptools==80.9.0' 'wheel==0.45.1'
+            'packaging==25.0' 'setuptools==80.9.0' 'wheel==0.45.1'
       - uses: actions/download-artifact@v4
         with:
           name: opencpn-external-control-core-debian12-arm64
           path: inputs/core
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.core_run_id || github.run_id }}
       - name: Fetch exact qualified plug-in packages
         run: |
           mkdir -p inputs/plugins
