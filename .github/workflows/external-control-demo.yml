@@ -1,0 +1,43 @@
+---
+name: External Control Demo platforms
+
+on:
+  push:
+    branches:
+      - external-control/cross-platform-demo
+    paths-ignore:
+      - 'manual/**'
+  workflow_dispatch:
+
+jobs:
+  debian12-arm64:
+    name: Debian 12 ARM64 core
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    container:
+      image: arm64v8/debian:bookworm
+    env:
+      OCPN_TARGET: bookworm-arm64
+      EXPECTED_ELF_MACHINE: AArch64
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+    steps:
+      - name: Bootstrap checkout requirements
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Install Debian build dependencies
+        run: ci/external-control-demo/install-debian-build-deps.sh
+      - name: Build, test, package and audit
+        run: ci/external-control-demo/build-linux.sh "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/build-arm64"
+      - name: Publish retained evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencpn-external-control-core-debian12-arm64
+          path: build-arm64/artifacts/bookworm-arm64
+          if-no-files-found: error
+          retention-days: 14
+
