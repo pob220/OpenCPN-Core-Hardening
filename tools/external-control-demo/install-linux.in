@@ -36,7 +36,7 @@ mkdir -p "$stage_root/usr/local" "$stage_root/config" "$stage_root/bin" \
   "$stage_root/xdg-data" "$stage_root/xdg-cache" "$stage_root/docs"
 
 "$bundle_dir/assets/opencpn-core-external-control-demo-${platform}-installer.sh" \
-  --skip-license --exclude-subdir --prefix="$stage_root"
+  --skip-license --exclude-subdir --prefix="$stage_root/usr/local"
 tar -xzf "$bundle_dir/assets/xweather-routing-external-control-demo-${platform}.tar.gz" \
   -C "$stage_root" --strip-components=1
 tar -xzf "$bundle_dir/assets/xgrib-external-control-demo-${platform}.tar.gz" \
