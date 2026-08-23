@@ -65,6 +65,8 @@ jobs:
           apt-get install -y --no-install-recommends \
             curl iproute2 python3-build python3-pip python3-setuptools \
             python3-tk python3-venv util-linux
+          python3 -m pip install --break-system-packages \
+            'setuptools==80.9.0' 'wheel==0.45.1'
       - uses: actions/download-artifact@v4
         with:
           name: opencpn-external-control-core-debian12-arm64
