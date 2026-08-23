@@ -21,6 +21,8 @@ platform=$6
 expected_uname=$7
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 source_root=$(git -C "$script_dir/../.." rev-parse --show-toplevel)
+assembly_revision=$(git -C "$source_root" rev-parse HEAD)
+core_revision=${EXTERNAL_CONTROL_CORE_REVISION:-$assembly_revision}
 release_date=${EXTERNAL_CONTROL_DEMO_DATE:-$(date -u +%Y-%m-%d)}
 bundle_name="OpenCPN-External-Control-Demo-${release_date}-${platform}"
 final_bundle_dir="$output_dir/$bundle_name"
@@ -101,7 +103,8 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 
 | Component | Revision |
 |---|---|
-| OpenCPN hardened core and API | $(git -C "$source_root" rev-parse HEAD) (external-control code based on release tag external-control-demo-20260821) |
+| OpenCPN hardened core binary and API | $core_revision (external-control code based on release tag external-control-demo-20260821) |
+| Demo assembly and qualification tooling | $assembly_revision |
 | xGRIB provider build | 369b6fc8a4c461d54eec75d949e1f2e30cccdc48 (provider behavior based on 6674c70583d285cdcbc622f3377da810fde0d3ba) |
 | xWeatherRouting provider implementation | 5dc04608945e1917e8cbb4e8df274619c1b5203d |
 | OpenCPN Scheduler | $(git -C "$scheduler_repo" rev-parse HEAD) |
