@@ -1,7 +1,7 @@
 ---
 # Buildpack images found at: https://hub.docker.com/_/buildpack-deps/
 
-version: 2
+version: 2.1
 jobs:
   build-bookworm:
     docker:
@@ -96,6 +96,27 @@ jobs:
             - /usr/local/lib
       - run: ci/generic-upload.sh
 
+  external-control-bookworm-arm64:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: arm.medium
+    environment:
+      OCPN_TARGET: bookworm-arm64
+      DOCKER_IMAGE: arm64v8/debian:bookworm
+      EXPECTED_ELF_MACHINE: AArch64
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+    steps:
+      - checkout
+      - run: chmod a+x ci/external-control-demo/*.sh
+      - run:
+          name: Build, test, package and audit Debian 12 ARM64 demo core
+          command: ci/external-control-demo/circleci-build-linux.sh
+          no_output_timeout: 60m
+      - store_test_results:
+          path: artifacts/bookworm-arm64/tests
+      - store_artifacts:
+          path: artifacts/bookworm-arm64
+
 std-filters: &std-filters
   filters:
     branches:
@@ -124,3 +145,12 @@ workflows:
 
       - build-macos-universal:
           <<: *std-filters
+
+  external_control_demo:
+    jobs:
+      - external-control-bookworm-arm64:
+          filters:
+            branches:
+              only: external-control/cross-platform-demo
+            tags:
+              ignore: /.*/

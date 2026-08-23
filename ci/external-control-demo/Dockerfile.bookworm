@@ -1,0 +1,5 @@
+FROM debian:bookworm
+
+COPY install-debian-build-deps.sh /usr/local/bin/
+RUN /usr/local/bin/install-debian-build-deps.sh
+
