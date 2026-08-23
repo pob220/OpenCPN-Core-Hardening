@@ -37,7 +37,12 @@ endif ()
 add_library(_NLOHMANN_JSON_ INTERFACE)
 add_library(nlohmann::json ALIAS _NLOHMANN_JSON_)
 
-find_package(nlohmann_json)
+# External-control contracts use the std::optional conversions provided by
+# 3.12.  Older distributions such as Debian 12 package 3.11; accepting that
+# package makes the failure appear much later while compiling external_api.
+# Require the actual interface level and use the pinned FetchContent fallback
+# when the distribution package is older.
+find_package(nlohmann_json 3.12)
 if (nlohmann_json_FOUND)
   target_link_libraries(_NLOHMANN_JSON_ INTERFACE nlohmann_json::nlohmann_json)
 else ()
