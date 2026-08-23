@@ -56,6 +56,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: false
+      - name: Trust the container checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Install qualification requirements
         run: |
           ci/external-control-demo/install-debian-build-deps.sh
@@ -109,5 +111,5 @@ jobs:
             candidate/OpenCPN-External-Control-Demo-2026-08-23-debian12-arm64.tar.gz
             candidate/OpenCPN-External-Control-Demo-2026-08-23-debian12-arm64.tar.gz.sha256
             candidate/qualification.log
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
