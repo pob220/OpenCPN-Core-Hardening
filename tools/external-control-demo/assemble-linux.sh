@@ -115,5 +115,5 @@ EOF
 mkdir -p "$output_dir"
 mv "$bundle_dir" "$final_bundle_dir"
 tar -C "$output_dir" -czf "$archive" "$bundle_name"
-sha256sum "$archive" > "$archive.sha256"
+(cd "$output_dir" && sha256sum "$bundle_name.tar.gz" > "$bundle_name.tar.gz.sha256")
 printf 'Created %s\n' "$archive"
