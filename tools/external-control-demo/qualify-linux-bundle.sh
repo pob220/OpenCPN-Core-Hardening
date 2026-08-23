@@ -17,16 +17,36 @@ cleanup() {
 }
 trap cleanup EXIT
 
+fail() {
+  echo "Qualification failed: $*" >&2
+  exit 1
+}
+
+require_executable() {
+  [[ -x $1 ]] || fail "expected executable is missing: $1"
+}
+
+require_mode() {
+  local path=$1
+  local expected=$2
+  local actual
+  actual=$(stat -c %a "$path") || fail "cannot read mode for $path"
+  [[ $actual == "$expected" ]] ||
+    fail "expected mode $expected for $path; found $actual"
+}
+
 (cd "$bundle_dir" && sha256sum --check SHA256SUMS)
 "$bundle_dir/install-external-control-demo.sh" "$install_dir"
 
-test -x "$install_dir/usr/local/bin/opencpn"
-test -x "$install_dir/bin/launch-opencpn-external-control-demo"
-test -x "$install_dir/bin/launch-opencpn-scheduler-external-control-demo"
-test "$(stat -c %a "$install_dir/config/opencpn.conf")" = 600
-test "$(stat -c %a "$install_dir/secrets/api-token")" = 600
-grep -q '^AllowLan=0$' "$install_dir/config/opencpn.conf"
-grep -q '^TokenScopes=' "$install_dir/config/opencpn.conf"
+require_executable "$install_dir/usr/local/bin/opencpn"
+require_executable "$install_dir/bin/launch-opencpn-external-control-demo"
+require_executable "$install_dir/bin/launch-opencpn-scheduler-external-control-demo"
+require_mode "$install_dir/config/opencpn.conf" 600
+require_mode "$install_dir/secrets/api-token" 600
+grep -q '^AllowLan=0$' "$install_dir/config/opencpn.conf" ||
+  fail 'external API is not restricted to loopback'
+grep -q '^TokenScopes=' "$install_dir/config/opencpn.conf" ||
+  fail 'external API token scopes are missing'
 if grep -Eq 'routes:activate|autopilot|messages:send' \
   "$install_dir/config/opencpn.conf"; then
   echo 'Generated token contains a prohibited navigation-control scope.' >&2
@@ -43,7 +63,8 @@ if "$bundle_dir/install-external-control-demo.sh" "$install_dir" \
   echo 'A second install unexpectedly overwrote the qualified target.' >&2
   exit 1
 fi
-grep -q 'Refusing to overwrite' "$work_dir/second-install.log"
+grep -q 'Refusing to overwrite' "$work_dir/second-install.log" ||
+  fail 'second-install refusal did not report its reason'
 
 if [[ ${RUN_GUI_SMOKE:-0} == 1 ]]; then
   token=$(<"$install_dir/secrets/api-token")
