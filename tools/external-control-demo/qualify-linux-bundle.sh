@@ -70,7 +70,9 @@ if [[ ${RUN_GUI_SMOKE:-0} == 1 ]]; then
   token=$(<"$install_dir/secrets/api-token")
   mkdir -p "$work_dir/runtime"
   chmod 700 "$work_dir/runtime"
-  setsid env XDG_RUNTIME_DIR="$work_dir/runtime" dbus-run-session -- xvfb-run -a \
+  setsid env XDG_RUNTIME_DIR="$work_dir/runtime" \
+    OCPN_EXTERNAL_CONTROL_DEMO_QUALIFICATION=1 \
+    dbus-run-session -- xvfb-run -a \
     "$install_dir/bin/launch-opencpn-external-control-demo" \
     >"$work_dir/opencpn-smoke.log" 2>&1 &
   smoke_pid=$!
@@ -83,10 +85,18 @@ if [[ ${RUN_GUI_SMOKE:-0} == 1 ]]; then
       ready=1
       break
     fi
+    if ! kill -0 "$smoke_pid" 2>/dev/null; then
+      echo 'The isolated OpenCPN process exited before API readiness.' >&2
+      break
+    fi
     sleep 1
   done
   if (( ready == 0 )); then
     cat "$work_dir/opencpn-smoke.log" >&2
+    while IFS= read -r log_file; do
+      echo "OpenCPN log: $log_file" >&2
+      tail -200 "$log_file" >&2
+    done < <(find "$install_dir" -type f -name opencpn.log -print)
     echo 'The isolated External Control Demo API did not become ready.' >&2
     exit 1
   fi

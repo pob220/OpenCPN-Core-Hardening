@@ -25,5 +25,10 @@ export XDG_DATA_HOME="$demo_root/xdg-data"
 export XDG_CACHE_HOME="$demo_root/xdg-cache"
 export OPENCPN_PREFIX="$demo_prefix"
 export OPENCPN_PLUGIN_DIRS="$demo_prefix/lib/opencpn"
-unset WR_HEADLESS_ROUTE_TEST WR_HEADLESS_SCENARIO WR_HEADLESS_OUTPUT
+unset WR_HEADLESS_SCENARIO WR_HEADLESS_OUTPUT
+if [[ ${OCPN_EXTERNAL_CONTROL_DEMO_QUALIFICATION:-0} == 1 ]]; then
+  export WR_HEADLESS_ROUTE_TEST=open_only
+else
+  unset WR_HEADLESS_ROUTE_TEST
+fi
 exec "$demo_executable" --configdir "$demo_root/config" --no_opengl "$@"
