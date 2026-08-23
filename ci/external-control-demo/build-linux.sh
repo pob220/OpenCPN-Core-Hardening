@@ -15,6 +15,11 @@ test_dir="$artifact_dir/tests"
 rm -rf "$build_dir" "$stage_dir" "$artifact_dir"
 mkdir -p "$build_dir" "$stage_dir" "$package_dir" "$log_dir" "$test_dir"
 
+# Container jobs check out the source as the runner user and build it as root.
+# Mark only this exact checkout safe so version/provenance generation remains
+# deterministic without weakening Git's ownership checks globally.
+git config --global --add safe.directory "$source_dir"
+
 cmake -S "$source_dir" -B "$build_dir" -G Ninja \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DCMAKE_INSTALL_PREFIX=/usr/local \
@@ -56,4 +61,3 @@ git -C "$source_dir" rev-parse HEAD > "$artifact_dir/source-commit.txt"
   printf 'distribution=%s\n' "$(. /etc/os-release && printf '%s %s' "$ID" "$VERSION_ID")"
 } > "$artifact_dir/platform.txt"
 sha256sum "$package_dir"/* > "$package_dir/SHA256SUMS"
-

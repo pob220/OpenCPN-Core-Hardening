@@ -28,6 +28,7 @@ apt-get install -y --no-install-recommends \
   libjs-mathjax \
   liblz4-dev \
   liblzma-dev \
+  lsb-release \
   libpango1.0-dev \
   libshp-dev \
   libsqlite3-dev \
@@ -49,4 +50,3 @@ apt-get install -y --no-install-recommends \
   xvfb
 
 rm -rf /var/lib/apt/lists/*
-
