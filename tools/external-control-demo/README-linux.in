@@ -9,6 +9,18 @@ It is a developer demonstration, not a navigation release. It does not replace
 an existing OpenCPN installation, use an existing profile, activate routes or
 send autopilot output. Chart, credential and forecast data are not included.
 
+Install the target-distribution runtime prerequisites first. For Debian 12:
+
+```sh
+sudo apt-get update
+sudo apt-get install curl file iproute2 libaec0 libblosc1 libeccodes0 \
+  libhdf5-103-1 libhdf5-hl-100 libnetcdf19 libproj25 libqhull-r8.0 \
+  libsz2 libzip4 python3-tk python3-venv
+```
+
+The demo installer itself uses no `sudo`; these are normal host runtime
+packages used by OpenCPN and the bundled environmental-data helper.
+
 Install into a new directory:
 
 ```sh

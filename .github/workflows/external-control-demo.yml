@@ -73,8 +73,10 @@ jobs:
           ci/external-control-demo/install-debian-build-deps.sh
           apt-get update
           apt-get install -y --no-install-recommends \
-            curl iproute2 python3-build python3-pip python3-setuptools \
-            python3-tk python3-venv util-linux
+            curl iproute2 libaec0 libblosc1 libeccodes0 libhdf5-103-1 \
+            libhdf5-hl-100 libnetcdf19 libproj25 libqhull-r8.0 libsz2 \
+            libzip4 python3-build python3-pip python3-setuptools python3-tk \
+            python3-venv util-linux
           python3 -m pip install --break-system-packages \
             'packaging==25.0' 'setuptools==80.9.0' 'wheel==0.45.1'
       - uses: actions/download-artifact@v4
@@ -114,9 +116,14 @@ jobs:
         env:
           RUN_GUI_SMOKE: '1'
         run: |
-          tools/external-control-demo/qualify-linux-bundle.sh \
-            candidate/OpenCPN-External-Control-Demo-2026-08-23-debian12-arm64 \
-            AArch64 | tee candidate/qualification.log
+          qualification_log=candidate/qualification.log
+          if ! tools/external-control-demo/qualify-linux-bundle.sh \
+              candidate/OpenCPN-External-Control-Demo-2026-08-23-debian12-arm64 \
+              AArch64 >"$qualification_log" 2>&1; then
+            cat "$qualification_log"
+            exit 1
+          fi
+          cat "$qualification_log"
       - name: Publish qualified candidate
         if: always()
         uses: actions/upload-artifact@v4
