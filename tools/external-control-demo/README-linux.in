@@ -1,0 +1,35 @@
+# OpenCPN External Control Demo — @PLATFORM@
+
+This isolated developer package demonstrates the authenticated OpenCPN
+`/api/v2` external-control architecture with xGRIB, xWeatherRouting and the
+human-readable Scheduler. It targets `@EXPECTED_UNAME@` systems running
+Debian 12 or a compatible Raspberry Pi OS 64-bit release.
+
+It is a developer demonstration, not a navigation release. It does not replace
+an existing OpenCPN installation, use an existing profile, activate routes or
+send autopilot output. Chart, credential and forecast data are not included.
+
+Install into a new directory:
+
+```sh
+sha256sum --check ../OpenCPN-External-Control-Demo-*.tar.gz.sha256
+./install-external-control-demo.sh "$PWD/Test-OpenCPN-External-Control-Demo"
+Test-OpenCPN-External-Control-Demo/bin/launch-opencpn-external-control-demo
+```
+
+The installer checks the CPU architecture and every embedded checksum before
+extracting. It stages the complete installation, reports missing shared
+libraries, refuses to overwrite a non-empty target and generates a fresh
+owner-only least-privilege token.
+
+On first start, add only test charts you are entitled to use, disable the
+bundled GRIB and original Weather Routing plug-ins, then enable xGRIB and
+xWeatherRouting. Close OpenCPN cleanly before first launching the Scheduler:
+
+```sh
+Test-OpenCPN-External-Control-Demo/bin/launch-opencpn-scheduler-external-control-demo
+```
+
+Please report the package platform, Raspberry Pi model or computer, operating
+system, wxWidgets version, the redacted OpenCPN log and the exact workflow
+which failed. Never publish API tokens, provider passwords or licensed charts.

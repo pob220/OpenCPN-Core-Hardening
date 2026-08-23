@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+bundle_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+demo_root=${1:-$PWD/OpenCPN-External-Control-Demo}
+platform=@PLATFORM@
+expected_uname=@EXPECTED_UNAME@
+
+if [[ $(uname -m) != "$expected_uname" ]]; then
+  echo "This package targets $platform ($expected_uname); this computer reports $(uname -m)." >&2
+  echo "Download the External Control Demo package matching this computer." >&2
+  exit 1
+fi
+for command in curl file flock ldd python3 sha256sum ss tar; do
+  command -v "$command" >/dev/null 2>&1 || {
+    echo "Required command is missing: $command" >&2
+    exit 1
+  }
+done
+python3 -c 'import tkinter, venv' >/dev/null 2>&1 || {
+  echo "Python tkinter and venv support are required for the Scheduler GUI." >&2
+  exit 1
+}
+if [[ -e "$demo_root" ]]; then
+  echo "Refusing to overwrite an existing installation path: $demo_root" >&2
+  exit 1
+fi
+(cd "$bundle_dir" && sha256sum --check SHA256SUMS)
+
+stage_root="${demo_root}.installing.$$"
+test ! -e "$stage_root"
+cleanup() { rm -rf "$stage_root"; }
+trap cleanup EXIT
+mkdir -p "$stage_root/usr/local" "$stage_root/config" "$stage_root/bin" \
+  "$stage_root/secrets" "$stage_root/scheduler" "$stage_root/xdg-config" \
+  "$stage_root/xdg-data" "$stage_root/xdg-cache" "$stage_root/docs"
+
+"$bundle_dir/assets/opencpn-core-external-control-demo-${platform}-installer.sh" \
+  --skip-license --exclude-subdir --prefix="$stage_root"
+tar -xzf "$bundle_dir/assets/xweather-routing-external-control-demo-${platform}.tar.gz" \
+  -C "$stage_root" --strip-components=1
+tar -xzf "$bundle_dir/assets/xgrib-external-control-demo-${platform}.tar.gz" \
+  -C "$stage_root/usr/local" --strip-components=1
+
+missing=$(
+  find "$stage_root/usr/local" -type f -print0 | while IFS= read -r -d '' path; do
+    file -b "$path" | grep -q '^ELF ' || continue
+    ldd "$path" 2>/dev/null | sed -n '/not found/p'
+  done | sort -u
+)
+if [[ -n "$missing" ]]; then
+  echo "The target is missing shared libraries required by this Debian 12 package:" >&2
+  echo "$missing" >&2
+  echo "Install the corresponding Debian ARM64 runtime packages, then retry." >&2
+  exit 1
+fi
+
+python3 -m venv "$stage_root/client"
+"$stage_root/client/bin/python" -m pip install --no-index --no-deps \
+  "$bundle_dir"/assets/opencpn_control-*-py3-none-any.whl \
+  "$bundle_dir"/assets/opencpn_scheduler-*-py3-none-any.whl
+
+token=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
+token_digest=$(printf %s "$token" | sha256sum | cut -d ' ' -f 1)
+umask 077
+printf '%s\n' "$token" > "$stage_root/secrets/api-token"
+cat > "$stage_root/config/opencpn.conf" <<EOF
+[Settings/ExternalControl]
+Enabled=1
+AllowLan=0
+TokenSha256=$token_digest
+TokenScopes=navigation:read;routes:read;charts:query;planning:run;routes:write;environment:read;environment:acquire;environment:activate
+MaximumBodyBytes=1048576
+EOF
+chmod 600 "$stage_root/config/opencpn.conf" "$stage_root/secrets/api-token"
+install -m 755 "$bundle_dir/launchers/"* "$stage_root/bin/"
+install -m 644 "$bundle_dir/README.md" "$bundle_dir/COMPONENTS.md" "$stage_root/docs/"
+
+mv "$stage_root" "$demo_root"
+trap - EXIT
+printf '\nInstalled OpenCPN External Control Demo in: %s\n' "$demo_root"
+printf 'First launch: %s/bin/launch-opencpn-external-control-demo\n' "$demo_root"

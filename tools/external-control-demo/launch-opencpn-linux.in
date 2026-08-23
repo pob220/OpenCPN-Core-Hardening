@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+demo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+demo_prefix="$demo_root/usr/local"
+demo_executable="$demo_prefix/bin/opencpn"
+
+if [[ $(uname -m) != '@EXPECTED_UNAME@' ]]; then
+  echo "This @PLATFORM@ demo requires @EXPECTED_UNAME@; this computer reports $(uname -m)." >&2
+  exit 1
+fi
+[[ -x "$demo_executable" ]] || {
+  echo "External Control Demo executable not found: $demo_executable" >&2
+  exit 1
+}
+command -v ss >/dev/null 2>&1 || { echo 'Required command is missing: ss' >&2; exit 1; }
+if ss -H -ltn 'sport = :8443' | grep -q .; then
+  echo "TCP port 8443 is already in use, probably by another OpenCPN instance." >&2
+  exit 1
+fi
+
+export XDG_CONFIG_HOME="$demo_root/xdg-config"
+export XDG_DATA_HOME="$demo_root/xdg-data"
+export XDG_CACHE_HOME="$demo_root/xdg-cache"
+export OPENCPN_PREFIX="$demo_prefix"
+export OPENCPN_PLUGIN_DIRS="$demo_prefix/lib/opencpn"
+unset WR_HEADLESS_ROUTE_TEST WR_HEADLESS_SCENARIO WR_HEADLESS_OUTPUT
+exec "$demo_executable" --configdir "$demo_root/config" --no_opengl "$@"
