@@ -15,8 +15,8 @@ Install the target-distribution runtime prerequisites first. For Debian 12:
 ```sh
 sudo apt-get update
 sudo apt-get install curl file iproute2 libaec0 libblosc1 libeccodes0 \
-  libhdf5-103-1 libhdf5-hl-100 libnetcdf19 libproj25 libqhull-r8.0 \
-  libsz2 libzip4 python3-tk python3-venv
+  libgdk-pixbuf2.0-bin libhdf5-103-1 libhdf5-hl-100 libnetcdf19 \
+  libproj25 libqhull-r8.0 libsz2 libzip4 python3-tk python3-venv
 ```
 
 The demo installer itself uses no `sudo`; these are normal host runtime
@@ -41,6 +41,10 @@ xWeatherRouting, Climatology, Polar and Celestial Navigation are initially
 enabled; bundled GRIB is present for compatibility but disabled to avoid two
 GRIB displays competing.
 The exact list is in `docs/PLUGIN-INVENTORY.md` after installation.
+
+The isolated profile explicitly permits these pinned, audited plug-ins from
+the bundle's private system-plugin directory. This does not alter the host's
+OpenCPN profile or relax the policy for any other installation.
 
 Celestial Navigation's large eclipse kernels and optional lunar-terrain pack
 are not bundled or downloaded automatically. They are unnecessary for its

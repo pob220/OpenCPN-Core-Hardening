@@ -103,6 +103,12 @@ TokenSha256=$token_digest
 TokenScopes=navigation:read;routes:read;charts:query;planning:run;routes:write;environment:read;environment:acquire;environment:activate
 MaximumBodyBytes=1048576
 
+[Settings/GlobalState]
+# This isolated developer bundle pins and audits additional plug-ins installed
+# beside the core system plug-ins. Normal OpenCPN installations retain their
+# default system-plugin policy.
+AllowArbitrarySystemPlugins=1
+
 [PlugIns/libgrib_pi.so]
 bEnabled=0
 

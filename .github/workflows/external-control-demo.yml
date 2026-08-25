@@ -74,9 +74,11 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             curl iproute2 libaec0 libblosc1 libeccodes0 libhdf5-103-1 \
-            libgtest-dev libhdf5-hl-100 libnetcdf19 libproj25 libqhull-r8.0 libsz2 \
+            libgdk-pixbuf2.0-bin libgtest-dev libhdf5-hl-100 libnetcdf19 \
+            libproj25 libqhull-r8.0 libsz2 \
             libzip4 python3-build python3-pip python3-setuptools python3-tk \
             python3-venv util-linux xauth
+          gdk-pixbuf-query-loaders --update-cache
           python3 -m pip install --break-system-packages \
             'packaging==25.0' 'setuptools==80.9.0' 'wheel==0.45.1'
       - uses: actions/download-artifact@v4

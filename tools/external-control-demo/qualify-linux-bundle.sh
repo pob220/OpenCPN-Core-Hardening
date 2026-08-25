@@ -54,6 +54,9 @@ grep -q '^AllowLan=0$' "$install_dir/config/opencpn.conf" ||
   fail 'external API is not restricted to loopback'
 grep -q '^TokenScopes=' "$install_dir/config/opencpn.conf" ||
   fail 'external API token scopes are missing'
+grep -q '^AllowArbitrarySystemPlugins=1$' \
+  "$install_dir/config/opencpn.conf" ||
+  fail 'pinned bundled plug-ins are not explicitly allowed by the demo profile'
 python3 - "$install_dir/config/opencpn.conf" <<'PY'
 import configparser
 import sys
