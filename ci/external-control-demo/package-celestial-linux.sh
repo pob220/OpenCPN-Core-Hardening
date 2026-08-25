@@ -32,5 +32,13 @@ test -f "$data_dir/Celestial_Navigation_Information.html"
 machine=$(readelf -h "$plugin" | sed -n 's/^ *Machine: *//p')
 [[ $machine == "$expected_machine" ]]
 
+# Eclipse kernels are optional source-build inputs, not part of the demo.
+if find "$stage_dir" -type f \
+    \( -name '*.bsp' -o -name '*.bpc' -o -name 'lola64-pa.bin' \) \
+    -print -quit | grep -q .; then
+  echo "Celestial package unexpectedly contains an eclipse kernel" >&2
+  exit 1
+fi
+
 tar -C "$stage_dir" -czf "$output_archive" usr/local
 printf 'Created qualified Celestial Navigation package: %s\n' "$output_archive"

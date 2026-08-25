@@ -124,6 +124,14 @@ jobs:
             inputs/celestial_navigation_pi
           git -C inputs/celestial_navigation_pi checkout 493d0982d6feb025d13b05f475b5201bffe4024b
           git -C inputs/celestial_navigation_pi submodule update --init --recursive
+          # The lunar-distance tests require DE440, but the full optional
+          # eclipse data pack is deliberately not fetched or distributed.
+          curl --fail --location \
+            https://github.com/pob220/celestial_navigation_pi/releases/download/eclipse-data-2026.1/de440s.bsp \
+            --output inputs/celestial_navigation_pi/eclipse/data/de440s.bsp
+          echo 'c1c7feeab882263fc493a9d5a5b2ddd71b54826cdf65d8d17a76126b260a49f2  inputs/celestial_navigation_pi/eclipse/data/de440s.bsp' \
+            | sha256sum --check
+          test "$(stat -c %s inputs/celestial_navigation_pi/eclipse/data/de440s.bsp)" = 32726016
           ci/external-control-demo/package-celestial-linux.sh \
             inputs/celestial_navigation_pi \
             inputs/celestial-build \
