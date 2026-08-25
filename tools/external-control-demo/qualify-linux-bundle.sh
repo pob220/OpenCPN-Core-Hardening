@@ -17,6 +17,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
+unexpected_error() {
+  local status=$?
+  echo "Qualification command failed at line $1 (status $status): $2" >&2
+  exit "$status"
+}
+trap 'unexpected_error "$LINENO" "$BASH_COMMAND"' ERR
+
 fail() {
   echo "Qualification failed: $*" >&2
   exit 1
@@ -106,7 +113,8 @@ grep -q 'eclipse-data-2026.1' \
   "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ||
   fail 'Celestial eclipse-data guidance does not link the pinned data release'
 "$install_dir/client/bin/python" -c \
-  'import opencpn_control, opencpn_scheduler'
+  'import opencpn_control, opencpn_scheduler' ||
+  fail 'installed Python client packages cannot be imported'
 
 if "$bundle_dir/install-external-control-demo.sh" "$install_dir" \
   >"$work_dir/second-install.log" 2>&1; then
@@ -150,11 +158,19 @@ if [[ ${RUN_GUI_SMOKE:-0} == 1 ]]; then
     echo 'The isolated External Control Demo API did not become ready.' >&2
     exit 1
   fi
-  python3 -m json.tool "$work_dir/version.json" >/dev/null
-  curl --silent --insecure --fail --max-time 5 \
-    --header "Authorization: Bearer $token" \
-    https://127.0.0.1:8443/api/v2/capabilities \
-    >"$work_dir/capabilities.json"
+  python3 -m json.tool "$work_dir/version.json" >/dev/null ||
+    fail 'version endpoint did not return valid JSON'
+  if ! curl --silent --show-error --insecure --fail --max-time 5 \
+      --header "Authorization: Bearer $token" \
+      https://127.0.0.1:8443/api/v2/capabilities \
+      >"$work_dir/capabilities.json"; then
+    cat "$work_dir/opencpn-smoke.log" >&2
+    while IFS= read -r log_file; do
+      echo "OpenCPN log: $log_file" >&2
+      tail -200 "$log_file" >&2
+    done < <(find "$install_dir" -type f -name opencpn.log -print)
+    fail 'capabilities endpoint was unavailable after version readiness'
+  fi
   python3 - "$work_dir/capabilities.json" <<'PY'
 import json
 import sys
