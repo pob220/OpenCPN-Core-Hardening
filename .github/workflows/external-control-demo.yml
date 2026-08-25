@@ -55,7 +55,7 @@ jobs:
           (needs.debian12-arm64.result == 'success' ||
            (github.event_name == 'workflow_dispatch' && inputs.core_run_id != '')) }}
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
+    timeout-minutes: 60
     container:
       image: arm64v8/debian:bookworm
     steps:
@@ -95,8 +95,40 @@ jobs:
           curl --fail --location \
             'https://output.circle-artifacts.com/output/job/0263610a-cef4-4d07-8ffe-7a1bb256f848/artifacts/0/artifacts/bookworm-arm64/package/xweather_routing_pi-0.1.0.0-debian-arm64-12-bookworm-arm64.tar.gz' \
             --output inputs/plugins/xweather.tar.gz
+          curl --fail --location \
+            'https://dl.cloudsmith.io/public/opencpn/polar-prod/raw/names/polar_pi-1.2.38.0-debian-arm64-12-bookworm-arm64-tarball/versions/v1.2.38.0/polar_pi-1.2.38.0-debian-arm64-12-bookworm-arm64.tar.gz' \
+            --output inputs/plugins/polar.tar.gz
           echo 'dabb9bd92fe6f8269eedcc8b2dadabcfa2738537e6218d166fa0ae0ae6262db7  inputs/plugins/xgrib.tar.gz' | sha256sum --check
           echo 'd1aa47b950f7b807691c1f9057972735be75bf56ff2d987f38f9bab239da2127  inputs/plugins/xweather.tar.gz' | sha256sum --check
+          echo '85e000060e7f10df4a01424257e685ac6a8b8bd1cd145030a1a4c8bdb50ce470  inputs/plugins/polar.tar.gz' | sha256sum --check
+      - name: Build and test exact upgraded Climatology source
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: '2'
+          OCPN_TARGET: bookworm-arm64
+        run: |
+          git clone --filter=blob:none https://github.com/pob220/climatology_pi.git inputs/climatology_pi
+          git -C inputs/climatology_pi checkout cd00282e6ea2784a6d78ccfe47fed713269ad87e
+          ci/external-control-demo/package-climatology-linux.sh \
+            inputs/climatology_pi \
+            inputs/climatology-build \
+            inputs/plugins/climatology.tar.gz \
+            AArch64
+      - name: Build and test exact upgraded Celestial Navigation source
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: '2'
+          GIT_LFS_SKIP_SMUDGE: '1'
+          OCPN_TARGET: bookworm-arm64
+        run: |
+          git clone --filter=blob:none --recurse-submodules \
+            https://github.com/pob220/celestial_navigation_pi.git \
+            inputs/celestial_navigation_pi
+          git -C inputs/celestial_navigation_pi checkout de135443938eb01f2139d16e1e26f144b00d8bdf
+          git -C inputs/celestial_navigation_pi submodule update --init --recursive
+          ci/external-control-demo/package-celestial-linux.sh \
+            inputs/celestial_navigation_pi \
+            inputs/celestial-build \
+            inputs/plugins/celestial-navigation.tar.gz \
+            AArch64
       - name: Check out exact Scheduler source
         run: |
           git clone https://github.com/pob220/opencpn-scheduler.git inputs/opencpn-scheduler
@@ -106,12 +138,15 @@ jobs:
           core_installer=$(find inputs/core/package -maxdepth 1 -type f -name '*.sh' -print -quit)
           test -n "$core_installer"
           core_revision=$(cat inputs/core/source-commit.txt)
-          EXTERNAL_CONTROL_DEMO_DATE=2026-08-23 \
+          EXTERNAL_CONTROL_DEMO_DATE=2026-08-25 \
             EXTERNAL_CONTROL_CORE_REVISION="$core_revision" \
             tools/external-control-demo/assemble-linux.sh \
               "$core_installer" \
               inputs/plugins/xgrib.tar.gz \
               inputs/plugins/xweather.tar.gz \
+              inputs/plugins/climatology.tar.gz \
+              inputs/plugins/polar.tar.gz \
+              inputs/plugins/celestial-navigation.tar.gz \
               inputs/opencpn-scheduler \
               candidate debian12-arm64 aarch64
       - name: Clean-install and API smoke qualification
@@ -120,7 +155,7 @@ jobs:
         run: |
           qualification_log=candidate/qualification.log
           if ! tools/external-control-demo/qualify-linux-bundle.sh \
-              candidate/OpenCPN-External-Control-Demo-2026-08-23-debian12-arm64 \
+              candidate/OpenCPN-External-Control-Demo-2026-08-25-debian12-arm64 \
               AArch64 >"$qualification_log" 2>&1; then
             cat "$qualification_log"
             exit 1
@@ -132,8 +167,8 @@ jobs:
         with:
           name: opencpn-external-control-demo-debian12-arm64
           path: |
-            candidate/OpenCPN-External-Control-Demo-2026-08-23-debian12-arm64.tar.gz
-            candidate/OpenCPN-External-Control-Demo-2026-08-23-debian12-arm64.tar.gz.sha256
+            candidate/OpenCPN-External-Control-Demo-2026-08-25-debian12-arm64.tar.gz
+            candidate/OpenCPN-External-Control-Demo-2026-08-25-debian12-arm64.tar.gz.sha256
             candidate/qualification.log
           if-no-files-found: warn
           retention-days: 14

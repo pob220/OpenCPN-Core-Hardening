@@ -41,6 +41,35 @@ tar -xzf "$bundle_dir/assets/xweather-routing-external-control-demo-${platform}.
   -C "$stage_root" --strip-components=1
 tar -xzf "$bundle_dir/assets/xgrib-external-control-demo-${platform}.tar.gz" \
   -C "$stage_root/usr/local" --strip-components=1
+tar -xzf "$bundle_dir/assets/climatology-external-control-demo-${platform}.tar.gz" \
+  -C "$stage_root"
+tar -xzf "$bundle_dir/assets/polar-external-control-demo-${platform}.tar.gz" \
+  -C "$stage_root/usr/local" --strip-components=3 --wildcards '*/usr/local/*'
+tar -xzf "$bundle_dir/assets/celestial-navigation-external-control-demo-${platform}.tar.gz" \
+  -C "$stage_root"
+
+required_plugins=(
+  libchartdldr_pi.so
+  libdashboard_pi.so
+  libgrib_pi.so
+  libwmm_pi.so
+  libxgrib_pi.so
+  libxweather_routing_pi.so
+  libclimatology_pi.so
+  libpolar_pi.so
+  libcelestial_navigation_pi.so
+)
+for plugin in "${required_plugins[@]}"; do
+  path="$stage_root/usr/local/lib/opencpn/$plugin"
+  test -f "$path" || {
+    echo "Required demo plug-in is missing: $plugin" >&2
+    exit 1
+  }
+  file -b "$path" | grep -q 'ELF ' || {
+    echo "Required demo plug-in is not an ELF binary: $plugin" >&2
+    exit 1
+  }
+done
 
 missing=$(
   find "$stage_root/usr/local" -type f \
@@ -73,10 +102,30 @@ AllowLan=0
 TokenSha256=$token_digest
 TokenScopes=navigation:read;routes:read;charts:query;planning:run;routes:write;environment:read;environment:acquire;environment:activate
 MaximumBodyBytes=1048576
+
+[PlugIns/libgrib_pi.so]
+bEnabled=0
+
+[PlugIns/libxgrib_pi.so]
+bEnabled=1
+
+[PlugIns/libxweather_routing_pi.so]
+bEnabled=1
+
+[PlugIns/libclimatology_pi.so]
+bEnabled=1
+
+[PlugIns/libpolar_pi.so]
+bEnabled=1
+
+[PlugIns/libcelestial_navigation_pi.so]
+bEnabled=1
 EOF
 chmod 600 "$stage_root/config/opencpn.conf" "$stage_root/secrets/api-token"
 install -m 755 "$bundle_dir/launchers/"* "$stage_root/bin/"
-install -m 644 "$bundle_dir/README.md" "$bundle_dir/COMPONENTS.md" "$stage_root/docs/"
+install -m 644 "$bundle_dir/README.md" "$bundle_dir/COMPONENTS.md" \
+  "$bundle_dir/PLUGIN-INVENTORY.md" \
+  "$bundle_dir/CELESTIAL-ECLIPSE-DATA.md" "$stage_root/docs/"
 
 mv "$stage_root" "$demo_root"
 trap - EXIT

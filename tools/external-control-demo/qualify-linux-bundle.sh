@@ -47,6 +47,28 @@ grep -q '^AllowLan=0$' "$install_dir/config/opencpn.conf" ||
   fail 'external API is not restricted to loopback'
 grep -q '^TokenScopes=' "$install_dir/config/opencpn.conf" ||
   fail 'external API token scopes are missing'
+python3 - "$install_dir/config/opencpn.conf" <<'PY'
+import configparser
+import sys
+
+config = configparser.RawConfigParser()
+config.optionxform = str
+config.read(sys.argv[1], encoding="utf-8")
+expected = {
+    "PlugIns/libgrib_pi.so": "0",
+    "PlugIns/libxgrib_pi.so": "1",
+    "PlugIns/libxweather_routing_pi.so": "1",
+    "PlugIns/libclimatology_pi.so": "1",
+    "PlugIns/libpolar_pi.so": "1",
+    "PlugIns/libcelestial_navigation_pi.so": "1",
+}
+for section, value in expected.items():
+    actual = config.get(section, "bEnabled", fallback=None)
+    if actual != value:
+        raise SystemExit(
+            f"unexpected initial plug-in state for {section}: {actual!r}"
+        )
+PY
 if grep -Eq 'routes:activate|autopilot|messages:send' \
   "$install_dir/config/opencpn.conf"; then
   echo 'Generated token contains a prohibited navigation-control scope.' >&2
@@ -55,6 +77,34 @@ fi
 
 "$source_root/ci/external-control-demo/verify-linux-architecture.sh" \
   "$install_dir/usr/local" "$expected_machine"
+
+required_plugins=(
+  libchartdldr_pi.so
+  libdashboard_pi.so
+  libgrib_pi.so
+  libwmm_pi.so
+  libxgrib_pi.so
+  libxweather_routing_pi.so
+  libclimatology_pi.so
+  libpolar_pi.so
+  libcelestial_navigation_pi.so
+)
+for plugin in "${required_plugins[@]}"; do
+  [[ -f "$install_dir/usr/local/lib/opencpn/$plugin" ]] ||
+    fail "installed plug-in is missing: $plugin"
+done
+for data_dir in chartdldr_pi dashboard_pi grib_pi wmm_pi xgrib_pi \
+  xweather_routing_pi climatology_pi polar_pi celestial_navigation_pi; do
+  [[ -d "$install_dir/usr/local/share/opencpn/plugins/$data_dir" ]] ||
+    fail "installed plug-in data is missing: $data_dir"
+done
+[[ -f "$install_dir/docs/PLUGIN-INVENTORY.md" ]] ||
+  fail 'installed plug-in inventory is missing'
+[[ -f "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ]] ||
+  fail 'installed optional Celestial eclipse-data guidance is missing'
+grep -q 'eclipse-data-2026.1' \
+  "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ||
+  fail 'Celestial eclipse-data guidance does not link the pinned data release'
 "$install_dir/client/bin/python" -c \
   'import opencpn_control, opencpn_scheduler'
 
@@ -101,6 +151,23 @@ if [[ ${RUN_GUI_SMOKE:-0} == 1 ]]; then
     exit 1
   fi
   python3 -m json.tool "$work_dir/version.json" >/dev/null
+  curl --silent --insecure --fail --max-time 5 \
+    --header "Authorization: Bearer $token" \
+    https://127.0.0.1:8443/api/v2/capabilities \
+    >"$work_dir/capabilities.json"
+  python3 - "$work_dir/capabilities.json" <<'PY'
+import json
+import sys
+
+capabilities = set(json.load(open(sys.argv[1], encoding="utf-8"))["capabilities"])
+required = {
+    "environmental-data.xgrib.v1",
+    "route-planning.chart-weather.v1",
+}
+missing = sorted(required - capabilities)
+if missing:
+    raise SystemExit("missing enabled provider capabilities: " + ", ".join(missing))
+PY
 fi
 
 echo 'External Control Demo Linux bundle qualification passed.'

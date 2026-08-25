@@ -45,6 +45,12 @@ DESTDIR="$stage_dir" cmake --install "$build_dir" \
 cmake --build "$build_dir" --target package \
   2>&1 | tee "$log_dir/package.log"
 
+package_archive=$(find "$build_dir" -maxdepth 1 -type f -name '*.tar.gz' -print -quit)
+test -n "$package_archive"
+"$source_dir/ci/external-control-demo/verify-core-plugin-package.sh" \
+  "$stage_dir" "$package_archive" "$expected_machine" \
+  2>&1 | tee "$log_dir/core-plugin-package-audit.log"
+
 "$source_dir/ci/external-control-demo/verify-linux-architecture.sh" \
   "$stage_dir" "$expected_machine" \
   2>&1 | tee "$log_dir/architecture-audit.log"

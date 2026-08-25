@@ -1,7 +1,8 @@
 # OpenCPN External Control Demo — @PLATFORM@
 
 This isolated developer package demonstrates the authenticated OpenCPN
-`/api/v2` external-control architecture with xGRIB, xWeatherRouting and the
+`/api/v2` external-control architecture with xGRIB, xWeatherRouting, the
+upgraded Climatology dataset, Polar, upgraded Celestial Navigation and the
 human-readable Scheduler. It targets `@EXPECTED_UNAME@` systems running
 Debian 12 or a compatible Raspberry Pi OS 64-bit release.
 
@@ -34,9 +35,21 @@ extracting. It stages the complete installation, reports missing shared
 libraries, refuses to overwrite a non-empty target and generates a fresh
 owner-only least-privilege token.
 
-On first start, add only test charts you are entitled to use, disable the
-bundled GRIB and original Weather Routing plug-ins, then enable xGRIB and
-xWeatherRouting. Close OpenCPN cleanly before first launching the Scheduler:
+The native plug-ins are part of this package and are visible in **Options →
+Plugins** without selecting **Update Catalog Master**. xGRIB,
+xWeatherRouting, Climatology, Polar and Celestial Navigation are initially
+enabled; bundled GRIB is present for compatibility but disabled to avoid two
+GRIB displays competing.
+The exact list is in `docs/PLUGIN-INVENTORY.md` after installation.
+
+Celestial Navigation's large eclipse kernels and optional lunar-terrain pack
+are not bundled or downloaded automatically. They are unnecessary for its
+almanac, sight-planning and fix features. Developers who want the complete
+offline eclipse feature should follow the pinned source and data links in
+`docs/CELESTIAL-ECLIPSE-DATA.md`.
+
+On first start, add only test charts you are entitled to use. Close OpenCPN
+cleanly before first launching the Scheduler:
 
 ```sh
 Test-OpenCPN-External-Control-Demo/bin/launch-opencpn-scheduler-external-control-demo

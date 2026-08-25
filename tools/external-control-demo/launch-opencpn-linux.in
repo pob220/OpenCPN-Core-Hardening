@@ -23,6 +23,7 @@ fi
 export XDG_CONFIG_HOME="$demo_root/xdg-config"
 export XDG_DATA_HOME="$demo_root/xdg-data"
 export XDG_CACHE_HOME="$demo_root/xdg-cache"
+export XDG_DATA_DIRS="$demo_prefix/share"
 export OPENCPN_PREFIX="$demo_prefix"
 export OPENCPN_PLUGIN_DIRS="$demo_prefix/lib/opencpn"
 unset WR_HEADLESS_SCENARIO WR_HEADLESS_OUTPUT

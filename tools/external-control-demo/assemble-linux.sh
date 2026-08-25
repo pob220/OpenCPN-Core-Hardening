@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if (( $# != 7 )); then
+if (( $# != 10 )); then
   cat >&2 <<'EOF'
 usage: assemble-linux.sh CORE_INSTALLER XGRIB_ARCHIVE XWEATHER_ARCHIVE \
-  SCHEDULER_REPOSITORY OUTPUT_DIRECTORY PLATFORM EXPECTED_UNAME
+  CLIMATOLOGY_ARCHIVE POLAR_ARCHIVE CELESTIAL_ARCHIVE SCHEDULER_REPOSITORY \
+  OUTPUT_DIRECTORY PLATFORM EXPECTED_UNAME
 
 Example PLATFORM: debian12-arm64
 Example EXPECTED_UNAME: aarch64
@@ -15,10 +16,13 @@ fi
 core_installer=$(realpath "$1")
 xgrib_archive=$(realpath "$2")
 xweather_archive=$(realpath "$3")
-scheduler_repo=$(realpath "$4")
-output_dir=$(realpath -m "$5")
-platform=$6
-expected_uname=$7
+climatology_archive=$(realpath "$4")
+polar_archive=$(realpath "$5")
+celestial_archive=$(realpath "$6")
+scheduler_repo=$(realpath "$7")
+output_dir=$(realpath -m "$8")
+platform=$9
+expected_uname=${10}
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 source_root=$(git -C "$script_dir/../.." rev-parse --show-toplevel)
 assembly_revision=$(git -C "$source_root" rev-parse HEAD)
@@ -31,7 +35,8 @@ work_dir=$(mktemp -d "${TMPDIR:-/tmp}/external-control-demo.XXXXXX")
 bundle_dir="$work_dir/$bundle_name"
 trap 'rm -rf "$work_dir"' EXIT
 
-for path in "$core_installer" "$xgrib_archive" "$xweather_archive"; do
+for path in "$core_installer" "$xgrib_archive" "$xweather_archive" \
+  "$climatology_archive" "$polar_archive" "$celestial_archive"; do
   test -f "$path" || { echo "Missing input: $path" >&2; exit 1; }
 done
 for path in \
@@ -53,6 +58,12 @@ install -m 644 "$xgrib_archive" \
   "$bundle_dir/assets/xgrib-external-control-demo-${platform}.tar.gz"
 install -m 644 "$xweather_archive" \
   "$bundle_dir/assets/xweather-routing-external-control-demo-${platform}.tar.gz"
+install -m 644 "$climatology_archive" \
+  "$bundle_dir/assets/climatology-external-control-demo-${platform}.tar.gz"
+install -m 644 "$polar_archive" \
+  "$bundle_dir/assets/polar-external-control-demo-${platform}.tar.gz"
+install -m 644 "$celestial_archive" \
+  "$bundle_dir/assets/celestial-navigation-external-control-demo-${platform}.tar.gz"
 
 project_number=0
 for project in \
@@ -107,11 +118,57 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 | Demo assembly and qualification tooling | $assembly_revision |
 | xGRIB provider build | 369b6fc8a4c461d54eec75d949e1f2e30cccdc48 (provider behavior based on 6674c70583d285cdcbc622f3377da810fde0d3ba) |
 | xWeatherRouting provider implementation | 5dc04608945e1917e8cbb4e8df274619c1b5203d |
+| Upgraded Climatology plug-in and dataset 2026.2 | cd00282e6ea2784a6d78ccfe47fed713269ad87e |
+| Polar plug-in | 1.2.38.0 official OpenCPN package, SHA-256 85e000060e7f10df4a01424257e685ac6a8b8bd1cd145030a1a4c8bdb50ce470 |
+| Upgraded Celestial Navigation plug-in | 2.7.0.0 at de135443938eb01f2139d16e1e26f144b00d8bdf |
 | OpenCPN Scheduler | $(git -C "$scheduler_repo" rev-parse HEAD) |
 
 Target: \`$platform\` (kernel architecture \`$expected_uname\`). Native plug-in
 API remains 1.21. The Python SDK, MCP adapter and Scheduler are built from the
 listed source trees during assembly.
+EOF
+
+cat > "$bundle_dir/PLUGIN-INVENTORY.md" <<'EOF'
+# Included native plug-ins
+
+These plug-ins are installed directly in the isolated demo. They do not depend
+on an entry in the public OpenCPN Master catalogue.
+
+| Plug-in | Demo role | Initial state |
+|---|---|---|
+| Chart Downloader | Bundled OpenCPN chart acquisition | Available, disabled |
+| Dashboard | Bundled navigation instruments | Available, disabled |
+| GRIB | Bundled compatibility plug-in | Available, disabled in favour of xGRIB |
+| WMM | Bundled magnetic variation | Available, disabled |
+| xGRIB | Typed environmental-data provider and GRIB display | Enabled |
+| xWeatherRouting | Typed chart/weather route-planning provider | Enabled |
+| Climatology 1.6.39 / dataset 2026.2 | Updated offline climate statistics | Enabled |
+| Polar 1.2.38 | Polar inspection and editing companion | Enabled |
+| Celestial Navigation 2.7 | Offline almanac, sight planning and fixes | Enabled |
+
+The installer and CI qualification both fail if any listed binary is absent.
+EOF
+
+cat > "$bundle_dir/CELESTIAL-ECLIPSE-DATA.md" <<'EOF'
+# Optional Celestial Navigation eclipse data
+
+The upgraded Celestial Navigation plug-in is included, but the large optional
+eclipse kernels and lunar-terrain packs are deliberately not embedded in this
+External Control Demo. They are not required for the almanac, sight-planning
+or celestial-fix features demonstrated by the baseline.
+
+Developers who want to source-build and test the complete offline eclipse
+feature can use the exact pinned implementation and instructions:
+
+- [Pinned Celestial Navigation source](https://github.com/pob220/celestial_navigation_pi/tree/de135443938eb01f2139d16e1e26f144b00d8bdf)
+- [Eclipse engine and build files](https://github.com/pob220/celestial_navigation_pi/tree/de135443938eb01f2139d16e1e26f144b00d8bdf/eclipse)
+- [Exact data files, checksums and provenance](https://github.com/pob220/celestial_navigation_pi/blob/de135443938eb01f2139d16e1e26f144b00d8bdf/eclipse/DATA.md)
+- [Unsplit optional data release](https://github.com/pob220/celestial_navigation_pi/releases/tag/eclipse-data-2026.1)
+
+The repository stores the data files with Git LFS. A Git-LFS-enabled checkout
+or the separate release assets supplies them. The Celestial code validates the
+documented sizes, SHA-256 digests and kernel structures before accepting them;
+the demo does not download or silently install any kernel.
 EOF
 
 (cd "$bundle_dir" && find assets -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)

@@ -24,7 +24,13 @@ MESSAGE (STATUS "*** Staging to build PlugIns ***")
 # These variables are inherited by all plugins
 set(PARENT opencpn)
 set(PREFIX_DATA share)
-set(PREFIX_PLUGINS ${PREFIX_LIB}/${PARENT})
+# Keep the package destination relative.  PREFIX_LIB expands to an absolute
+# path in distro builds; using it here installs correctly through DESTDIR but
+# makes CPack treat bundled plug-in libraries as external absolute files and
+# omit them from the archive.  CMAKE_INSTALL_LIBDIR preserves lib/lib64
+# selection while allowing both staged installs and CPack packages to contain
+# the plug-ins.
+set(PREFIX_PLUGINS ${CMAKE_INSTALL_LIBDIR}/${PARENT})
 
 set(STANDALONE "BUNDLED")
 
