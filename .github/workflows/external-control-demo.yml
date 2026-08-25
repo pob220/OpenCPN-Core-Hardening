@@ -122,7 +122,7 @@ jobs:
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/celestial_navigation_pi.git \
             inputs/celestial_navigation_pi
-          git -C inputs/celestial_navigation_pi checkout de135443938eb01f2139d16e1e26f144b00d8bdf
+          git -C inputs/celestial_navigation_pi checkout 493d0982d6feb025d13b05f475b5201bffe4024b
           git -C inputs/celestial_navigation_pi submodule update --init --recursive
           ci/external-control-demo/package-celestial-linux.sh \
             inputs/celestial_navigation_pi \
