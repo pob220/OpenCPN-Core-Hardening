@@ -131,7 +131,17 @@ if [[ ${RUN_GUI_SMOKE:-0} == 1 ]]; then
   token=$(<"$install_dir/secrets/api-token")
   mkdir -p "$work_dir/runtime"
   chmod 700 "$work_dir/runtime"
+  pixbuf_cache=$(find /usr/lib -type f \
+    -path '*/gdk-pixbuf-2.0/2.10.0/loaders.cache' -print -quit)
+  [[ -n $pixbuf_cache ]] || fail 'GDK pixbuf loader cache is unavailable'
+  GDK_PIXBUF_MODULE_FILE="$pixbuf_cache" gdk-pixbuf-thumbnailer \
+    --size 32 \
+    "$install_dir/usr/local/share/opencpn/plugins/celestial_navigation_pi/data/celestial_navigation.svg" \
+    "$work_dir/pixbuf-svg-canary.png"
+  file -b "$work_dir/pixbuf-svg-canary.png" | grep -q '^PNG image data' ||
+    fail 'GDK pixbuf could not render the bundled Celestial SVG icon'
   setsid env XDG_RUNTIME_DIR="$work_dir/runtime" \
+    GDK_PIXBUF_MODULE_FILE="$pixbuf_cache" \
     OCPN_EXTERNAL_CONTROL_DEMO_QUALIFICATION=1 \
     dbus-run-session -- xvfb-run -a \
     "$install_dir/bin/launch-opencpn-external-control-demo" \
