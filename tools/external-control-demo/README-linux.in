@@ -4,7 +4,8 @@ This isolated developer package demonstrates the authenticated OpenCPN
 `/api/v2` external-control architecture with xGRIB, xWeatherRouting, the
 upgraded Climatology dataset, Polar, upgraded Celestial Navigation and the
 human-readable Scheduler. It targets `@EXPECTED_UNAME@` systems running
-Debian 12 or a compatible Raspberry Pi OS 64-bit release.
+the `@PLATFORM@` build environment; native packages should not be treated as
+portable across incompatible distributions.
 
 It is a developer demonstration, not a navigation release. It does not replace
 an existing OpenCPN installation, use an existing profile, activate routes or
@@ -42,6 +43,12 @@ xWeatherRouting, Climatology, Polar and Celestial Navigation are initially
 enabled; bundled GRIB is present for compatibility but disabled to avoid two
 GRIB displays competing.
 The exact list is in `docs/PLUGIN-INVENTORY.md` after installation.
+
+The Python SDK, `opencpnctl`, least-privilege MCP adapter and Scheduler are
+installed in the isolated `client` environment. MCP hosts should launch
+`bin/launch-opencpn-mcp-external-control-demo`; it supplies only the demo's
+loopback URL and owner-only token. The qualified surface is recorded in
+`docs/FULL-SYSTEM-CHECKLIST.md`.
 
 The isolated profile explicitly permits these pinned, audited plug-ins from
 the bundle's private system-plugin directory. This does not alter the host's

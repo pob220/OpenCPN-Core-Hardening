@@ -61,6 +61,14 @@ require_mode() {
 require_executable "$install_dir/usr/local/bin/opencpn"
 require_executable "$install_dir/bin/launch-opencpn-external-control-demo"
 require_executable "$install_dir/bin/launch-opencpn-scheduler-external-control-demo"
+require_executable "$install_dir/bin/launch-opencpn-mcp-external-control-demo"
+require_executable "$install_dir/client/bin/opencpnctl"
+require_executable "$install_dir/client/bin/opencpn-mcp"
+require_executable "$install_dir/client/bin/opencpn-scheduler"
+if grep -R -F "${install_dir}.installing." "$install_dir/client/bin" \
+    >/dev/null 2>&1; then
+  fail 'installed Python entry points retain the atomic staging path'
+fi
 require_mode "$install_dir/config/opencpn.conf" 600
 require_mode "$install_dir/secrets/api-token" 600
 grep -q '^AllowLan=0$' "$install_dir/config/opencpn.conf" ||
@@ -123,14 +131,38 @@ for data_dir in chartdldr_pi dashboard_pi grib_pi wmm_pi xgrib_pi \
 done
 [[ -f "$install_dir/docs/PLUGIN-INVENTORY.md" ]] ||
   fail 'installed plug-in inventory is missing'
+[[ -f "$install_dir/docs/FULL-SYSTEM-CHECKLIST.md" ]] ||
+  fail 'installed full-system checklist is missing'
+[[ -f "$install_dir/docs/openapi-v2.yaml" ]] ||
+  fail 'installed OpenAPI contract is missing'
+[[ -f "$install_dir/docs/scheduler-schedule-v1.schema.json" ]] ||
+  fail 'installed Scheduler JSON schema is missing'
+[[ -f "$install_dir/docs/scheduler-contract.md" ]] ||
+  fail 'installed Scheduler contract is missing'
 [[ -f "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ]] ||
   fail 'installed optional Celestial eclipse-data guidance is missing'
 grep -q 'eclipse-data-2026.1' \
   "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ||
   fail 'Celestial eclipse-data guidance does not link the pinned data release'
 "$install_dir/client/bin/python" -c \
-  'import opencpn_control, opencpn_scheduler' ||
+  'import opencpn_control, opencpn_mcp, opencpn_scheduler' ||
   fail 'installed Python client packages cannot be imported'
+"$install_dir/client/bin/opencpn-scheduler" --help \
+  >"$work_dir/scheduler-help.txt"
+grep -q 'opencpn-scheduler' "$work_dir/scheduler-help.txt" ||
+  fail 'installed Scheduler entry point is not usable'
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}' |
+  OPENCPN_TOKEN=qualification-only OPENCPN_INSECURE=1 \
+  "$install_dir/client/bin/opencpn-mcp" >"$work_dir/mcp-discover.json"
+python3 - "$work_dir/mcp-discover.json" <<'PY'
+import json
+import sys
+
+response = json.load(open(sys.argv[1], encoding="utf-8"))
+assert response["id"] == 1
+assert "2026-07-28" in response["result"]["protocolVersions"]
+PY
 
 if "$bundle_dir/install-external-control-demo.sh" "$install_dir" \
   >"$work_dir/second-install.log" 2>&1; then
@@ -147,16 +179,27 @@ if [[ ${RUN_GUI_SMOKE:-0} == 1 ]]; then
   pixbuf_cache=$(find /usr/lib -type f \
     -path '*/gdk-pixbuf-2.0/2.10.0/loaders.cache' -print -quit)
   [[ -n $pixbuf_cache ]] || fail 'GDK pixbuf loader cache is unavailable'
-  GDK_PIXBUF_MODULE_FILE="$pixbuf_cache" gdk-pixbuf-thumbnailer \
-    --size 32 \
-    "$install_dir/usr/local/share/opencpn/plugins/celestial_navigation_pi/data/celestial_navigation.svg" \
-    "$work_dir/pixbuf-svg-canary.png"
+  svg_icon="$install_dir/usr/local/share/opencpn/plugins/celestial_navigation_pi/data/celestial_navigation.svg"
+  if command -v gdk-pixbuf-thumbnailer >/dev/null 2>&1; then
+    GDK_PIXBUF_MODULE_FILE="$pixbuf_cache" gdk-pixbuf-thumbnailer \
+      --size 32 "$svg_icon" "$work_dir/pixbuf-svg-canary.png"
+  elif command -v rsvg-convert >/dev/null 2>&1; then
+    rsvg-convert --width 32 --height 32 \
+      --output "$work_dir/pixbuf-svg-canary.png" "$svg_icon"
+  else
+    fail 'neither GDK pixbuf nor librsvg can render the Celestial SVG icon'
+  fi
   file -b "$work_dir/pixbuf-svg-canary.png" | grep -q '^PNG image data' ||
     fail 'GDK pixbuf could not render the bundled Celestial SVG icon'
+  smoke_display=(xvfb-run -a)
+  if ! command -v xvfb-run >/dev/null 2>&1; then
+    [[ -n ${DISPLAY:-} ]] || fail 'xvfb-run is unavailable and no display is active'
+    smoke_display=()
+  fi
   setsid env XDG_RUNTIME_DIR="$work_dir/runtime" \
     GDK_PIXBUF_MODULE_FILE="$pixbuf_cache" \
     OCPN_EXTERNAL_CONTROL_DEMO_QUALIFICATION=1 \
-    dbus-run-session -- xvfb-run -a \
+    dbus-run-session -- "${smoke_display[@]}" \
     "$install_dir/bin/launch-opencpn-external-control-demo" \
     >"$work_dir/opencpn-smoke.log" 2>&1 &
   smoke_pid=$!
@@ -186,6 +229,11 @@ if [[ ${RUN_GUI_SMOKE:-0} == 1 ]]; then
   fi
   python3 -m json.tool "$work_dir/version.json" >/dev/null ||
     fail 'version endpoint did not return valid JSON'
+  OPENCPN_TOKEN="$token" "$install_dir/client/bin/opencpnctl" \
+    --url https://127.0.0.1:8443 --insecure status \
+    >"$work_dir/opencpnctl-status.json"
+  python3 -m json.tool "$work_dir/opencpnctl-status.json" >/dev/null ||
+    fail 'opencpnctl status did not return valid JSON'
   if ! curl --silent --show-error --insecure --fail --max-time 5 \
       --header "Authorization: Bearer $token" \
       https://127.0.0.1:8443/api/v2/capabilities \
@@ -209,6 +257,21 @@ required = {
 missing = sorted(required - capabilities)
 if missing:
     raise SystemExit("missing enabled provider capabilities: " + ", ".join(missing))
+PY
+  printf '%s\n' \
+    '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_opencpn_status","arguments":{}}}' |
+    "$install_dir/bin/launch-opencpn-mcp-external-control-demo" \
+    >"$work_dir/mcp-status.json"
+  python3 - "$work_dir/mcp-status.json" <<'PY'
+import json
+import sys
+
+response = json.load(open(sys.argv[1], encoding="utf-8"))
+if response.get("result", {}).get("isError"):
+    raise SystemExit(response)
+content = response["result"]["structuredContent"]["result"]
+if "version" not in content or "capabilities" not in content:
+    raise SystemExit("MCP status response is incomplete")
 PY
 fi
 

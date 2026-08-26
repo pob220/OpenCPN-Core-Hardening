@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+demo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+token_file="$demo_root/secrets/api-token"
+mcp="$demo_root/client/bin/opencpn-mcp"
+
+[[ -x "$mcp" && -r "$token_file" ]] || {
+  echo 'The External Control Demo is incomplete; rerun its installer.' >&2
+  exit 1
+}
+export OPENCPN_URL=https://127.0.0.1:8443
+export OPENCPN_TOKEN=$(<"$token_file")
+# The isolated demo uses OpenCPN's local self-signed certificate. This wrapper
+# is scoped to the loopback-only demo profile and is not a general TLS policy.
+export OPENCPN_INSECURE=1
+exec "$mcp" "$@"

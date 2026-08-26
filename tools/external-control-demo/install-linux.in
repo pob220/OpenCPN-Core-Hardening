@@ -80,16 +80,35 @@ missing=$(
   done | sort -u
 )
 if [[ -n "$missing" ]]; then
-  echo "The target is missing shared libraries required by this Debian 12 package:" >&2
+  echo "The target is missing shared libraries required by this $platform package:" >&2
   echo "$missing" >&2
-  echo "Install the corresponding Debian ARM64 runtime packages, then retry." >&2
+  echo "Install the corresponding $platform runtime packages, then retry." >&2
   exit 1
 fi
 
 python3 -m venv "$stage_root/client"
 "$stage_root/client/bin/python" -m pip install --no-index --no-deps \
   "$bundle_dir"/assets/opencpn_control-*-py3-none-any.whl \
+  "$bundle_dir"/assets/opencpn_mcp-*-py3-none-any.whl \
   "$bundle_dir"/assets/opencpn_scheduler-*-py3-none-any.whl
+
+# venv-generated entry points and activation helpers contain the absolute
+# environment path.  The complete install is assembled under stage_root and
+# atomically renamed below, so relocate these text references before the move.
+python3 - "$stage_root/client/bin" "$stage_root" "$demo_root" <<'PY'
+from pathlib import Path
+import sys
+
+bin_dir = Path(sys.argv[1])
+old = sys.argv[2].encode()
+new = sys.argv[3].encode()
+for path in bin_dir.iterdir():
+    if not path.is_file() or path.is_symlink():
+        continue
+    data = path.read_bytes()
+    if old in data:
+        path.write_bytes(data.replace(old, new))
+PY
 
 token=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
 token_digest=$(printf %s "$token" | sha256sum | cut -d ' ' -f 1)
@@ -129,8 +148,10 @@ bEnabled=1
 EOF
 chmod 600 "$stage_root/config/opencpn.conf" "$stage_root/secrets/api-token"
 install -m 755 "$bundle_dir/launchers/"* "$stage_root/bin/"
+cp -a "$bundle_dir/docs/." "$stage_root/docs/"
 install -m 644 "$bundle_dir/README.md" "$bundle_dir/COMPONENTS.md" \
   "$bundle_dir/PLUGIN-INVENTORY.md" \
+  "$bundle_dir/FULL-SYSTEM-CHECKLIST.md" \
   "$bundle_dir/CELESTIAL-ECLIPSE-DATA.md" "$stage_root/docs/"
 
 mv "$stage_root" "$demo_root"

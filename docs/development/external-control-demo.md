@@ -2,8 +2,10 @@
 
 The External Control Demo is the single developer entry point for the
 authenticated `/api/v2` work. It combines the hardened OpenCPN 5.15 core,
-xGRIB, xWeatherRouting and the independent Scheduler without merging their
-source repositories or changing native plug-in API 1.21.
+xGRIB, xWeatherRouting, upgraded Climatology, Polar, upgraded Celestial
+Navigation, the Python SDK and CLI, the least-privilege MCP adapter and the
+independent Scheduler without merging their source repositories or changing
+native plug-in API 1.21.
 
 Release and one-package installation:
 
@@ -32,23 +34,28 @@ as the test target.
 
 The `external-control/cross-platform-demo` branch makes the demonstration
 reproducible rather than treating the original Arch Linux x86_64 archive as a
-portable binary. The first complete additional target is Debian 12 ARM64 for
-Raspberry Pi 4 and newer 64-bit systems. Native component builds for Windows,
-macOS and other Linux distributions are characterised by the same programme;
-they are not described as complete demo packages until their platform-specific
-installer and end-to-end qualification also pass.
+portable binary. Complete Debian 12 candidates are built and qualified for
+x86_64 and ARM64 (Raspberry Pi 4 and newer 64-bit systems). Native component
+builds for Windows, macOS and other Linux distributions are characterised by
+the same programme; they are not described as complete demo packages until
+their platform-specific installer and end-to-end qualification also pass.
 
 Linux build and release tooling lives in `ci/external-control-demo` and
 `tools/external-control-demo`. It provides:
 
 - a native build, focused external-control tests and retained logs;
 - an audit of every executable and shared library's ELF architecture;
-- deterministic assembly from exact core, xGRIB, xWeatherRouting and Scheduler
-  revisions;
+- deterministic assembly from exact core, xGRIB, xWeatherRouting,
+  Climatology, Polar, Celestial Navigation and Scheduler revisions;
 - CPU checks before extraction and again before launch;
 - an atomic isolated install with shared-library diagnostics;
 - checksum, owner-only secret, least-privilege scope and overwrite tests; and
 - an optional headless API-readiness smoke test on the native target.
+
+Qualification also installs and imports all three Python packages, exercises
+the MCP discovery contract, verifies the nine native plug-in binaries and data
+directories, and—during GUI smoke—calls the live API through MCP as well as
+checking the registered environmental and route-planning capabilities.
 
 The Linux package deliberately uses normal target-distribution shared
 libraries while keeping all OpenCPN state, plug-ins, API credentials and

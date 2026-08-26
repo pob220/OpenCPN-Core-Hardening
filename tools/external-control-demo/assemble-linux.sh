@@ -100,6 +100,9 @@ sed \
 install -m 755 \
   "$source_root/tools/external-control-demo/launch-scheduler-linux" \
   "$bundle_dir/launchers/launch-opencpn-scheduler-external-control-demo"
+install -m 755 \
+  "$source_root/tools/external-control-demo/launch-mcp-linux" \
+  "$bundle_dir/launchers/launch-opencpn-mcp-external-control-demo"
 chmod 755 "$bundle_dir/install-external-control-demo.sh" \
   "$bundle_dir/launchers/launch-opencpn-external-control-demo"
 
@@ -119,13 +122,37 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 | xGRIB provider build | 369b6fc8a4c461d54eec75d949e1f2e30cccdc48 (provider behavior based on 6674c70583d285cdcbc622f3377da810fde0d3ba) |
 | xWeatherRouting provider implementation | 5dc04608945e1917e8cbb4e8df274619c1b5203d |
 | Upgraded Climatology plug-in and dataset 2026.2 | cd00282e6ea2784a6d78ccfe47fed713269ad87e |
-| Polar plug-in | 1.2.38.0 official OpenCPN package, SHA-256 85e000060e7f10df4a01424257e685ac6a8b8bd1cd145030a1a4c8bdb50ce470 |
+| Polar plug-in | 1.2.38.0 official OpenCPN package, SHA-256 $(sha256sum "$polar_archive" | cut -d ' ' -f 1) |
 | Upgraded Celestial Navigation plug-in | 2.7.0.0 at 316ed8bc326b29c6d2c358835164df995a8e06af |
 | OpenCPN Scheduler | $(git -C "$scheduler_repo" rev-parse HEAD) |
 
 Target: \`$platform\` (kernel architecture \`$expected_uname\`). Native plug-in
 API remains 1.21. The Python SDK, MCP adapter and Scheduler are built from the
 listed source trees during assembly.
+EOF
+
+cat > "$bundle_dir/FULL-SYSTEM-CHECKLIST.md" <<'EOF'
+# Qualified full-system surface
+
+The bundle qualification fails unless all of these surfaces are present and
+usable in a clean, isolated installation:
+
+- hardened OpenCPN core and authenticated `/api/v2` service;
+- nine native plug-in binaries and their resource directories;
+- enabled xGRIB environmental-data and xWeatherRouting planning providers;
+- upgraded Climatology, Polar and Celestial Navigation plug-ins;
+- versioned OpenAPI and Scheduler JSON contracts;
+- Python SDK and `opencpnctl` CLI;
+- least-privilege MCP adapter and deterministic MCP protocol canary;
+- Scheduler service and GUI;
+- loopback-only generated credentials with no route-activation, autopilot or
+  raw-message authority;
+- architecture, shared-library, checksum, lifecycle, API capability and
+  clean-install checks.
+
+Charts, forecast downloads, polar choices and the large optional Celestial
+eclipse kernels remain user-supplied. Their absence is deliberate and is not
+reported as a qualified capability.
 EOF
 
 cat > "$bundle_dir/PLUGIN-INVENTORY.md" <<'EOF'
