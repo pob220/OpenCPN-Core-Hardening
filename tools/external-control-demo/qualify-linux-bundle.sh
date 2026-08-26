@@ -11,8 +11,21 @@ smoke_pid=
 cleanup() {
   if [[ -n "$smoke_pid" ]]; then
     kill -- "-$smoke_pid" 2>/dev/null || true
+    for _attempt in $(seq 1 50); do
+      if ! kill -0 -- "-$smoke_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.1
+    done
+    kill -KILL -- "-$smoke_pid" 2>/dev/null || true
     wait "$smoke_pid" 2>/dev/null || true
   fi
+  for _attempt in $(seq 1 10); do
+    if rm -rf "$work_dir"; then
+      return
+    fi
+    sleep 0.1
+  done
   rm -rf "$work_dir"
 }
 trap cleanup EXIT
