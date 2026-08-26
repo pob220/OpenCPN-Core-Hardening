@@ -227,6 +227,15 @@ if [[ ${RUN_GUI_SMOKE:-0} == 1 ]]; then
     echo 'The isolated External Control Demo API did not become ready.' >&2
     exit 1
   fi
+  listeners=$(ss -H -ltn 'sport = :8443')
+  [[ -n $listeners ]] || fail 'external-control listener is absent'
+  if grep -Eq '(^|[[:space:]])(0\.0\.0\.0|\*|\[::\]):8443([[:space:]]|$)' \
+      <<<"$listeners"; then
+    echo "$listeners" >&2
+    fail 'safe-default demo listener is exposed beyond loopback'
+  fi
+  grep -Eq '(^|[[:space:]])127\.0\.0\.1:8443([[:space:]]|$)' \
+    <<<"$listeners" || fail 'external-control listener is not bound to IPv4 loopback'
   python3 -m json.tool "$work_dir/version.json" >/dev/null ||
     fail 'version endpoint did not return valid JSON'
   OPENCPN_TOKEN="$token" "$install_dir/client/bin/opencpnctl" \

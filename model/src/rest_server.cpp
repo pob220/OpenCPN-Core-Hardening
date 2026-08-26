@@ -63,9 +63,12 @@ using namespace std::chrono_literals;
 
 static const char* const kHttpAddr = "http://0.0.0.0:8000";
 static const char* const kHttpsAddr = "http://0.0.0.0:8443";
+static const char* const kHttpsLoopbackAddr = "http://127.0.0.1:8443";
 
 static const char* const kHttpPortableAddr = "http://0.0.0.0:8001";
 static const char* const kHttpsPortableAddr = "http://0.0.0.0:8444";
+static const char* const kHttpsPortableLoopbackAddr =
+    "http://127.0.0.1:8444";
 static const char* const kVersionReply = R"--({ "version": "@version@" })--";
 static const char* const kListRoutesReply =
     R"--( { "version": "@version@", "routes": "@routes@" })--";
@@ -643,6 +646,7 @@ void RestServer::UpdateReturnStatus(RestServerResult result) {
 
 RestServer::RestServer(RestServerDlgCtx ctx, RouteCtx route_ctx, bool& portable)
     : m_exit_sem(0, 1),
+      m_portable(portable),
       m_endpoint(portable ? kHttpsPortableAddr : kHttpsAddr),
       m_dlg_ctx(std::move(ctx)),
       m_route_ctx(std::move(route_ctx)),
@@ -745,6 +749,18 @@ void RestServer::ConfigureExternalApi(
   TheBaseConfig()->Read("TokenSha256", &token_digest);
   TheBaseConfig()->Read("TokenScopes", &scopes,
                         "navigation:read;routes:read;charts:query");
+
+  // The legacy and v2 APIs share this listener. When external control is
+  // explicitly enabled in its safe default mode, bind the socket itself to
+  // loopback so neither API surface is reachable from the LAN. The router's
+  // remote-address check remains a second line of defence. Legacy-only
+  // installations retain their existing wildcard listener.
+  m_endpoint = enabled && !allow_lan
+                   ? (m_portable ? kHttpsPortableLoopbackAddr
+                                 : kHttpsLoopbackAddr)
+                   : (m_portable ? kHttpsPortableAddr : kHttpsAddr);
+  if (!m_io_thread.SetEndpoint(m_endpoint))
+    wxLogWarning("Cannot change REST listener endpoint after server startup");
 
   auto authorizer = std::make_shared<ocpn::control::TokenAuthorizer>();
   if (!token_digest.empty()) {

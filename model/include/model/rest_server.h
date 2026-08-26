@@ -292,7 +292,8 @@ public:
    */
   wxSemaphore m_exit_sem;
 
-  const std::string m_endpoint;
+  const bool m_portable;
+  std::string m_endpoint;
 
 private:
   class IoThread {
@@ -322,6 +323,13 @@ private:
 
     /** Block until thread is stopped. */
     bool WaitUntilStopped();
+
+    /** Configure the listener before the IO thread is started. */
+    bool SetEndpoint(std::string endpoint) {
+      if (IsRunning()) return false;
+      m_server_ip = std::move(endpoint);
+      return true;
+    }
 
   private:
     /** 1 -> running, 0 -> stop requested, -1 -> stopped. */
