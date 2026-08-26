@@ -123,7 +123,7 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 | xWeatherRouting provider implementation | 5dc04608945e1917e8cbb4e8df274619c1b5203d |
 | Upgraded Climatology plug-in and dataset 2026.2 | cd00282e6ea2784a6d78ccfe47fed713269ad87e |
 | Polar plug-in | 1.2.38.0 official OpenCPN package, SHA-256 $(sha256sum "$polar_archive" | cut -d ' ' -f 1) |
-| Upgraded Celestial Navigation plug-in | 2.7.0.0 at 316ed8bc326b29c6d2c358835164df995a8e06af |
+| Upgraded Celestial Navigation plug-in | 2.7.0.0 at 52192268aad08fcf8c37818b066c8350e569c6bc |
 | OpenCPN Scheduler | $(git -C "$scheduler_repo" rev-parse HEAD) |
 
 Target: \`$platform\` (kernel architecture \`$expected_uname\`). Native plug-in
@@ -187,9 +187,9 @@ or celestial-fix features demonstrated by the baseline.
 Developers who want to source-build and test the complete offline eclipse
 feature can use the exact pinned implementation and instructions:
 
-- [Pinned Celestial Navigation source](https://github.com/pob220/celestial_navigation_pi-contrib/tree/316ed8bc326b29c6d2c358835164df995a8e06af)
-- [Eclipse engine and build files](https://github.com/pob220/celestial_navigation_pi-contrib/tree/316ed8bc326b29c6d2c358835164df995a8e06af/eclipse)
-- [Exact data files, checksums and provenance](https://github.com/pob220/celestial_navigation_pi-contrib/blob/316ed8bc326b29c6d2c358835164df995a8e06af/eclipse/DATA.md)
+- [Pinned Celestial Navigation source](https://github.com/pob220/celestial_navigation_pi-contrib/tree/52192268aad08fcf8c37818b066c8350e569c6bc)
+- [Eclipse engine and build files](https://github.com/pob220/celestial_navigation_pi-contrib/tree/52192268aad08fcf8c37818b066c8350e569c6bc/eclipse)
+- [Exact data files, checksums and provenance](https://github.com/pob220/celestial_navigation_pi-contrib/blob/52192268aad08fcf8c37818b066c8350e569c6bc/eclipse/DATA.md)
 - [Unsplit optional data release](https://github.com/pob220/celestial_navigation_pi/releases/tag/eclipse-data-2026.1)
 
 The repository stores the data files with Git LFS. A Git-LFS-enabled checkout
