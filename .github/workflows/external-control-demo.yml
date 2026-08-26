@@ -128,7 +128,7 @@ jobs:
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/celestial_navigation_pi-contrib.git \
             inputs/celestial_navigation_pi
-          git -C inputs/celestial_navigation_pi checkout f397c059d27fcf5b461ac540414102d9d5b56142
+          git -C inputs/celestial_navigation_pi checkout 316ed8bc326b29c6d2c358835164df995a8e06af
           git -C inputs/celestial_navigation_pi submodule update --init --recursive
           # The lunar-distance tests require DE440, but the full optional
           # eclipse data pack is deliberately not fetched or distributed.
