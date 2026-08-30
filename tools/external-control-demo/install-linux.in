@@ -39,6 +39,8 @@ mkdir -p "$stage_root/usr/local" "$stage_root/config" "$stage_root/bin" \
   --skip-license --exclude-subdir --prefix="$stage_root/usr/local"
 tar -xzf "$bundle_dir/assets/xweather-routing-external-control-demo-${platform}.tar.gz" \
   -C "$stage_root" --strip-components=1
+tar -xzf "$bundle_dir/assets/o-charts-chart-safety-preview-${platform}.tar.gz" \
+  -C "$stage_root/usr/local" --strip-components=1
 tar -xzf "$bundle_dir/assets/xgrib-external-control-demo-${platform}.tar.gz" \
   -C "$stage_root/usr/local" --strip-components=1
 tar -xzf "$bundle_dir/assets/climatology-external-control-demo-${platform}.tar.gz" \
@@ -55,6 +57,7 @@ required_plugins=(
   libwmm_pi.so
   libxgrib_pi.so
   libxweather_routing_pi.so
+  libo-charts_pi.so
   libclimatology_pi.so
   libpolar_pi.so
   libcelestial_navigation_pi.so
@@ -135,6 +138,9 @@ bEnabled=0
 bEnabled=1
 
 [PlugIns/libxweather_routing_pi.so]
+bEnabled=1
+
+[PlugIns/libo-charts_pi.so]
 bEnabled=1
 
 [PlugIns/libclimatology_pi.so]

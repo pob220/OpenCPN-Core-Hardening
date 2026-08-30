@@ -89,6 +89,7 @@ expected = {
     "PlugIns/libgrib_pi.so": "0",
     "PlugIns/libxgrib_pi.so": "1",
     "PlugIns/libxweather_routing_pi.so": "1",
+    "PlugIns/libo-charts_pi.so": "1",
     "PlugIns/libclimatology_pi.so": "1",
     "PlugIns/libpolar_pi.so": "1",
     "PlugIns/libcelestial_navigation_pi.so": "1",
@@ -116,6 +117,7 @@ required_plugins=(
   libwmm_pi.so
   libxgrib_pi.so
   libxweather_routing_pi.so
+  libo-charts_pi.so
   libclimatology_pi.so
   libpolar_pi.so
   libcelestial_navigation_pi.so
@@ -125,10 +127,16 @@ for plugin in "${required_plugins[@]}"; do
     fail "installed plug-in is missing: $plugin"
 done
 for data_dir in chartdldr_pi dashboard_pi grib_pi wmm_pi xgrib_pi \
-  xweather_routing_pi climatology_pi polar_pi celestial_navigation_pi; do
+  xweather_routing_pi o-charts_pi climatology_pi polar_pi \
+  celestial_navigation_pi; do
   [[ -d "$install_dir/usr/local/share/opencpn/plugins/$data_dir" ]] ||
     fail "installed plug-in data is missing: $data_dir"
 done
+[[ -x "$install_dir/usr/local/bin/oexserverd" ]] ||
+  fail 'bundled o-charts licensed helper is missing or not executable'
+readelf -Ws "$install_dir/usr/local/lib/opencpn/libo-charts_pi.so" |
+  grep -q 'OCPN_PluginChartSafetyGridV1' ||
+  fail 'bundled o-charts does not export the chart-safety batch provider'
 [[ -f "$install_dir/docs/PLUGIN-INVENTORY.md" ]] ||
   fail 'installed plug-in inventory is missing'
 [[ -f "$install_dir/docs/FULL-SYSTEM-CHECKLIST.md" ]] ||

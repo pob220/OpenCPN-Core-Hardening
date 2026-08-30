@@ -27,10 +27,14 @@ system_data_dirs=${XDG_DATA_DIRS:-/usr/local/share:/usr/share}
 export XDG_DATA_DIRS="$demo_prefix/share:$system_data_dirs"
 export OPENCPN_PREFIX="$demo_prefix"
 export OPENCPN_PLUGIN_DIRS="$demo_prefix/lib/opencpn"
+export LD_LIBRARY_PATH="$demo_prefix/lib/opencpn${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 unset WR_HEADLESS_SCENARIO WR_HEADLESS_OUTPUT
+opengl_args=()
 if [[ ${OCPN_EXTERNAL_CONTROL_DEMO_QUALIFICATION:-0} == 1 ]]; then
   export WR_HEADLESS_ROUTE_TEST=open_only
+  opengl_args=(--no_opengl)
 else
   unset WR_HEADLESS_ROUTE_TEST
 fi
-exec "$demo_executable" --configdir "$demo_root/config" --no_opengl "$@"
+exec "$demo_executable" --configdir "$demo_root/config" \
+  "${opengl_args[@]}" "$@"

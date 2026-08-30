@@ -1,8 +1,9 @@
 # OpenCPN External Control Demo — @PLATFORM@
 
 This isolated developer package demonstrates the authenticated OpenCPN
-`/api/v2` external-control architecture with xGRIB, xWeatherRouting, the
-upgraded Climatology dataset, Polar, upgraded Celestial Navigation and the
+`/api/v2` external-control architecture with xGRIB, chart-aware
+xWeatherRouting, the modified o-charts semantic provider, the upgraded
+Climatology dataset, Polar, upgraded Celestial Navigation and the
 human-readable Scheduler. It targets `@EXPECTED_UNAME@` systems running
 the `@PLATFORM@` build environment; native packages should not be treated as
 portable across incompatible distributions.
@@ -39,9 +40,9 @@ owner-only least-privilege token.
 
 The native plug-ins are part of this package and are visible in **Options →
 Plugins** without selecting **Update Catalog Master**. xGRIB,
-xWeatherRouting, Climatology, Polar and Celestial Navigation are initially
-enabled; bundled GRIB is present for compatibility but disabled to avoid two
-GRIB displays competing.
+xWeatherRouting, o-charts, Climatology, Polar and Celestial Navigation are
+initially enabled; bundled GRIB is present for compatibility but disabled to
+avoid two GRIB displays competing.
 The exact list is in `docs/PLUGIN-INVENTORY.md` after installation.
 
 The Python SDK, `opencpnctl`, least-privilege MCP adapter and Scheduler are
@@ -60,7 +61,10 @@ almanac, sight-planning and fix features. Developers who want the complete
 offline eclipse feature should follow the pinned source and data links in
 `docs/CELESTIAL-ECLIPSE-DATA.md`.
 
-On first start, add only test charts you are entitled to use. Close OpenCPN
+The bundle contains no licensed chart or entitlement data. On first start, add
+only charts which are legitimately licensed to the test machine. The modified
+o-charts provider does not export plaintext charts; it supplies derived
+land/depth semantics to the hardened core in bounded batches. Close OpenCPN
 cleanly before first launching the Scheduler:
 
 ```sh

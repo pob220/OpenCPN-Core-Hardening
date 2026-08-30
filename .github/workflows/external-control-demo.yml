@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - external-control/cross-platform-demo
+      - external-control/chart-safety-preview-20260830
     paths-ignore:
       - 'manual/**'
   workflow_dispatch:
@@ -91,7 +92,7 @@ jobs:
           (needs.debian12-x86_64.result == 'success' ||
            (github.event_name == 'workflow_dispatch' && inputs.x86_core_run_id != '')) }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     container:
       image: debian:bookworm
     steps:
@@ -128,21 +129,50 @@ jobs:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ inputs.x86_core_run_id || github.run_id }}
-      - name: Fetch exact qualified plug-in packages
+      - name: Fetch exact qualified plug-in and o-charts runtime packages
         run: |
           mkdir -p inputs/plugins
           curl --fail --location \
             'https://output.circle-artifacts.com/output/job/288b9a0b-7e18-499f-bbec-0e5f0f8957e3/artifacts/0/artifacts/bookworm/package/xgrib_pi-0.2.4.0-debian-x86_64-12-bookworm.tar.gz' \
             --output inputs/plugins/xgrib.tar.gz
           curl --fail --location \
-            'https://output.circle-artifacts.com/output/job/6cdfa606-6213-48a7-882d-7bfe3ed12e0b/artifacts/0/artifacts/bookworm/package/xweather_routing_pi-0.1.0.0-debian-x86_64-12-bookworm.tar.gz' \
-            --output inputs/plugins/xweather.tar.gz
-          curl --fail --location \
             'https://dl.cloudsmith.io/public/opencpn/polar-prod/raw/names/polar_pi-1.2.38.0-debian-x86_64-12-bookworm-tarball/versions/v1.2.38.0/polar_pi-1.2.38.0-debian-x86_64-12-bookworm.tar.gz' \
             --output inputs/plugins/polar.tar.gz
+          curl --fail --location \
+            'https://dl.cloudsmith.io/public/opencpn/o-charts-prod/raw/names/o-charts-v2.2.1-debian-x86_64-12-tarball/versions/v2.2.1/o-charts-v2.2.1_debian-x86_64-12-x86_64.tar.gz' \
+            --output inputs/plugins/ocharts-official.tar.gz
           echo 'b64001cb1d63b3749556abd2448ceb10130b1e607a49ce6864df812b41c8fd7b  inputs/plugins/xgrib.tar.gz' | sha256sum --check
-          echo 'c573ae61edf8326b9d44ccb782fc21f92f023da7d21c9c7e8af01f9ba99e9025  inputs/plugins/xweather.tar.gz' | sha256sum --check
           echo '6130386533e5661cc6f940a30ab0633af5c30ec5efac2697d72e08634cbb08fc  inputs/plugins/polar.tar.gz' | sha256sum --check
+          echo '432eccc267d9ca70d2fcd067db5e792d88fd5c437013d11da8d96ef131252dd0  inputs/plugins/ocharts-official.tar.gz' | sha256sum --check
+      - name: Build and test exact chart-aware xWeatherRouting source
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: '3'
+          OCPN_TARGET: bookworm
+        run: |
+          git clone --filter=blob:none --recurse-submodules \
+            https://github.com/pob220/xweather_routing_pi.git inputs/xweather_routing_pi
+          git -C inputs/xweather_routing_pi checkout 1bf28cb6492a93e3d12e4023f562d7f1c7366b87
+          git -C inputs/xweather_routing_pi submodule update --init --recursive
+          inputs/xweather_routing_pi/ci/build-linux-catalogue.sh \
+            inputs/xweather_routing_pi inputs/xweather-build
+          xweather_archive=$(find inputs/xweather-build/artifacts/bookworm/package \
+            -maxdepth 1 -type f -name '*.tar.gz' -print -quit)
+          test -n "$xweather_archive"
+          cp "$xweather_archive" inputs/plugins/xweather.tar.gz
+      - name: Build exact o-charts chart-safety provider
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: '3'
+          OCPN_TARGET: bookworm
+        run: |
+          git clone --filter=blob:none --recurse-submodules \
+            https://github.com/pob220/o-charts_pi.git inputs/o-charts_pi
+          git -C inputs/o-charts_pi checkout f2c727bac2768e08919e0df26217331fa6cb03f8
+          git -C inputs/o-charts_pi submodule update --init --recursive
+          ci/external-control-demo/package-ocharts-source-preview-linux.sh \
+            inputs/o-charts_pi inputs/ocharts-build \
+            inputs/plugins/ocharts-official.tar.gz \
+            inputs/plugins/ocharts-preview.tar.gz \
+            'Advanced Micro Devices X86-64'
       - name: Build and test exact upgraded Climatology source
         env:
           CMAKE_BUILD_PARALLEL_LEVEL: '3'
@@ -186,12 +216,13 @@ jobs:
           core_installer=$(find inputs/core/package -maxdepth 1 -type f -name '*.sh' -print -quit)
           test -n "$core_installer"
           core_revision=$(cat inputs/core/source-commit.txt)
-          EXTERNAL_CONTROL_DEMO_DATE=2026-08-26 \
+          EXTERNAL_CONTROL_DEMO_DATE=2026-08-30 \
             EXTERNAL_CONTROL_CORE_REVISION="$core_revision" \
             tools/external-control-demo/assemble-linux.sh \
               "$core_installer" \
               inputs/plugins/xgrib.tar.gz \
               inputs/plugins/xweather.tar.gz \
+              inputs/plugins/ocharts-preview.tar.gz \
               inputs/plugins/climatology.tar.gz \
               inputs/plugins/polar.tar.gz \
               inputs/plugins/celestial-navigation.tar.gz \
@@ -203,7 +234,7 @@ jobs:
         run: |
           qualification_log=candidate/qualification.log
           if ! tools/external-control-demo/qualify-linux-bundle.sh \
-              candidate/OpenCPN-External-Control-Demo-2026-08-26-debian12-x86_64 \
+              candidate/OpenCPN-External-Control-Demo-2026-08-30-debian12-x86_64 \
               'Advanced Micro Devices X86-64' >"$qualification_log" 2>&1; then
             cat "$qualification_log"
             exit 1
@@ -215,8 +246,8 @@ jobs:
         with:
           name: opencpn-external-control-demo-debian12-x86_64
           path: |
-            candidate/OpenCPN-External-Control-Demo-2026-08-26-debian12-x86_64.tar.gz
-            candidate/OpenCPN-External-Control-Demo-2026-08-26-debian12-x86_64.tar.gz.sha256
+            candidate/OpenCPN-External-Control-Demo-2026-08-30-debian12-x86_64.tar.gz
+            candidate/OpenCPN-External-Control-Demo-2026-08-30-debian12-x86_64.tar.gz.sha256
             candidate/qualification.log
           if-no-files-found: warn
           retention-days: 14
@@ -229,7 +260,7 @@ jobs:
           (needs.debian12-arm64.result == 'success' ||
            (github.event_name == 'workflow_dispatch' && inputs.core_run_id != '')) }}
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 60
+    timeout-minutes: 120
     container:
       image: arm64v8/debian:bookworm
     steps:
@@ -266,21 +297,49 @@ jobs:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ inputs.core_run_id || github.run_id }}
-      - name: Fetch exact qualified plug-in packages
+      - name: Fetch exact qualified plug-in and o-charts runtime packages
         run: |
           mkdir -p inputs/plugins
           curl --fail --location \
             'https://output.circle-artifacts.com/output/job/f4676173-d84d-478b-a490-a8d79d477990/artifacts/0/artifacts/bookworm-arm64/package/xgrib_pi-0.2.4.0-debian-arm64-12-bookworm-arm64.tar.gz' \
             --output inputs/plugins/xgrib.tar.gz
           curl --fail --location \
-            'https://output.circle-artifacts.com/output/job/0263610a-cef4-4d07-8ffe-7a1bb256f848/artifacts/0/artifacts/bookworm-arm64/package/xweather_routing_pi-0.1.0.0-debian-arm64-12-bookworm-arm64.tar.gz' \
-            --output inputs/plugins/xweather.tar.gz
-          curl --fail --location \
             'https://dl.cloudsmith.io/public/opencpn/polar-prod/raw/names/polar_pi-1.2.38.0-debian-arm64-12-bookworm-arm64-tarball/versions/v1.2.38.0/polar_pi-1.2.38.0-debian-arm64-12-bookworm-arm64.tar.gz' \
             --output inputs/plugins/polar.tar.gz
+          curl --fail --location \
+            'https://dl.cloudsmith.io/public/opencpn/o-charts-prod/raw/names/o-charts-v2.2.1-debian-arm64-A64-12-tarball/versions/v2.2.1/o-charts-v2.2.1_debian-arm64-12-arm64.tar.gz' \
+            --output inputs/plugins/ocharts-official.tar.gz
           echo 'dabb9bd92fe6f8269eedcc8b2dadabcfa2738537e6218d166fa0ae0ae6262db7  inputs/plugins/xgrib.tar.gz' | sha256sum --check
-          echo 'd1aa47b950f7b807691c1f9057972735be75bf56ff2d987f38f9bab239da2127  inputs/plugins/xweather.tar.gz' | sha256sum --check
           echo '85e000060e7f10df4a01424257e685ac6a8b8bd1cd145030a1a4c8bdb50ce470  inputs/plugins/polar.tar.gz' | sha256sum --check
+          echo '861ad2ec41b00afbbabcae1d7bd989d2afec3c9e428227cecb28b9b87fffe104  inputs/plugins/ocharts-official.tar.gz' | sha256sum --check
+      - name: Build and test exact chart-aware xWeatherRouting source
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: '2'
+          OCPN_TARGET: bookworm-arm64
+        run: |
+          git clone --filter=blob:none --recurse-submodules \
+            https://github.com/pob220/xweather_routing_pi.git inputs/xweather_routing_pi
+          git -C inputs/xweather_routing_pi checkout 1bf28cb6492a93e3d12e4023f562d7f1c7366b87
+          git -C inputs/xweather_routing_pi submodule update --init --recursive
+          inputs/xweather_routing_pi/ci/build-linux-catalogue.sh \
+            inputs/xweather_routing_pi inputs/xweather-build
+          xweather_archive=$(find inputs/xweather-build/artifacts/bookworm-arm64/package \
+            -maxdepth 1 -type f -name '*.tar.gz' -print -quit)
+          test -n "$xweather_archive"
+          cp "$xweather_archive" inputs/plugins/xweather.tar.gz
+      - name: Build exact o-charts chart-safety provider
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: '2'
+          OCPN_TARGET: bookworm-arm64
+        run: |
+          git clone --filter=blob:none --recurse-submodules \
+            https://github.com/pob220/o-charts_pi.git inputs/o-charts_pi
+          git -C inputs/o-charts_pi checkout f2c727bac2768e08919e0df26217331fa6cb03f8
+          git -C inputs/o-charts_pi submodule update --init --recursive
+          ci/external-control-demo/package-ocharts-source-preview-linux.sh \
+            inputs/o-charts_pi inputs/ocharts-build \
+            inputs/plugins/ocharts-official.tar.gz \
+            inputs/plugins/ocharts-preview.tar.gz AArch64
       - name: Build and test exact upgraded Climatology source
         env:
           CMAKE_BUILD_PARALLEL_LEVEL: '2'
@@ -326,12 +385,13 @@ jobs:
           core_installer=$(find inputs/core/package -maxdepth 1 -type f -name '*.sh' -print -quit)
           test -n "$core_installer"
           core_revision=$(cat inputs/core/source-commit.txt)
-          EXTERNAL_CONTROL_DEMO_DATE=2026-08-25 \
+          EXTERNAL_CONTROL_DEMO_DATE=2026-08-30 \
             EXTERNAL_CONTROL_CORE_REVISION="$core_revision" \
             tools/external-control-demo/assemble-linux.sh \
               "$core_installer" \
               inputs/plugins/xgrib.tar.gz \
               inputs/plugins/xweather.tar.gz \
+              inputs/plugins/ocharts-preview.tar.gz \
               inputs/plugins/climatology.tar.gz \
               inputs/plugins/polar.tar.gz \
               inputs/plugins/celestial-navigation.tar.gz \
@@ -343,7 +403,7 @@ jobs:
         run: |
           qualification_log=candidate/qualification.log
           if ! tools/external-control-demo/qualify-linux-bundle.sh \
-              candidate/OpenCPN-External-Control-Demo-2026-08-25-debian12-arm64 \
+              candidate/OpenCPN-External-Control-Demo-2026-08-30-debian12-arm64 \
               AArch64 >"$qualification_log" 2>&1; then
             cat "$qualification_log"
             exit 1
@@ -355,8 +415,8 @@ jobs:
         with:
           name: opencpn-external-control-demo-debian12-arm64
           path: |
-            candidate/OpenCPN-External-Control-Demo-2026-08-25-debian12-arm64.tar.gz
-            candidate/OpenCPN-External-Control-Demo-2026-08-25-debian12-arm64.tar.gz.sha256
+            candidate/OpenCPN-External-Control-Demo-2026-08-30-debian12-arm64.tar.gz
+            candidate/OpenCPN-External-Control-Demo-2026-08-30-debian12-arm64.tar.gz.sha256
             candidate/qualification.log
           if-no-files-found: warn
           retention-days: 14

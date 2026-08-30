@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if (( $# != 10 )); then
+if (( $# != 11 )); then
   cat >&2 <<'EOF'
 usage: assemble-linux.sh CORE_INSTALLER XGRIB_ARCHIVE XWEATHER_ARCHIVE \
-  CLIMATOLOGY_ARCHIVE POLAR_ARCHIVE CELESTIAL_ARCHIVE SCHEDULER_REPOSITORY \
+  OCHARTS_ARCHIVE CLIMATOLOGY_ARCHIVE POLAR_ARCHIVE CELESTIAL_ARCHIVE \
+  SCHEDULER_REPOSITORY \
   OUTPUT_DIRECTORY PLATFORM EXPECTED_UNAME
 
 Example PLATFORM: debian12-arm64
@@ -16,13 +17,14 @@ fi
 core_installer=$(realpath "$1")
 xgrib_archive=$(realpath "$2")
 xweather_archive=$(realpath "$3")
-climatology_archive=$(realpath "$4")
-polar_archive=$(realpath "$5")
-celestial_archive=$(realpath "$6")
-scheduler_repo=$(realpath "$7")
-output_dir=$(realpath -m "$8")
-platform=$9
-expected_uname=${10}
+ocharts_archive=$(realpath "$4")
+climatology_archive=$(realpath "$5")
+polar_archive=$(realpath "$6")
+celestial_archive=$(realpath "$7")
+scheduler_repo=$(realpath "$8")
+output_dir=$(realpath -m "$9")
+platform=${10}
+expected_uname=${11}
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 source_root=$(git -C "$script_dir/../.." rev-parse --show-toplevel)
 assembly_revision=$(git -C "$source_root" rev-parse HEAD)
@@ -36,7 +38,8 @@ bundle_dir="$work_dir/$bundle_name"
 trap 'rm -rf "$work_dir"' EXIT
 
 for path in "$core_installer" "$xgrib_archive" "$xweather_archive" \
-  "$climatology_archive" "$polar_archive" "$celestial_archive"; do
+  "$ocharts_archive" "$climatology_archive" "$polar_archive" \
+  "$celestial_archive"; do
   test -f "$path" || { echo "Missing input: $path" >&2; exit 1; }
 done
 for path in \
@@ -58,6 +61,8 @@ install -m 644 "$xgrib_archive" \
   "$bundle_dir/assets/xgrib-external-control-demo-${platform}.tar.gz"
 install -m 644 "$xweather_archive" \
   "$bundle_dir/assets/xweather-routing-external-control-demo-${platform}.tar.gz"
+install -m 644 "$ocharts_archive" \
+  "$bundle_dir/assets/o-charts-chart-safety-preview-${platform}.tar.gz"
 install -m 644 "$climatology_archive" \
   "$bundle_dir/assets/climatology-external-control-demo-${platform}.tar.gz"
 install -m 644 "$polar_archive" \
@@ -120,7 +125,8 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 | OpenCPN hardened core binary and API | $core_revision (external-control code based on release tag external-control-demo-20260821) |
 | Demo assembly and qualification tooling | $assembly_revision |
 | xGRIB provider build | 369b6fc8a4c461d54eec75d949e1f2e30cccdc48 (provider behavior based on 6674c70583d285cdcbc622f3377da810fde0d3ba) |
-| xWeatherRouting provider implementation | 5dc04608945e1917e8cbb4e8df274619c1b5203d |
+| xWeatherRouting chart-aware provider | 1bf28cb6492a93e3d12e4023f562d7f1c7366b87 |
+| o-charts chart-safety provider | f2c727bac2768e08919e0df26217331fa6cb03f8 (modified plug-in over the official 2.2.1 licensed helper/runtime package) |
 | Upgraded Climatology plug-in and dataset 2026.2 | cd00282e6ea2784a6d78ccfe47fed713269ad87e |
 | Polar plug-in | 1.2.38.0 official OpenCPN package, SHA-256 $(sha256sum "$polar_archive" | cut -d ' ' -f 1) |
 | Upgraded Celestial Navigation plug-in | 2.7.0.0 at 52192268aad08fcf8c37818b066c8350e569c6bc |
@@ -138,9 +144,9 @@ The bundle qualification fails unless all of these surfaces are present and
 usable in a clean, isolated installation:
 
 - hardened OpenCPN core and authenticated `/api/v2` service;
-- nine native plug-in binaries and their resource directories;
+- ten native plug-in binaries and their resource directories;
 - enabled xGRIB environmental-data and xWeatherRouting planning providers;
-- upgraded Climatology, Polar and Celestial Navigation plug-ins;
+- modified o-charts plus upgraded Climatology, Polar and Celestial Navigation plug-ins;
 - versioned OpenAPI and Scheduler JSON contracts;
 - Python SDK and `opencpnctl` CLI;
 - least-privilege MCP adapter and deterministic MCP protocol canary;
@@ -150,9 +156,9 @@ usable in a clean, isolated installation:
 - architecture, shared-library, checksum, lifecycle, API capability and
   clean-install checks.
 
-Charts, forecast downloads, polar choices and the large optional Celestial
-eclipse kernels remain user-supplied. Their absence is deliberate and is not
-reported as a qualified capability.
+Licensed charts, chart entitlements, forecast downloads, polar choices and the
+large optional Celestial eclipse kernels remain user-supplied. Their absence
+is deliberate and is not reported as a qualified capability.
 EOF
 
 cat > "$bundle_dir/PLUGIN-INVENTORY.md" <<'EOF'
@@ -169,6 +175,7 @@ on an entry in the public OpenCPN Master catalogue.
 | WMM | Bundled magnetic variation | Available, disabled |
 | xGRIB | Typed environmental-data provider and GRIB display | Enabled |
 | xWeatherRouting | Typed chart/weather route-planning provider | Enabled |
+| o-charts 2.2.1 chart-safety preview | Licensed vector charts and batched semantic safety provider | Enabled; requires the developer's own licensed charts |
 | Climatology 1.6.39 / dataset 2026.2 | Updated offline climate statistics | Enabled |
 | Polar 1.2.38 | Polar inspection and editing companion | Enabled |
 | Celestial Navigation 2.7 | Offline almanac, sight planning and fixes | Enabled |
