@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if (( $# != 4 )); then
-  echo "usage: package-ocharts-preview-linux.sh OFFICIAL-ARCHIVE MODIFIED-PLUGIN OUTPUT-ARCHIVE EXPECTED-ELF-MACHINE" >&2
+if (( $# < 4 || $# > 5 )); then
+  echo "usage: package-ocharts-preview-linux.sh OFFICIAL-ARCHIVE MODIFIED-PLUGIN OUTPUT-ARCHIVE EXPECTED-ELF-MACHINE [RUNTIME-LIB-DIRECTORY]" >&2
   exit 2
 fi
 
@@ -10,6 +10,7 @@ official_archive=$(realpath "$1")
 modified_plugin=$(realpath "$2")
 output_archive=$(realpath -m "$3")
 expected_machine=$4
+runtime_lib_dir=${5:-}
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/ocharts-preview-package.XXXXXX")
 trap 'rm -rf "$work_dir"' EXIT
 
@@ -29,6 +30,11 @@ helper="$package_root/bin/oexserverd"
 test -f "$plugin"
 test -x "$helper"
 install -m 755 "$modified_plugin" "$plugin"
+if [[ -n $runtime_lib_dir ]]; then
+  runtime_lib_dir=$(realpath "$runtime_lib_dir")
+  test -d "$runtime_lib_dir"
+  cp -a "$runtime_lib_dir"/. "$package_root/lib/opencpn/"
+fi
 
 machine=$(readelf -h "$plugin" | sed -n 's/^ *Machine: *//p')
 [[ $machine == "$expected_machine" ]]
