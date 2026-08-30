@@ -91,6 +91,9 @@ install -m 644 "$source_root/api/scheduler-schedule-v1.schema.json" \
 install -m 644 \
   "$source_root/docs/development/scheduler-preview-c-contract.md" \
   "$bundle_dir/docs/scheduler-contract.md"
+install -m 644 \
+  "$source_root/docs/development/chart-aware-routing-preview-testing.md" \
+  "$bundle_dir/docs/CHART-AWARE-ROUTING-PREVIEW.md"
 
 sed \
   -e "s/@PLATFORM@/$platform/g" \
@@ -125,7 +128,7 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 | OpenCPN hardened core binary and API | $core_revision (external-control code based on release tag external-control-demo-20260821) |
 | Demo assembly and qualification tooling | $assembly_revision |
 | xGRIB provider build | 369b6fc8a4c461d54eec75d949e1f2e30cccdc48 (provider behavior based on 6674c70583d285cdcbc622f3377da810fde0d3ba) |
-| xWeatherRouting chart-aware provider | 30f7a34dfe3154a3bc589f486488ea5fbb296187 |
+| xWeatherRouting chart-aware provider | a1340db64101f85fc0667323fc7f53aa1dc12cc5 |
 | o-charts chart-safety provider | f2c727bac2768e08919e0df26217331fa6cb03f8 (modified plug-in over the official 2.2.1 licensed helper/runtime package) |
 | Upgraded Climatology plug-in and dataset 2026.2 | cd00282e6ea2784a6d78ccfe47fed713269ad87e |
 | Polar plug-in | 1.2.38.0 official OpenCPN package, SHA-256 $(sha256sum "$polar_archive" | cut -d ' ' -f 1) |
@@ -147,6 +150,7 @@ usable in a clean, isolated installation:
 - ten native plug-in binaries and their resource directories;
 - enabled xGRIB environmental-data and xWeatherRouting planning providers;
 - modified o-charts plus upgraded Climatology, Polar and Celestial Navigation plug-ins;
+- chart-aware routing setup, cache-behaviour and evidence guidance;
 - versioned OpenAPI and Scheduler JSON contracts;
 - Python SDK and `opencpnctl` CLI;
 - least-privilege MCP adapter and deterministic MCP protocol canary;

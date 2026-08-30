@@ -149,6 +149,11 @@ readelf -Ws "$install_dir/usr/local/lib/opencpn/libo-charts_pi.so" |
   fail 'installed Scheduler contract is missing'
 [[ -f "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ]] ||
   fail 'installed optional Celestial eclipse-data guidance is missing'
+[[ -f "$install_dir/docs/CHART-AWARE-ROUTING-PREVIEW.md" ]] ||
+  fail 'installed chart-aware routing test guidance is missing'
+grep -q 'requests additional fail-closed safety' \
+  "$install_dir/docs/CHART-AWARE-ROUTING-PREVIEW.md" ||
+  fail 'chart-aware routing guidance does not describe on-demand expansion'
 grep -q 'eclipse-data-2026.1' \
   "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ||
   fail 'Celestial eclipse-data guidance does not link the pinned data release'

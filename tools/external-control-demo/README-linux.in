@@ -64,8 +64,10 @@ offline eclipse feature should follow the pinned source and data links in
 The bundle contains no licensed chart or entitlement data. On first start, add
 only charts which are legitimately licensed to the test machine. The modified
 o-charts provider does not export plaintext charts; it supplies derived
-land/depth semantics to the hardened core in bounded batches. Close OpenCPN
-cleanly before first launching the Scheduler:
+land/depth semantics to the hardened core in bounded batches. Read
+`docs/CHART-AWARE-ROUTING-PREVIEW.md` before testing xWeatherRouting; it
+describes fallback, pre-warm, on-demand expansion, cache and reporting
+behaviour. Close OpenCPN cleanly before first launching the Scheduler:
 
 ```sh
 Test-OpenCPN-External-Control-Demo/bin/launch-opencpn-scheduler-external-control-demo
