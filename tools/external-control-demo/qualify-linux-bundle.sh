@@ -135,7 +135,7 @@ done
 [[ -x "$install_dir/usr/local/bin/oexserverd" ]] ||
   fail 'bundled o-charts licensed helper is missing or not executable'
 readelf -Ws "$install_dir/usr/local/lib/opencpn/libo-charts_pi.so" |
-  grep -q 'OCPN_PluginChartSafetyGridV1' ||
+  grep -F 'OCPN_PluginChartSafetyGridV1' >/dev/null ||
   fail 'bundled o-charts does not export the chart-safety batch provider'
 [[ -f "$install_dir/docs/PLUGIN-INVENTORY.md" ]] ||
   fail 'installed plug-in inventory is missing'

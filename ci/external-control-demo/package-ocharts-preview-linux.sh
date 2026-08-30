@@ -32,7 +32,7 @@ install -m 755 "$modified_plugin" "$plugin"
 
 machine=$(readelf -h "$plugin" | sed -n 's/^ *Machine: *//p')
 [[ $machine == "$expected_machine" ]]
-readelf -Ws "$plugin" | grep -q 'OCPN_PluginChartSafetyGridV1'
+readelf -Ws "$plugin" | grep -F 'OCPN_PluginChartSafetyGridV1' >/dev/null
 
 tar -C "$work_dir/unpacked" -czf "$output_archive" "$(basename "$package_root")"
 printf 'Created o-charts chart-safety preview package: %s\n' "$output_archive"

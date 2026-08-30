@@ -31,8 +31,7 @@ plugin="$build_dir/libo-charts_pi.so"
 test -f "$plugin"
 machine=$(readelf -h "$plugin" | sed -n 's/^ *Machine: *//p')
 [[ $machine == "$expected_machine" ]]
-readelf -Ws "$plugin" | grep -q 'OCPN_PluginChartSafetyGridV1'
+readelf -Ws "$plugin" | grep -F 'OCPN_PluginChartSafetyGridV1' >/dev/null
 
 "$(dirname "$0")/package-ocharts-preview-linux.sh" \
   "$official_archive" "$plugin" "$output_archive" "$expected_machine"
-
