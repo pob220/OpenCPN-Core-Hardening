@@ -5,6 +5,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
   autoconf \
+  autoconf-archive \
   automake \
   binutils \
   build-essential \
@@ -28,6 +29,8 @@ apt-get install -y --no-install-recommends \
   libgtk-3-dev \
   libjs-highlight.js \
   libjs-mathjax \
+  libjsoncpp-dev \
+  libltdl-dev \
   liblz4-dev \
   liblzma-dev \
   lsb-release \
@@ -45,11 +48,14 @@ apt-get install -y --no-install-recommends \
   libwxsvg-dev \
   ninja-build \
   nlohmann-json3-dev \
+  pkg-config \
   portaudio19-dev \
   python-is-python3 \
   python3-dbus \
   python3-gi \
   rapidjson-dev \
+  uuid-dev \
+  zlib1g-dev \
   xvfb
 
 rm -rf /var/lib/apt/lists/*
