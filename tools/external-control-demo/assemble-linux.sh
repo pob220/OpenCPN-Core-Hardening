@@ -125,7 +125,7 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 | OpenCPN hardened core binary and API | $core_revision (external-control code based on release tag external-control-demo-20260821) |
 | Demo assembly and qualification tooling | $assembly_revision |
 | xGRIB provider build | 369b6fc8a4c461d54eec75d949e1f2e30cccdc48 (provider behavior based on 6674c70583d285cdcbc622f3377da810fde0d3ba) |
-| xWeatherRouting chart-aware provider | 1bf28cb6492a93e3d12e4023f562d7f1c7366b87 |
+| xWeatherRouting chart-aware provider | 30f7a34dfe3154a3bc589f486488ea5fbb296187 |
 | o-charts chart-safety provider | f2c727bac2768e08919e0df26217331fa6cb03f8 (modified plug-in over the official 2.2.1 licensed helper/runtime package) |
 | Upgraded Climatology plug-in and dataset 2026.2 | cd00282e6ea2784a6d78ccfe47fed713269ad87e |
 | Polar plug-in | 1.2.38.0 official OpenCPN package, SHA-256 $(sha256sum "$polar_archive" | cut -d ' ' -f 1) |
