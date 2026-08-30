@@ -36,6 +36,7 @@ apt-get install -y --no-install-recommends \
   libsqlite3-dev \
   libssl-dev \
   libtinyxml-dev \
+  libtool \
   libudev-dev \
   libunarr-dev \
   libusb-1.0-0-dev \
