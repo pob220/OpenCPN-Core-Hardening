@@ -155,7 +155,8 @@ jobs:
           test "$(git -C inputs/xgrib_pi/generator rev-parse HEAD)" = \
             14a1c562cdef783b3f52c14dc47d85364367fe72
           inputs/xgrib_pi/ci/build-linux-catalogue.sh \
-            inputs/xgrib_pi inputs/xgrib-build
+            inputs/xgrib_pi inputs/xgrib-build inputs/xgrib-stage \
+            inputs/xgrib-build/artifacts/bookworm
           xgrib_archive=$(find inputs/xgrib-build/artifacts/bookworm/package \
             -maxdepth 1 -type f -name '*.tar.gz' -print -quit)
           test -n "$xgrib_archive"
@@ -338,7 +339,8 @@ jobs:
           test "$(git -C inputs/xgrib_pi/generator rev-parse HEAD)" = \
             14a1c562cdef783b3f52c14dc47d85364367fe72
           inputs/xgrib_pi/ci/build-linux-catalogue.sh \
-            inputs/xgrib_pi inputs/xgrib-build
+            inputs/xgrib_pi inputs/xgrib-build inputs/xgrib-stage \
+            inputs/xgrib-build/artifacts/bookworm-arm64
           xgrib_archive=$(find inputs/xgrib-build/artifacts/bookworm-arm64/package \
             -maxdepth 1 -type f -name '*.tar.gz' -print -quit)
           test -n "$xgrib_archive"
