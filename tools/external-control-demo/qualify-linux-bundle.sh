@@ -137,6 +137,9 @@ done
 readelf -Ws "$install_dir/usr/local/lib/opencpn/libo-charts_pi.so" |
   grep -F 'OCPN_PluginChartSafetyGridV1' >/dev/null ||
   fail 'bundled o-charts does not export the chart-safety batch provider'
+readelf -Ws "$install_dir/usr/local/lib/opencpn/libo-charts_pi.so" |
+  grep -F 'OCPN_PluginChartSafetyIdentityV1' >/dev/null ||
+  fail 'bundled o-charts does not export a stable chart-safety identity'
 [[ -f "$install_dir/docs/PLUGIN-INVENTORY.md" ]] ||
   fail 'installed plug-in inventory is missing'
 [[ -f "$install_dir/docs/FULL-SYSTEM-CHECKLIST.md" ]] ||

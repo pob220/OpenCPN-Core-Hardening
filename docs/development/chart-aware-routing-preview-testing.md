@@ -73,3 +73,24 @@ The complete bundle is currently qualified only on Debian 12 x86_64 and
 ARM64. Individual xWeatherRouting builds on other platforms do not constitute
 qualification of the hardened core plus o-charts integration on those
 platforms.
+
+## 31 August responsiveness refresh
+
+The 2026-08-31 candidate retains the qualified solver and bounded route
+pre-warm above, and adds the following narrowly scoped fixes:
+
+- idle semantic-atlas extraction yields promptly to GUI activity and active
+  weather routing, adapts its batch size to measured latency and avoids
+  repeated CM93/chart selection at o-chart boundaries;
+- stable provider semantics identify reusable atlas data independently of a
+  plug-in binary's path, timestamp or packaging, while an incompatible cache
+  is preserved for diagnosis instead of overwritten;
+- xGRIB is built from revision
+  `337132a3a25db7e3273b3b2b43f0da3761a29dd8`, with generator revision
+  `14a1c562cdef783b3f52c14dc47d85364367fe72`, which prevents concurrent
+  weather, wave and current jobs from sharing a temporary workspace.
+
+The candidate workflow builds xGRIB, xWeatherRouting and the modified
+o-charts provider from their exact pinned source revisions on each target
+architecture. The previous 2026-08-30 package remains available as the
+rollback reference.

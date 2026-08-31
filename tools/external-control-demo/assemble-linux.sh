@@ -127,9 +127,9 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 |---|---|
 | OpenCPN hardened core binary and API | $core_revision (external-control code based on release tag external-control-demo-20260821) |
 | Demo assembly and qualification tooling | $assembly_revision |
-| xGRIB provider build | 369b6fc8a4c461d54eec75d949e1f2e30cccdc48 (provider behavior based on 6674c70583d285cdcbc622f3377da810fde0d3ba) |
-| xWeatherRouting chart-aware provider | a1340db64101f85fc0667323fc7f53aa1dc12cc5 |
-| o-charts chart-safety provider | f2c727bac2768e08919e0df26217331fa6cb03f8 (modified plug-in over the official 2.2.1 licensed helper/runtime package) |
+| xGRIB provider build | 337132a3a25db7e3273b3b2b43f0da3761a29dd8 (generator 14a1c562cdef783b3f52c14dc47d85364367fe72) |
+| xWeatherRouting chart-aware provider | e5fd189eb130688b5f6579c5e0629a4df7088941 |
+| o-charts chart-safety provider | b369c4cae0e84ea43847f64a26cb107ae1ffebe5 (modified plug-in over the official 2.2.1 licensed helper/runtime package) |
 | Upgraded Climatology plug-in and dataset 2026.2 | cd00282e6ea2784a6d78ccfe47fed713269ad87e |
 | Polar plug-in | 1.2.38.0 official OpenCPN package, SHA-256 $(sha256sum "$polar_archive" | cut -d ' ' -f 1) |
 | Upgraded Celestial Navigation plug-in | 2.7.0.0 at 52192268aad08fcf8c37818b066c8350e569c6bc |
