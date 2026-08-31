@@ -150,7 +150,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/xgrib_pi.git inputs/xgrib_pi
-          git -C inputs/xgrib_pi checkout 337132a3a25db7e3273b3b2b43f0da3761a29dd8
+          git -C inputs/xgrib_pi checkout 07fd457d55ba1b5611f3db5e695e0ad9d3083d60
           git -C inputs/xgrib_pi submodule update --init --recursive
           test "$(git -C inputs/xgrib_pi/generator rev-parse HEAD)" = \
             14a1c562cdef783b3f52c14dc47d85364367fe72
@@ -334,7 +334,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/xgrib_pi.git inputs/xgrib_pi
-          git -C inputs/xgrib_pi checkout 337132a3a25db7e3273b3b2b43f0da3761a29dd8
+          git -C inputs/xgrib_pi checkout 07fd457d55ba1b5611f3db5e695e0ad9d3083d60
           git -C inputs/xgrib_pi submodule update --init --recursive
           test "$(git -C inputs/xgrib_pi/generator rev-parse HEAD)" = \
             14a1c562cdef783b3f52c14dc47d85364367fe72

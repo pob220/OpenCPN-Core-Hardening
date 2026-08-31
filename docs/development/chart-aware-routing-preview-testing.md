@@ -85,8 +85,9 @@ pre-warm above, and adds the following narrowly scoped fixes:
 - stable provider semantics identify reusable atlas data independently of a
   plug-in binary's path, timestamp or packaging, while an incompatible cache
   is preserved for diagnosis instead of overwritten;
-- xGRIB is built from revision
-  `337132a3a25db7e3273b3b2b43f0da3761a29dd8`, with generator revision
+- xGRIB is built from preview revision
+  `07fd457d55ba1b5611f3db5e695e0ad9d3083d60`, combining the qualified
+  external-control environmental provider with generator revision
   `14a1c562cdef783b3f52c14dc47d85364367fe72`, which prevents concurrent
   weather, wave and current jobs from sharing a temporary workspace.
 

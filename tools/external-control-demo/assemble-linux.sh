@@ -127,7 +127,7 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 |---|---|
 | OpenCPN hardened core binary and API | $core_revision (external-control code based on release tag external-control-demo-20260821) |
 | Demo assembly and qualification tooling | $assembly_revision |
-| xGRIB provider build | 337132a3a25db7e3273b3b2b43f0da3761a29dd8 (generator 14a1c562cdef783b3f52c14dc47d85364367fe72) |
+| xGRIB provider build | 07fd457d55ba1b5611f3db5e695e0ad9d3083d60 (external-control provider with generator 14a1c562cdef783b3f52c14dc47d85364367fe72) |
 | xWeatherRouting chart-aware provider | e5fd189eb130688b5f6579c5e0629a4df7088941 |
 | o-charts chart-safety provider | b369c4cae0e84ea43847f64a26cb107ae1ffebe5 (modified plug-in over the official 2.2.1 licensed helper/runtime package) |
 | Upgraded Climatology plug-in and dataset 2026.2 | cd00282e6ea2784a6d78ccfe47fed713269ad87e |
