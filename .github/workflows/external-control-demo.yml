@@ -111,7 +111,8 @@ jobs:
           ci/external-control-demo/install-debian-build-deps.sh
           apt-get update
           apt-get install -y --no-install-recommends \
-            curl iproute2 libaec0 libblosc1 libeccodes0 libhdf5-103-1 \
+            curl iproute2 libaec0 libblosc1 libeccodes-dev libeccodes0 \
+            libhdf5-103-1 \
             libgdk-pixbuf2.0-bin libgtest-dev libhdf5-hl-100 libnetcdf19 \
             libproj25 libqhull-r8.0 librsvg2-common libsz2 \
             libzip4 python3-build python3-pip python3-setuptools python3-tk \
@@ -292,7 +293,8 @@ jobs:
           ci/external-control-demo/install-debian-build-deps.sh
           apt-get update
           apt-get install -y --no-install-recommends \
-            curl iproute2 libaec0 libblosc1 libeccodes0 libhdf5-103-1 \
+            curl iproute2 libaec0 libblosc1 libeccodes-dev libeccodes0 \
+            libhdf5-103-1 \
             libgdk-pixbuf2.0-bin libgtest-dev libhdf5-hl-100 libnetcdf19 \
             libproj25 libqhull-r8.0 librsvg2-common libsz2 \
             libzip4 python3-build python3-pip python3-setuptools python3-tk \
