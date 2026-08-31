@@ -150,10 +150,10 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/xgrib_pi.git inputs/xgrib_pi
-          git -C inputs/xgrib_pi checkout 07fd457d55ba1b5611f3db5e695e0ad9d3083d60
+          git -C inputs/xgrib_pi checkout 446814bafe6edfeaf23fadc3f478864f56d81362
           git -C inputs/xgrib_pi submodule update --init --recursive
           test "$(git -C inputs/xgrib_pi/generator rev-parse HEAD)" = \
-            14a1c562cdef783b3f52c14dc47d85364367fe72
+            6156c997191ffbfa9fba39385e84fa06a2fed353
           inputs/xgrib_pi/ci/build-linux-catalogue.sh \
             inputs/xgrib_pi inputs/xgrib-build inputs/xgrib-stage \
             inputs/xgrib-build/artifacts/bookworm
@@ -334,10 +334,10 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/xgrib_pi.git inputs/xgrib_pi
-          git -C inputs/xgrib_pi checkout 07fd457d55ba1b5611f3db5e695e0ad9d3083d60
+          git -C inputs/xgrib_pi checkout 446814bafe6edfeaf23fadc3f478864f56d81362
           git -C inputs/xgrib_pi submodule update --init --recursive
           test "$(git -C inputs/xgrib_pi/generator rev-parse HEAD)" = \
-            14a1c562cdef783b3f52c14dc47d85364367fe72
+            6156c997191ffbfa9fba39385e84fa06a2fed353
           inputs/xgrib_pi/ci/build-linux-catalogue.sh \
             inputs/xgrib_pi inputs/xgrib-build inputs/xgrib-stage \
             inputs/xgrib-build/artifacts/bookworm-arm64

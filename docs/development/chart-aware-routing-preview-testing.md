@@ -85,11 +85,12 @@ pre-warm above, and adds the following narrowly scoped fixes:
 - stable provider semantics identify reusable atlas data independently of a
   plug-in binary's path, timestamp or packaging, while an incompatible cache
   is preserved for diagnosis instead of overwritten;
-- xGRIB is built from preview revision
-  `07fd457d55ba1b5611f3db5e695e0ad9d3083d60`, combining the qualified
-  external-control environmental provider with generator revision
-  `14a1c562cdef783b3f52c14dc47d85364367fe72`, which prevents concurrent
-  weather, wave and current jobs from sharing a temporary workspace.
+- xGRIB 0.2.4.1 is built from preview revision
+  `446814bafe6edfeaf23fadc3f478864f56d81362`, combining release candidate
+  `cc61eb752adf92b207933ef06469835b17ac44ea` with the qualified
+  external-control environmental provider. It embeds generator 0.1.7 at
+  `6156c997191ffbfa9fba39385e84fa06a2fed353`, including isolated workspaces
+  for concurrent weather, wave and current jobs.
 
 The candidate workflow builds xGRIB, xWeatherRouting and the modified
 o-charts provider from their exact pinned source revisions on each target
