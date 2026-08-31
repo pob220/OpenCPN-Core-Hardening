@@ -111,12 +111,13 @@ jobs:
           ci/external-control-demo/install-debian-build-deps.sh
           apt-get update
           apt-get install -y --no-install-recommends \
-            curl iproute2 libaec0 libblosc1 libeccodes-dev libeccodes0 \
-            libhdf5-103-1 \
+            curl iproute2 jq libaec0 libblosc-dev libblosc1 libeccodes-dev \
+            libeccodes0 libhdf5-103-1 \
             libgdk-pixbuf2.0-bin libgtest-dev libhdf5-hl-100 libnetcdf19 \
-            libproj25 libqhull-r8.0 librsvg2-common libsz2 \
-            libzip4 python3-build python3-pip python3-setuptools python3-tk \
-            python3-venv util-linux xauth
+            libnetcdf-dev libproj-dev libproj25 libqhull-dev libqhull-r8.0 \
+            libsodium-dev librsvg2-common libsz2 libzip-dev libzip4 \
+            libzstd-dev python3-build python3-pip python3-setuptools \
+            python3-tk python3-venv util-linux xauth
           pixbuf_query=/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders
           test -x "$pixbuf_query"
           "$pixbuf_query" --update-cache
@@ -293,12 +294,13 @@ jobs:
           ci/external-control-demo/install-debian-build-deps.sh
           apt-get update
           apt-get install -y --no-install-recommends \
-            curl iproute2 libaec0 libblosc1 libeccodes-dev libeccodes0 \
-            libhdf5-103-1 \
+            curl iproute2 jq libaec0 libblosc-dev libblosc1 libeccodes-dev \
+            libeccodes0 libhdf5-103-1 \
             libgdk-pixbuf2.0-bin libgtest-dev libhdf5-hl-100 libnetcdf19 \
-            libproj25 libqhull-r8.0 librsvg2-common libsz2 \
-            libzip4 python3-build python3-pip python3-setuptools python3-tk \
-            python3-venv util-linux xauth
+            libnetcdf-dev libproj-dev libproj25 libqhull-dev libqhull-r8.0 \
+            libsodium-dev librsvg2-common libsz2 libzip-dev libzip4 \
+            libzstd-dev python3-build python3-pip python3-setuptools \
+            python3-tk python3-venv util-linux xauth
           pixbuf_query=/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders
           test -x "$pixbuf_query"
           "$pixbuf_query" --update-cache
