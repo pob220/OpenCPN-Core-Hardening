@@ -142,6 +142,8 @@ readelf -Ws "$install_dir/usr/local/lib/opencpn/libo-charts_pi.so" |
   fail 'bundled o-charts does not export a stable chart-safety identity'
 [[ -f "$install_dir/docs/PLUGIN-INVENTORY.md" ]] ||
   fail 'installed plug-in inventory is missing'
+[[ -f "$install_dir/docs/COMPONENTS.md" ]] ||
+  fail 'installed component manifest is missing'
 [[ -f "$install_dir/docs/FULL-SYSTEM-CHECKLIST.md" ]] ||
   fail 'installed full-system checklist is missing'
 [[ -f "$install_dir/docs/openapi-v2.yaml" ]] ||
@@ -160,6 +162,12 @@ grep -q 'requests additional fail-closed safety' \
 grep -q 'eclipse-data-2026.1' \
   "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ||
   fail 'Celestial eclipse-data guidance does not link the pinned data release'
+grep -q '2.8.4.0 at c76bd3efbb8fbf46971a09d972f5acb24feec3fd' \
+  "$install_dir/docs/COMPONENTS.md" ||
+  fail 'component manifest does not identify reviewed Celestial Navigation 2.8.4'
+grep -q 'tree/c76bd3efbb8fbf46971a09d972f5acb24feec3fd' \
+  "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ||
+  fail 'Celestial guidance does not link the exact reviewed source revision'
 "$install_dir/client/bin/python" -c \
   'import opencpn_control, opencpn_mcp, opencpn_scheduler' ||
   fail 'installed Python client packages cannot be imported'

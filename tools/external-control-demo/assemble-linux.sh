@@ -128,11 +128,11 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 | OpenCPN hardened core binary and API | $core_revision (external-control code based on release tag external-control-demo-20260821) |
 | Demo assembly and qualification tooling | $assembly_revision |
 | xGRIB 0.2.4.1 provider build | 446814bafe6edfeaf23fadc3f478864f56d81362 (external-control provider with generator 0.1.7 at 6156c997191ffbfa9fba39385e84fa06a2fed353) |
-| xWeatherRouting chart-aware provider | e5fd189eb130688b5f6579c5e0629a4df7088941 |
+| xWeatherRouting chart-aware provider | 5018432d278973e248fea1ce7d18628a50a41b40 |
 | o-charts chart-safety provider | b369c4cae0e84ea43847f64a26cb107ae1ffebe5 (modified plug-in over the official 2.2.1 licensed helper/runtime package) |
 | Upgraded Climatology plug-in and dataset 2026.2 | cd00282e6ea2784a6d78ccfe47fed713269ad87e |
 | Polar plug-in | 1.2.38.0 official OpenCPN package, SHA-256 $(sha256sum "$polar_archive" | cut -d ' ' -f 1) |
-| Upgraded Celestial Navigation plug-in | 2.7.0.0 at 52192268aad08fcf8c37818b066c8350e569c6bc |
+| Upgraded Celestial Navigation plug-in | 2.8.4.0 at c76bd3efbb8fbf46971a09d972f5acb24feec3fd (reviewed baseline) |
 | OpenCPN Scheduler | $(git -C "$scheduler_repo" rev-parse HEAD) |
 
 Target: \`$platform\` (kernel architecture \`$expected_uname\`). Native plug-in
@@ -182,7 +182,7 @@ on an entry in the public OpenCPN Master catalogue.
 | o-charts 2.2.1 chart-safety preview | Licensed vector charts and batched semantic safety provider | Enabled; requires the developer's own licensed charts |
 | Climatology 1.6.39 / dataset 2026.2 | Updated offline climate statistics | Enabled |
 | Polar 1.2.38 | Polar inspection and editing companion | Enabled |
-| Celestial Navigation 2.7 | Offline almanac, sight planning and fixes | Enabled |
+| Celestial Navigation 2.8.4 | Offline almanac, sight planning, fixes, lunar tools and eclipse planning | Enabled |
 
 The installer and CI qualification both fail if any listed binary is absent.
 EOF
@@ -190,23 +190,27 @@ EOF
 cat > "$bundle_dir/CELESTIAL-ECLIPSE-DATA.md" <<'EOF'
 # Optional Celestial Navigation eclipse data
 
-The upgraded Celestial Navigation plug-in is included, but the large optional
-eclipse kernels and lunar-terrain packs are deliberately not embedded in this
-External Control Demo. They are not required for the almanac, sight-planning
-or celestial-fix features demonstrated by the baseline.
+The reviewed Celestial Navigation 2.8.4 plug-in is included, but the large
+optional eclipse kernels and lunar-terrain packs are deliberately not embedded
+in this External Control Demo. They are not required for the almanac,
+sight-planning or celestial-fix features demonstrated by the baseline.
 
-Developers who want to source-build and test the complete offline eclipse
-feature can use the exact pinned implementation and instructions:
+For ordinary eclipse planning, open **Eclipses** and explicitly select
+**Download and install DE440s… (31.2 MiB)**. The plug-in verifies the file
+before installing it. Its **Optional lunar data…** dialog offers the optional lunar
+orientation and 506 MiB LOLA limb packs; installing DE440s never silently
+downloads either optional refinement. Local-file import remains available.
 
-- [Pinned Celestial Navigation source](https://github.com/pob220/celestial_navigation_pi-contrib/tree/52192268aad08fcf8c37818b066c8350e569c6bc)
-- [Eclipse engine and build files](https://github.com/pob220/celestial_navigation_pi-contrib/tree/52192268aad08fcf8c37818b066c8350e569c6bc/eclipse)
-- [Exact data files, checksums and provenance](https://github.com/pob220/celestial_navigation_pi-contrib/blob/52192268aad08fcf8c37818b066c8350e569c6bc/eclipse/DATA.md)
+The exact reviewed implementation, data checksums and separate data assets are:
+
+- [Pinned Celestial Navigation 2.8.4 source](https://github.com/pob220/celestial_navigation_pi/tree/c76bd3efbb8fbf46971a09d972f5acb24feec3fd)
+- [Eclipse engine and build files](https://github.com/pob220/celestial_navigation_pi/tree/c76bd3efbb8fbf46971a09d972f5acb24feec3fd/eclipse)
+- [Exact data files, checksums and provenance](https://github.com/pob220/celestial_navigation_pi/blob/c76bd3efbb8fbf46971a09d972f5acb24feec3fd/eclipse/DATA.md)
 - [Unsplit optional data release](https://github.com/pob220/celestial_navigation_pi/releases/tag/eclipse-data-2026.1)
 
-The repository stores the data files with Git LFS. A Git-LFS-enabled checkout
-or the separate release assets supplies them. The Celestial code validates the
-documented sizes, SHA-256 digests and kernel structures before accepting them;
-the demo does not download or silently install any kernel.
+The Celestial code validates the documented sizes, SHA-256 digests and kernel
+structures before accepting them. The demo does not preinstall or silently
+download any kernel.
 EOF
 
 (cd "$bundle_dir" && find assets -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
