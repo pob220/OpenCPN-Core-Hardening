@@ -96,3 +96,17 @@ The candidate workflow builds xGRIB, xWeatherRouting and the modified
 o-charts provider from their exact pinned source revisions on each target
 architecture. The previous 2026-08-30 package remains available as the
 rollback reference.
+
+## 8 September Weather Routing 1.17 refresh
+
+The 2026-09-08 bundle updates the routing component to the clean Weather
+Routing 1.17.0.0 source at revision
+`2e361da07ee53b7a0090ded8ecaaf96d93e75623`. It is built with the isolated
+`xWeatherRouting` identity used by this developer preview, so it does not
+replace a tester's ordinary Weather Routing installation.
+
+This refresh includes the 1.17 routing-resource and weather-table hardening,
+the current API 1.21 compatibility work, and clearer progress while chart
+safety scouts additional tiles. It is built directly from the pinned
+`pob220/weather_routing_pi` source revision; no tester-local or third-party
+working-tree changes are included.
