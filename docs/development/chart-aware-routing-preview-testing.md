@@ -101,7 +101,8 @@ rollback reference.
 
 The 2026-09-08 bundle updates the routing component to the clean Weather
 Routing 1.17.0.0 source at revision
-`2e361da07ee53b7a0090ded8ecaaf96d93e75623`. It is built with the isolated
+`a47e7cd43df56b0b976de3196d030c37ef02ff33` (runtime changes at
+`2e361da07ee53b7a0090ded8ecaaf96d93e75623`). It is built with the isolated
 `xWeatherRouting` identity used by this developer preview, so it does not
 replace a tester's ordinary Weather Routing installation.
 
