@@ -23,7 +23,10 @@ apt-get install -y --no-install-recommends \
   util-linux xauth
 pixbuf_query="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders"
 "$pixbuf_query" --update-cache
-grep -q libpixbufloader-svg.so "$(dirname "$pixbuf_query")/2.10.0/loaders.cache"
+if ! grep -Eq 'libpixbufloader[-_]svg[.]so' "$(dirname "$pixbuf_query")/2.10.0/loaders.cache"; then
+  echo 'SVG loader missing from the target gdk-pixbuf cache' >&2
+  exit 1
+fi
 python3 -m venv "$GITHUB_WORKSPACE/.ci-python"
 "$GITHUB_WORKSPACE/.ci-python/bin/pip" install \
   'packaging==25.0' 'setuptools==80.9.0' 'wheel==0.45.1' 'build==1.2.2.post1'
