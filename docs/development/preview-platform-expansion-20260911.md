@@ -44,8 +44,8 @@ proof of portability. Qualification must reject unresolved libraries; rebuild
 Polar or select a verified target-native helper if needed. Do not rename a
 Bookworm binary to imply it was built on another distribution.
 
-The macOS upstream dependency archive is recorded by SHA-256 for diagnosis; its
-expected checksum must be pinned before any distributable macOS bundle is made.
+The macOS upstream dependency archive is pinned to SHA-256
+`1a9422ee632effb0a47eb5fbaaf2effaf0c26b321a8155f824453fbafb058dc6`.
 Arch package versions and Flatpak SDK commits are recorded in the evidence.
 
 ## Targeted retries
@@ -61,4 +61,5 @@ core build), missing `gnupg` for Jammy PPA registration, explicit CA configurati
 for minimal Debian images, missing Windows Gettext PATH, and macOS dependency
 extraction through Homebrew symlinks. Clang's existing missing-override warnings
 remain visible but are not errors in the macOS probe. None of these changes
-alters Weather Routing code.
+alters Weather Routing code. The Apple CMake configuration also preserves
+caller-supplied C++ flags rather than silently replacing them.

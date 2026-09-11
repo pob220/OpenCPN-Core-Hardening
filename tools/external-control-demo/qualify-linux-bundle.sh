@@ -85,6 +85,9 @@ import sys
 config = configparser.RawConfigParser()
 config.optionxform = str
 config.read(sys.argv[1], encoding="utf-8")
+for key, value in {"RendererBackend": "software", "RendererFallbackBackend": "software", "OpenGL": "0"}.items():
+    if config.get("Settings", key, fallback=None) != value:
+        raise SystemExit(f"unsafe or unexpected initial renderer setting: {key}")
 expected = {
     "PlugIns/libgrib_pi.so": "0",
     "PlugIns/libxgrib_pi.so": "1",

@@ -8,6 +8,7 @@ curl --fail --location --retry 3 \
   https://dl.cloudsmith.io/public/nohal/opencpn-dependencies/raw/files/macos_deps_universal-opencpn.tar.xz \
   --output inputs/macos-deps.tar.xz
 shasum -a 256 inputs/macos-deps.tar.xz | tee evidence/dependencies.sha256
+echo '1a9422ee632effb0a47eb5fbaaf2effaf0c26b321a8155f824453fbafb058dc6  inputs/macos-deps.tar.xz' | shasum -a 256 --check
 # Keep upstream dependencies separate from Homebrew's symlinks and libraries.
 deps_dir="$PWD/inputs/macos-deps"
 mkdir -p "$deps_dir"

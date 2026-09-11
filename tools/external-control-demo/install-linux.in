@@ -119,6 +119,11 @@ token_digest=$(printf %s "$token" | sha256sum | cut -d ' ' -f 1)
 umask 077
 printf '%s\n' "$token" > "$stage_root/secrets/api-token"
 cat > "$stage_root/config/opencpn.conf" <<EOF
+[Settings]
+RendererBackend=software
+RendererFallbackBackend=software
+OpenGL=0
+
 [Settings/ExternalControl]
 Enabled=1
 AllowLan=0
