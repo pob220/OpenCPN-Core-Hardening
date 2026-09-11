@@ -15,6 +15,8 @@ jobs:
     timeout-minutes: 210
     container:
       image: ${{ matrix.image }}
+      volumes:
+      - /etc/ssl/certs/ca-certificates.crt:/tmp/preview-runner-ca.crt:ro
     defaults:
       run:
         shell: bash
@@ -62,6 +64,10 @@ jobs:
       run: |-
         set -euo pipefail
         export DEBIAN_FRONTEND=noninteractive
+        mkdir -p /etc/ssl/certs
+        cp /tmp/preview-runner-ca.crt /etc/ssl/certs/ca-certificates.crt
+        find /etc/apt/sources.list.d -type f \( -name '*.sources' -o -name '*.list' \) -exec sed -i 's|http://|https://|g' {} +
+        if [[ -f /etc/apt/sources.list ]]; then sed -i 's|http://|https://|g' /etc/apt/sources.list; fi
         apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
         apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends ca-certificates git
         printf '%s\n' 'Acquire::Retries "2";' 'Acquire::http::Timeout "30";' 'Acquire::https::Timeout "30";' 'APT::Update::Error-Mode "any";' > /etc/apt/apt.conf.d/80-preview-network

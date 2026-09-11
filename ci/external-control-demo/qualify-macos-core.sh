@@ -8,9 +8,12 @@ curl --fail --location --retry 3 \
   https://dl.cloudsmith.io/public/nohal/opencpn-dependencies/raw/files/macos_deps_universal-opencpn.tar.xz \
   --output inputs/macos-deps.tar.xz
 shasum -a 256 inputs/macos-deps.tar.xz | tee evidence/dependencies.sha256
-# Upstream ABI-compatible dependency layout; this is an ephemeral CI runner.
-sudo tar -C /usr/local -xJf inputs/macos-deps.tar.xz
+# Keep upstream dependencies separate from Homebrew's symlinks and libraries.
+deps_dir="$PWD/inputs/macos-deps"
+mkdir -p "$deps_dir"
+tar -C "$deps_dir" -xJf inputs/macos-deps.tar.xz
 export PATH="$(brew --prefix gettext)/bin:$PATH"
+export DYLD_LIBRARY_PATH="$deps_dir/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
 cmake -S . -B build-platform -G Ninja \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DCMAKE_INSTALL_PREFIX="$PWD/stage-platform" \
@@ -20,9 +23,10 @@ cmake -S . -B build-platform -G Ninja \
   -DOCPN_USE_VULKAN_PRESENTER=OFF -DOCPN_USE_GL=ON \
   -DOCPN_BUILD_TEST=ON -DOCPN_USE_DEPS_BUNDLE=ON \
   -DOCPN_USE_SYSTEM_LIBARCHIVE=OFF \
-  -DOCPN_DEPS_BUNDLE_PATH=/usr/local \
-  -DwxWidgets_CONFIG_EXECUTABLE=/usr/local/lib/wx/config/osx_cocoa-unicode-3.2 \
-  -DwxWidgets_CONFIG_OPTIONS=--prefix=/usr/local \
+  -DOCPN_DEPS_BUNDLE_PATH="$deps_dir" \
+  -DCMAKE_PREFIX_PATH="$deps_dir" \
+  -DwxWidgets_CONFIG_EXECUTABLE="$deps_dir/lib/wx/config/osx_cocoa-unicode-3.2" \
+  -DwxWidgets_CONFIG_OPTIONS="--prefix=$deps_dir" \
   2>&1 | tee evidence/configure.log
 cmake --build build-platform --parallel 3 2>&1 | tee evidence/build.log
 build-platform/test/tests \

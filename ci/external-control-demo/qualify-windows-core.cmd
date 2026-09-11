@@ -5,7 +5,7 @@ call buildwin\win_deps.bat wx32
 if errorlevel 1 exit /b 1
 call cache\wx-config.bat
 if errorlevel 1 exit /b 1
-set "PATH=!wxWidgets_LIB_DIR!;%PATH%"
+set "PATH=!wxWidgets_LIB_DIR!;%PROGRAMFILES%\Poedit\Gettexttools\bin;%PATH%"
 cmake -S . -B build-platform -G "Visual Studio 17 2022" -A Win32 ^
   -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
   -DwxWidgets_LIB_DIR=!wxWidgets_LIB_DIR! ^

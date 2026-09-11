@@ -41,7 +41,6 @@ apt-get install -y --no-install-recommends \
   libtinyxml-dev \
   libtool \
   libudev-dev \
-  libunarr-dev \
   libusb-1.0-0-dev \
   libwxgtk3.2-dev \
   libwxgtk-webview3.2-dev \
