@@ -1965,16 +1965,18 @@ void GRIBUICtrlBar::DoZoomToCenter() {
 
   ppm = wxMin(ppm, 1.0);
 
+  const wxString old_center_text =
+      old_vp_valid ? wxString::Format(_T("%.5f,%.5f"), old_clat, old_clon)
+                   : wxString(_T("N/A"));
+  const wxString old_scale_text =
+      old_vp_valid ? wxString::Format(_T("%.8f"), old_scale)
+                   : wxString(_T("N/A"));
   wxLogMessage(
       "GRIB zoom-to-center: auto_pref=%d old_center=%s old_scale=%s "
       "grib_bbox=[lat %.5f..%.5f lon %.5f..%.5f] target_center=%.5f,%.5f "
       "target_scale=%.8f canvas=%p",
       pPlugIn ? pPlugIn->m_bZoomToCenterAtInit : 0,
-      old_vp_valid ? wxString::Format(_T("%.5f,%.5f"), old_clat, old_clon)
-                         .c_str()
-                   : _T("N/A"),
-      old_vp_valid ? wxString::Format(_T("%.8f"), old_scale).c_str()
-                   : _T("N/A"),
+      old_center_text.c_str(), old_scale_text.c_str(),
       latmin, latmax, lonmin, lonmax, clat, clon, ppm, wx);
   CanvasJumpToPosition(wx, clat, clon, ppm);
 }
