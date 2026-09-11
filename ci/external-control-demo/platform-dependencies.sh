@@ -8,7 +8,7 @@ case "$ID:$VERSION_ID" in
 esac
 if [[ "$ID:$VERSION_ID" == ubuntu:22.04 ]]; then
   # Jammy's distribution wxWidgets is too old; use OpenCPN's signed PPA.
-  apt-get install -y --no-install-recommends software-properties-common
+  apt-get install -y --no-install-recommends software-properties-common gnupg
   add-apt-repository -y ppa:opencpn/opencpn
 fi
 ci/external-control-demo/install-debian-build-deps.sh
