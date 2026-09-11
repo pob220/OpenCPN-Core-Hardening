@@ -25,11 +25,23 @@ core["sources"][0] = {
     "url": "https://github.com/pob220/OpenCPN-Core-Hardening.git",
     "commit": core_revision,
 }
+core["sources"].append({
+    "type": "file",
+    "path": "../../ci/external-control-demo/verify-test-report.py",
+    "dest": "preview-ci",
+})
 core["config-opts"] = [
     option for option in core["config-opts"] if not option.startswith("-DOCPN_RELEASE=")
 ] + ["-DOCPN_RELEASE=0", "-DOCPN_BUILD_TEST=ON", "-DOCPN_USE_GL=ON",
      "-DOCPN_USE_VULKAN_PRESENTER=OFF"]
 # Supply GoogleTest as a hashed git source before entering the offline build.
+modules.insert(modules.index(core), {
+    "name": "nlohmann-json",
+    "buildsystem": "cmake-ninja",
+    "config-opts": ["-DJSON_BuildTests=OFF", "-DJSON_Install=ON"],
+    "sources": [{"type": "git", "url": "https://github.com/nlohmann/json.git",
+                 "commit": "55f93686c01528224f448c19128836e7df245f72"}],
+})
 modules.insert(modules.index(core), {
     "name": "googletest",
     "buildsystem": "cmake-ninja",
@@ -40,7 +52,9 @@ modules.insert(modules.index(core), {
 core["run-tests"] = True
 core["test-commands"] = [
     "test/tests --gtest_filter=ExternalApiTest.*:InProcessPlanningJobServiceTest.*:"
-    "BoundedApplicationEventStreamTest.*:ChartSafetyDepth.*:ChartSafetyService.*"
+    "BoundedApplicationEventStreamTest.*:ChartSafetyDepth.*:ChartSafetyService.* "
+    "--gtest_output=xml:preview-tests.xml",
+    "python3 ../preview-ci/verify-test-report.py preview-tests.xml",
 ]
 # Keep paths relative to the pinned upstream manifest directory.
 output = manifest_path.with_name("io.github.pob220.OpenCPNCorePreview.json")

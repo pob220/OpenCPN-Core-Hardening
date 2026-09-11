@@ -371,6 +371,12 @@ jobs:
         flatpak list --user --runtime --columns=ref,commit > evidence/sdk-commits.txt
         git rev-parse HEAD > evidence/source-commit.txt
         file build-flatpak/files/bin/opencpn > evidence/architecture.txt
+    - name: Retain actual Flatpak test report
+      if: always()
+      shell: bash
+      run: |-
+        find .flatpak-builder/build -type f -name preview-tests.xml \
+          -exec cp '{}' evidence/core-tests.xml \; 2>/dev/null || true
     - uses: actions/upload-artifact@v4
       if: always()
       with:
