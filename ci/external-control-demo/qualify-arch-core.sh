@@ -3,7 +3,7 @@ set -euo pipefail
 # Ephemeral Arch CI container only; this is not an installer for a user's host.
 mkdir -p evidence build-platform
 pacman -Syu --noconfirm --needed \
-  base-devel cmake ninja git gettext curl gtk3 wxwidgets-gtk3 wxwidgets-webview \
+  base-devel cmake ninja git gettext curl gtk3 wxwidgets-gtk3 \
   glew sqlite libarchive rapidjson nlohmann-json portaudio libsndfile libusb \
   libexif wxsvg bzip2 xz zlib dbus gtest mesa vulkan-headers vulkan-icd-loader
 pacman -Q > evidence/distribution-packages.txt

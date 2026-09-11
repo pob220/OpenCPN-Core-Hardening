@@ -1,0 +1,6 @@
+[
+  {"platform":"debian13-x86_64","image":"debian:trixie","runner":"ubuntu-24.04","target":"trixie","arch":"x86_64","machine":"Advanced Micro Devices X86-64","parallel":3},
+  {"platform":"debian13-arm64","image":"arm64v8/debian:trixie","runner":"ubuntu-24.04-arm","target":"trixie-arm64","arch":"aarch64","machine":"AArch64","parallel":2},
+  {"platform":"ubuntu24.04-x86_64","image":"ubuntu:24.04","runner":"ubuntu-24.04","target":"noble","arch":"x86_64","machine":"Advanced Micro Devices X86-64","parallel":3},
+  {"platform":"ubuntu22.04-x86_64","image":"ubuntu:22.04","runner":"ubuntu-24.04","target":"jammy","arch":"x86_64","machine":"Advanced Micro Devices X86-64","parallel":3}
+]

@@ -50,8 +50,9 @@ Arch package versions and Flatpak SDK commits are recorded in the evidence.
 
 ## Targeted retries
 
-Use the workflow's `platform_group` dispatch input: `linux`, `native`, `macos`,
-`portability`, or `all`. Corrective commits may use `[skip ci]`, followed by a
+Use the workflow's `platform_group` dispatch input: `linux`, `debian`, `ubuntu`,
+`native`, `macos`, `portability`, `arch`, `flatpak`, or `all`.
+Corrective commits may use `[skip ci]`, followed by a
 dispatch of only the affected group. This preserves evidence from unaffected
 jobs and avoids rebuilding every platform for a packaging-only fix.
 

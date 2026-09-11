@@ -15,14 +15,40 @@ name: Preview platform expansion qualification
         - native
         - macos
         - portability
+        - debian
+        - ubuntu
+        - arch
+        - flatpak
 permissions:
   contents: read
 concurrency:
   group: preview-platform-${{ github.ref }}-${{ inputs.platform_group || 'all' }}
   cancel-in-progress: false
 jobs:
+  linux-matrix:
+    if: ${{ github.event_name != 'workflow_dispatch' || contains(fromJSON('["all","linux","debian","ubuntu"]'), inputs.platform_group) }}
+    runs-on: ubuntu-24.04
+    outputs:
+      targets: ${{ steps.select.outputs.targets }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: select
+      env:
+        PLATFORM_GROUP: ${{ inputs.platform_group || 'all' }}
+      run: |-
+        python3 - <<'PY'
+        import json, os
+        from pathlib import Path
+        targets = json.loads(Path('ci/external-control-demo/linux-platforms.json').read_text())
+        group = os.environ['PLATFORM_GROUP']
+        if group in ('debian', 'ubuntu'):
+            targets = [target for target in targets if target['platform'].startswith(group)]
+        assert targets
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+            output.write('targets=' + json.dumps({'include': targets}) + '\n')
+        PY
   linux-bundle:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platform_group == 'all' || inputs.platform_group == 'linux' }}
+    needs: linux-matrix
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 210
     container:
@@ -34,36 +60,7 @@ jobs:
         shell: bash
     strategy:
       fail-fast: false
-      matrix:
-        include:
-        - platform: debian13-x86_64
-          image: debian:trixie
-          runner: ubuntu-24.04
-          target: trixie
-          arch: x86_64
-          machine: Advanced Micro Devices X86-64
-          parallel: 3
-        - platform: debian13-arm64
-          image: arm64v8/debian:trixie
-          runner: ubuntu-24.04-arm
-          target: trixie-arm64
-          arch: aarch64
-          machine: AArch64
-          parallel: 2
-        - platform: ubuntu24.04-x86_64
-          image: ubuntu:24.04
-          runner: ubuntu-24.04
-          target: noble
-          arch: x86_64
-          machine: Advanced Micro Devices X86-64
-          parallel: 3
-        - platform: ubuntu22.04-x86_64
-          image: ubuntu:22.04
-          runner: ubuntu-24.04
-          target: jammy
-          arch: x86_64
-          machine: Advanced Micro Devices X86-64
-          parallel: 3
+      matrix: ${{ fromJSON(needs.linux-matrix.outputs.targets) }}
     env:
       OCPN_TARGET: ${{ matrix.target }}
       EXPECTED_ELF_MACHINE: ${{ matrix.machine }}
@@ -309,13 +306,16 @@ jobs:
           build-platform/CMakeFiles/CMakeConfigureLog.yaml
         if-no-files-found: warn
   arch-core:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platform_group == 'all' || inputs.platform_group == 'portability' }}
+    if: ${{ github.event_name != 'workflow_dispatch' || contains(fromJSON('["all","portability","arch"]'), inputs.platform_group) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     container: archlinux:base-devel
     steps:
     - name: Bootstrap Arch checkout tools
-      run: pacman -Syu --noconfirm --needed git ca-certificates
+      run: |-
+        pacman-key --init
+        pacman-key --populate archlinux
+        pacman -Syu --noconfirm --needed git ca-certificates
     - uses: actions/checkout@v4
       with:
         submodules: false
@@ -331,7 +331,7 @@ jobs:
           build-platform/CMakeFiles/CMakeConfigureLog.yaml
         if-no-files-found: warn
   flatpak-core:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platform_group == 'all' || inputs.platform_group == 'portability' }}
+    if: ${{ github.event_name != 'workflow_dispatch' || contains(fromJSON('["all","portability","flatpak"]'), inputs.platform_group) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 180
     strategy:
