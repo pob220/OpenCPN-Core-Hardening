@@ -77,3 +77,54 @@ local Clang C++17 syntax check passes. GNU Patch is installed on macOS, and
 ShapeFileCpp staging/patch commands now propagate failures instead of hiding
 them behind a second `execute_process` command. The four dependency patches
 were checked locally against a fresh source copy.
+
+The GRIB zoom diagnostic now keeps both conditional values as `wxString`
+before formatting: this avoids Apple's writable-string conversion error
+without changing routing or rendering behaviour. A local Clang C++17 check
+with `-Werror -Wwritable-strings` passes.
+
+The shapelib and RapidJSON patch commands also ran concurrently with an echo
+command in a [CMake pipeline](https://cmake.org/cmake/help/latest/command/execute_process.html).
+That could close the patch output pipe early and
+hid patch failures; an Arch retry exposed a truncated dependency CMake file.
+Each patch now runs alone, with its result checked. Already-applied patches
+are recognised by a non-mutating reverse dry run, and incompatible sources
+still fail. Regression tests cover fresh application, repeated configuration,
+and failure propagation. All three pinned shapelib patches were applied twice
+locally and the resulting dependency configured successfully.
+
+Arch trusts only its exact ephemeral CI checkout for Git commands, including
+the version queries made by CMake. No wildcard safe-directory exception is used.
+
+Flatpak prefetches nlohmann-json 3.12.0 at commit
+`55f93686c01528224f448c19128836e7df245f72` before entering its offline build
+sandbox; CMake must not try to fetch this dependency during the build.
+Its test phase uses explicit GoogleTest commands and XML validation, with an
+empty [`test-rule`](https://docs.flatpak.org/en/latest/flatpak-builder-command-reference.html)
+to avoid Flatpak's default `make check` target, which this
+CMake project does not define. Tests remain enabled; missing or failed reports
+are fatal. The generated manifest's isolation, source pins and test invocation
+are covered by a local regression test.
+
+## Independently checked evidence
+
+The following results were checked from downloaded artifacts, not just the
+workflow's green/red status. This table records targeted runs; it does not
+claim that all platforms came from one revision or that native core probes
+are installable bundles.
+
+| Target | Run | Checked result |
+| --- | --- | --- |
+| Windows x86 core | [34600329911](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34600329911) | 36 focused core tests passed, XML independently validated |
+| Ubuntu 22.04 x86_64 bundle | [34599029187](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34599029187) | 36 core and 222 Weather Routing tests passed; isolated bundle qualification passed; 91 ELF files architecture-checked |
+| Ubuntu 24.04 x86_64 bundle | [34598503167](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34598503167) | 36 core and 222 Weather Routing tests passed; isolated bundle qualification passed; 96 ELF files architecture-checked |
+| Debian 13 x86_64 bundle | [34599811275](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34599811275) | 36 core and 222 Weather Routing tests passed; isolated bundle qualification passed; 98 ELF files architecture-checked |
+| Debian 13 ARM64 bundle | [34599811275](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34599811275) | 36 core and 222 Weather Routing tests passed; isolated bundle qualification passed; 98 ELF files checked as AArch64 |
+| macOS Apple Silicon core | [34601989436](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34601989436) | 36 focused core tests passed; XML independently validated; executable checked as Mach-O ARM64 |
+| macOS Intel core | [34601989436](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34601989436) | 36 focused core tests passed; XML independently validated; executable checked as Mach-O x86_64 |
+| Arch Linux x86_64 core | [34602485919](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34602485919) | 47 core/renderer tests passed; XML independently validated; native x86_64 ELF and no unresolved `ldd` dependencies |
+
+Some of these older runs contain failed jobs for other targets which were
+subsequently retried separately. Arch run 34600696702 compiled and passed 47
+tests, but its source-revision evidence step failed; it is not a successful
+complete qualification run.
