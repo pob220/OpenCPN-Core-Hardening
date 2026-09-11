@@ -19,7 +19,19 @@ if (NOT PATCH)
 endif()
 
 execute_process(
-  COMMAND ${PATCH} -p1 --ignore-whitespace
+  COMMAND ${PATCH} -p1 --ignore-whitespace --batch --reverse --forward --dry-run
+  INPUT_FILE ${patch_file}
+  WORKING_DIRECTORY ${patch_dir}
+  TIMEOUT 15
+  RESULT_VARIABLE already_applied
+  OUTPUT_QUIET ERROR_QUIET
+)
+if (already_applied EQUAL 0)
+  return ()
+endif ()
+
+execute_process(
+  COMMAND ${PATCH} -p1 --ignore-whitespace --batch --forward
   INPUT_FILE ${patch_file}
   WORKING_DIRECTORY ${patch_dir}
   TIMEOUT 15

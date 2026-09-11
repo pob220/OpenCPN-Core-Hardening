@@ -66,5 +66,29 @@ class PlatformMatrix(unittest.TestCase):
             self.assertGreater(target["parallel"], 0)
 
 
+class DependencyPatching(unittest.TestCase):
+    def test_patch_reconfigure_and_failure(self):
+        source_root = HERE.parent.parent
+        for dependency in ("shapelib", "rapidjson"):
+            with self.subTest(dependency=dependency), tempfile.TemporaryDirectory(
+                prefix="preview-patch-test-"
+            ) as work:
+                source = Path(work) / "sample.txt"
+                source.write_text("before\n")
+                patch = Path(work) / "change.patch"
+                patch.write_text(
+                    "--- a/sample.txt\n+++ b/sample.txt\n@@ -1 +1 @@\n-before\n+after\n"
+                )
+                command = ["cmake", f"-Dpatch_file={patch}", f"-Dpatch_dir={work}",
+                           "-P", str(source_root / "libs" / dependency / "cmake/PatchFile.cmake")]
+                for _ in range(2):
+                    result = subprocess.run(command, capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertEqual(source.read_text(), "after\n")
+                source.write_text("incompatible source\n")
+                result = subprocess.run(command, capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

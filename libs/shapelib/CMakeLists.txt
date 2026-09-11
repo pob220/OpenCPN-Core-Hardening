@@ -75,8 +75,12 @@ foreach (patch ${patches})
       -Dpatch_file=${CMAKE_CURRENT_SOURCE_DIR}/patches/${patch}
       -Dpatch_dir=${src_dir}
       -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/PatchFile.cmake
-    COMMAND ${CMAKE_COMMAND} -E echo "-- Applying patch ${patch}"
+    RESULT_VARIABLE patch_result
   )
+  if (NOT patch_result EQUAL 0)
+    message(FATAL_ERROR "Failed to apply shapelib patch ${patch}")
+  endif ()
+  message(STATUS "Applied shapelib patch ${patch}")
 endforeach ()
 
 # Configure
