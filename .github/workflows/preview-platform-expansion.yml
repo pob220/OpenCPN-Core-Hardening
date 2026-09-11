@@ -13,6 +13,8 @@ name: Preview platform expansion qualification
         - all
         - linux
         - native
+        - macos
+        - portability
 permissions:
   contents: read
 concurrency:
@@ -278,7 +280,7 @@ jobs:
           build-platform/CMakeFiles/CMakeConfigureLog.yaml
         if-no-files-found: warn
   macos-core:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platform_group == 'all' || inputs.platform_group == 'native' }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platform_group == 'all' || inputs.platform_group == 'native' || inputs.platform_group == 'macos' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:
@@ -305,4 +307,72 @@ jobs:
           evidence
           build-platform/CMakeCache.txt
           build-platform/CMakeFiles/CMakeConfigureLog.yaml
+        if-no-files-found: warn
+  arch-core:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platform_group == 'all' || inputs.platform_group == 'portability' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    container: archlinux:base-devel
+    steps:
+    - name: Bootstrap Arch checkout tools
+      run: pacman -Syu --noconfirm --needed git ca-certificates
+    - uses: actions/checkout@v4
+      with:
+        submodules: false
+    - name: Rolling Arch core qualification - no installer publication
+      run: bash ci/external-control-demo/qualify-arch-core.sh
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: archlinux-x86_64-core-evidence-NOT-A-BUNDLE
+        path: |-
+          evidence
+          build-platform/CMakeCache.txt
+          build-platform/CMakeFiles/CMakeConfigureLog.yaml
+        if-no-files-found: warn
+  flatpak-core:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platform_group == 'all' || inputs.platform_group == 'portability' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - runner: ubuntu-24.04
+          arch: x86_64
+        - runner: ubuntu-24.04-arm
+          arch: aarch64
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: false
+    - name: Prepare pinned upstream SDK manifest with isolated preview identity
+      shell: bash
+      run: |-
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install -y flatpak flatpak-builder python3-yaml
+        mkdir -p inputs evidence
+        git clone https://github.com/flathub/org.opencpn.OpenCPN.git inputs/flatpak-manifest
+        git -C inputs/flatpak-manifest checkout --detach e2b8d9f9518a36ea961fa520bc6969416dbb6020
+        python3 ci/external-control-demo/prepare-flatpak-probe.py \
+          inputs/flatpak-manifest/org.opencpn.OpenCPN.yaml "$GITHUB_SHA"
+        cp inputs/flatpak-manifest/io.github.pob220.OpenCPNCorePreview.json evidence/
+        flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+    - name: Compile and test in the matching architecture SDK - no publication
+      shell: bash
+      run: |-
+        set -euo pipefail
+        flatpak-builder --user --install-deps-from=flathub --disable-cache \
+          --keep-build-dirs --arch=${{ matrix.arch }} --jobs=3 \
+          build-flatpak inputs/flatpak-manifest/io.github.pob220.OpenCPNCorePreview.json \
+          2>&1 | tee evidence/flatpak-build.log
+        flatpak list --user --runtime --columns=ref,commit > evidence/sdk-commits.txt
+        git rev-parse HEAD > evidence/source-commit.txt
+        file build-flatpak/files/bin/opencpn > evidence/architecture.txt
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: flatpak-${{ matrix.arch }}-core-evidence-NOT-A-BUNDLE
+        path: evidence
         if-no-files-found: warn

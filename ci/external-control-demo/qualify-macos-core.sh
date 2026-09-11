@@ -16,6 +16,7 @@ export PATH="$(brew --prefix gettext)/bin:$PATH"
 export DYLD_LIBRARY_PATH="$deps_dir/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
 cmake -S . -B build-platform -G Ninja \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_CXX_FLAGS=-Wno-error=inconsistent-missing-override \
   -DCMAKE_INSTALL_PREFIX="$PWD/stage-platform" \
   -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
   -DCMAKE_OSX_ARCHITECTURES="$PREVIEW_ARCH" \
