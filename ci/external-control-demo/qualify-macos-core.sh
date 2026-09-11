@@ -34,6 +34,7 @@ cmake --build build-platform --parallel 3 2>&1 | tee evidence/build.log
 build-platform/test/tests \
   --gtest_filter='ExternalApiTest.*:InProcessPlanningJobServiceTest.*:BoundedApplicationEventStreamTest.*:ChartSafetyDepth.*:ChartSafetyService.*' \
   --gtest_output=xml:evidence/core-tests.xml 2>&1 | tee evidence/tests.log
+python3 ci/external-control-demo/verify-test-report.py evidence/core-tests.xml
 git rev-parse HEAD > evidence/source-commit.txt
 file build-platform/OpenCPN.app/Contents/MacOS/OpenCPN | tee evidence/architecture.txt
 otool -L build-platform/OpenCPN.app/Contents/MacOS/OpenCPN > evidence/dependencies.txt

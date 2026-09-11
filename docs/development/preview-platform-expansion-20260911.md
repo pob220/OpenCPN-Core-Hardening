@@ -51,7 +51,7 @@ Arch package versions and Flatpak SDK commits are recorded in the evidence.
 ## Targeted retries
 
 Use the workflow's `platform_group` dispatch input: `linux`, `debian`, `ubuntu`,
-`native`, `macos`, `portability`, `arch`, `flatpak`, or `all`.
+`native`, `windows`, `macos`, `portability`, `arch`, `flatpak`, or `all`.
 Corrective commits may use `[skip ci]`, followed by a
 dispatch of only the affected group. This preserves evidence from unaffected
 jobs and avoids rebuilding every platform for a packaging-only fix.
@@ -63,3 +63,9 @@ extraction through Homebrew symlinks. Clang's existing missing-override warnings
 remain visible but are not errors in the macOS probe. None of these changes
 alters Weather Routing code. The Apple CMake configuration also preserves
 caller-supplied C++ flags rather than silently replacing them.
+
+The initial Windows job compiled successfully but produced no GoogleTest XML.
+It is **not** counted as a test pass. Windows batch checks now reject negative
+process exit statuses, use the native dependency path for the test executable,
+and require a nonempty, failure-free XML report containing the API and
+chart-safety suites. macOS and Arch probes validate their XML reports too.
