@@ -2,7 +2,7 @@
 set -euo pipefail
 # Build probe only: not an installer and never a release upload. All plugins,
 # helpers, signing and isolated profile integration must qualify separately.
-brew install cmake ninja gettext create-dmg
+brew install cmake ninja gettext create-dmg gpatch
 mkdir -p inputs build-platform evidence
 curl --fail --location --retry 3 \
   https://dl.cloudsmith.io/public/nohal/opencpn-dependencies/raw/files/macos_deps_universal-opencpn.tar.xz \

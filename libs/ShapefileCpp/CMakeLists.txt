@@ -39,16 +39,24 @@ endif ()
 #
 execute_process(
   COMMAND ${CMAKE_COMMAND} -E copy_directory ${orig_src_dir} ${src_dir}
-  COMMAND ${CMAKE_COMMAND} -E echo "PatchFileCpp: using patched sources at ${src_dir}"
+  RESULT_VARIABLE copy_result
 )
+if (NOT copy_result EQUAL 0)
+  message(FATAL_ERROR "Failed to stage ShapeFileCpp sources at ${src_dir}")
+endif ()
+message(STATUS "PatchFileCpp: using patched sources at ${src_dir}")
 foreach (patch ${patches})
   execute_process(
     COMMAND ${CMAKE_COMMAND}
       -Dpatch_file=${CMAKE_CURRENT_SOURCE_DIR}/patches/${patch}
       -Dpatch_dir=${src_dir}
       -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/PatchFile.cmake
-    COMMAND ${CMAKE_COMMAND} -E echo "-- Applying patch ${patch}"
+    RESULT_VARIABLE patch_result
   )
+  if (NOT patch_result EQUAL 0)
+    message(FATAL_ERROR "Failed to apply ShapeFileCpp patch ${patch}")
+  endif ()
+  message(STATUS "Applied patch ${patch}")
 endforeach ()
 
 set(ShapefileCppLib_SOURCES

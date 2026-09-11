@@ -1023,7 +1023,10 @@ public:
       const std::function<void(double)>& report_progress) override {
     using nlohmann::json;
     json parameters = json::object();
-    for (const auto& [name, value] : request.parameters) {
+    for (const auto& parameter : request.parameters) {
+      // Capturing a structured binding requires C++20; the core targets C++17.
+      const auto& name = parameter.first;
+      const auto& value = parameter.second;
       std::visit(
           [&](const auto& item) {
             using Value = std::decay_t<decltype(item)>;

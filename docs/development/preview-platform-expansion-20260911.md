@@ -69,3 +69,11 @@ It is **not** counted as a test pass. Windows batch checks now reject negative
 process exit statuses, use the native dependency path for the test executable,
 and require a nonempty, failure-free XML report containing the API and
 chart-safety suites. macOS and Arch probes validate their XML reports too.
+
+Apple Clang also identified a C++20-only structured-binding lambda capture in
+the environmental request encoder. It now uses ordinary references with the
+same value conversion, compatible with the declared C++17 standard. A strict
+local Clang C++17 syntax check passes. GNU Patch is installed on macOS, and
+ShapeFileCpp staging/patch commands now propagate failures instead of hiding
+them behind a second `execute_process` command. The four dependency patches
+were checked locally against a fresh source copy.
