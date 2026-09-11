@@ -150,7 +150,9 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/xgrib_pi.git inputs/xgrib_pi
-          git -C inputs/xgrib_pi checkout 446814bafe6edfeaf23fadc3f478864f56d81362
+          git -C inputs/xgrib_pi checkout b4fd23d75df24e6c8bb6c3ac2ac502dd8e15b637
+          git -C inputs/xgrib_pi apply --check "$GITHUB_WORKSPACE/ci/external-control-demo/xgrib-0.2.5.1-provider.patch"
+          git -C inputs/xgrib_pi apply "$GITHUB_WORKSPACE/ci/external-control-demo/xgrib-0.2.5.1-provider.patch"
           git -C inputs/xgrib_pi submodule update --init --recursive
           test "$(git -C inputs/xgrib_pi/generator rev-parse HEAD)" = \
             6156c997191ffbfa9fba39385e84fa06a2fed353
@@ -169,7 +171,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/weather_routing_pi.git inputs/xweather_routing_pi
-          git -C inputs/xweather_routing_pi checkout c8f7c2db07f7e413e9692421be1bdee936b4adf3
+          git -C inputs/xweather_routing_pi checkout 49036e934a4102d8426819f92f3cc5f61ead717f
           git -C inputs/xweather_routing_pi submodule update --init --recursive
           inputs/xweather_routing_pi/ci/build-linux-catalogue.sh \
             inputs/xweather_routing_pi inputs/xweather-build
@@ -212,9 +214,9 @@ jobs:
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/celestial_navigation_pi.git \
             inputs/celestial_navigation_pi
-          git -C inputs/celestial_navigation_pi checkout --detach c76bd3efbb8fbf46971a09d972f5acb24feec3fd
+          git -C inputs/celestial_navigation_pi checkout --detach 49ecbe0c8b68e486595c86966054a741a97f6475
           test "$(git -C inputs/celestial_navigation_pi rev-parse HEAD)" = \
-            c76bd3efbb8fbf46971a09d972f5acb24feec3fd
+            49ecbe0c8b68e486595c86966054a741a97f6475
           git -C inputs/celestial_navigation_pi submodule update --init --recursive
           curl --fail --location \
             https://github.com/pob220/celestial_navigation_pi/releases/download/eclipse-data-2026.1/de440s.bsp \
@@ -236,7 +238,7 @@ jobs:
           core_installer=$(find inputs/core/package -maxdepth 1 -type f -name '*.sh' -print -quit)
           test -n "$core_installer"
           core_revision=$(cat inputs/core/source-commit.txt)
-          EXTERNAL_CONTROL_DEMO_DATE=2026-09-09 \
+          EXTERNAL_CONTROL_DEMO_DATE=2026-09-11 \
             EXTERNAL_CONTROL_CORE_REVISION="$core_revision" \
             tools/external-control-demo/assemble-linux.sh \
               "$core_installer" \
@@ -254,7 +256,7 @@ jobs:
         run: |
           qualification_log=candidate/qualification.log
           if ! tools/external-control-demo/qualify-linux-bundle.sh \
-              candidate/OpenCPN-External-Control-Demo-2026-09-09-debian12-x86_64 \
+              candidate/OpenCPN-External-Control-Demo-2026-09-11-debian12-x86_64 \
               'Advanced Micro Devices X86-64' >"$qualification_log" 2>&1; then
             cat "$qualification_log"
             exit 1
@@ -266,8 +268,8 @@ jobs:
         with:
           name: opencpn-external-control-demo-debian12-x86_64
           path: |
-            candidate/OpenCPN-External-Control-Demo-2026-09-09-debian12-x86_64.tar.gz
-            candidate/OpenCPN-External-Control-Demo-2026-09-09-debian12-x86_64.tar.gz.sha256
+            candidate/OpenCPN-External-Control-Demo-2026-09-11-debian12-x86_64.tar.gz
+            candidate/OpenCPN-External-Control-Demo-2026-09-11-debian12-x86_64.tar.gz.sha256
             candidate/qualification.log
           if-no-files-found: warn
           retention-days: 14
@@ -337,7 +339,9 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/xgrib_pi.git inputs/xgrib_pi
-          git -C inputs/xgrib_pi checkout 446814bafe6edfeaf23fadc3f478864f56d81362
+          git -C inputs/xgrib_pi checkout b4fd23d75df24e6c8bb6c3ac2ac502dd8e15b637
+          git -C inputs/xgrib_pi apply --check "$GITHUB_WORKSPACE/ci/external-control-demo/xgrib-0.2.5.1-provider.patch"
+          git -C inputs/xgrib_pi apply "$GITHUB_WORKSPACE/ci/external-control-demo/xgrib-0.2.5.1-provider.patch"
           git -C inputs/xgrib_pi submodule update --init --recursive
           test "$(git -C inputs/xgrib_pi/generator rev-parse HEAD)" = \
             6156c997191ffbfa9fba39385e84fa06a2fed353
@@ -356,7 +360,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/weather_routing_pi.git inputs/xweather_routing_pi
-          git -C inputs/xweather_routing_pi checkout c8f7c2db07f7e413e9692421be1bdee936b4adf3
+          git -C inputs/xweather_routing_pi checkout 49036e934a4102d8426819f92f3cc5f61ead717f
           git -C inputs/xweather_routing_pi submodule update --init --recursive
           inputs/xweather_routing_pi/ci/build-linux-catalogue.sh \
             inputs/xweather_routing_pi inputs/xweather-build
@@ -398,9 +402,9 @@ jobs:
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/celestial_navigation_pi.git \
             inputs/celestial_navigation_pi
-          git -C inputs/celestial_navigation_pi checkout --detach c76bd3efbb8fbf46971a09d972f5acb24feec3fd
+          git -C inputs/celestial_navigation_pi checkout --detach 49ecbe0c8b68e486595c86966054a741a97f6475
           test "$(git -C inputs/celestial_navigation_pi rev-parse HEAD)" = \
-            c76bd3efbb8fbf46971a09d972f5acb24feec3fd
+            49ecbe0c8b68e486595c86966054a741a97f6475
           git -C inputs/celestial_navigation_pi submodule update --init --recursive
           # The lunar-distance tests require DE440, but the full optional
           # eclipse data pack is deliberately not fetched or distributed.
@@ -424,7 +428,7 @@ jobs:
           core_installer=$(find inputs/core/package -maxdepth 1 -type f -name '*.sh' -print -quit)
           test -n "$core_installer"
           core_revision=$(cat inputs/core/source-commit.txt)
-          EXTERNAL_CONTROL_DEMO_DATE=2026-09-09 \
+          EXTERNAL_CONTROL_DEMO_DATE=2026-09-11 \
             EXTERNAL_CONTROL_CORE_REVISION="$core_revision" \
             tools/external-control-demo/assemble-linux.sh \
               "$core_installer" \
@@ -442,7 +446,7 @@ jobs:
         run: |
           qualification_log=candidate/qualification.log
           if ! tools/external-control-demo/qualify-linux-bundle.sh \
-              candidate/OpenCPN-External-Control-Demo-2026-09-09-debian12-arm64 \
+              candidate/OpenCPN-External-Control-Demo-2026-09-11-debian12-arm64 \
               AArch64 >"$qualification_log" 2>&1; then
             cat "$qualification_log"
             exit 1
@@ -454,8 +458,8 @@ jobs:
         with:
           name: opencpn-external-control-demo-debian12-arm64
           path: |
-            candidate/OpenCPN-External-Control-Demo-2026-09-09-debian12-arm64.tar.gz
-            candidate/OpenCPN-External-Control-Demo-2026-09-09-debian12-arm64.tar.gz.sha256
+            candidate/OpenCPN-External-Control-Demo-2026-09-11-debian12-arm64.tar.gz
+            candidate/OpenCPN-External-Control-Demo-2026-09-11-debian12-arm64.tar.gz.sha256
             candidate/qualification.log
           if-no-files-found: warn
           retention-days: 14

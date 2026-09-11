@@ -162,10 +162,10 @@ grep -q 'requests additional fail-closed safety' \
 grep -q 'eclipse-data-2026.1' \
   "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ||
   fail 'Celestial eclipse-data guidance does not link the pinned data release'
-grep -q '2.8.4.0 at c76bd3efbb8fbf46971a09d972f5acb24feec3fd' \
+grep -q '2.8.5.3 at 49ecbe0c8b68e486595c86966054a741a97f6475' \
   "$install_dir/docs/COMPONENTS.md" ||
-  fail 'component manifest does not identify reviewed Celestial Navigation 2.8.4'
-grep -q 'tree/c76bd3efbb8fbf46971a09d972f5acb24feec3fd' \
+  fail 'component manifest does not identify reviewed Celestial Navigation 2.8.5.3'
+grep -q 'tree/49ecbe0c8b68e486595c86966054a741a97f6475' \
   "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ||
   fail 'Celestial guidance does not link the exact reviewed source revision'
 "$install_dir/client/bin/python" -c \
