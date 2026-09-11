@@ -5,7 +5,8 @@ mkdir -p evidence build-platform
 pacman -Syu --noconfirm --needed \
   base-devel cmake ninja git gettext curl gtk3 wxwidgets-gtk3 lsb-release python \
   glew sqlite libarchive rapidjson nlohmann-json portaudio libsndfile libusb \
-  libexif wxsvg bzip2 xz zlib dbus gtest mesa vulkan-headers vulkan-icd-loader
+  libexif wxsvg bzip2 xz zlib dbus gtest mesa webkit2gtk-4.1 \
+  vulkan-headers vulkan-icd-loader
 pacman -Q > evidence/distribution-packages.txt
 cmake -S . -B build-platform -G Ninja \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=/usr/local \
