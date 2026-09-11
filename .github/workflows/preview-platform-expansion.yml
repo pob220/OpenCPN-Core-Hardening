@@ -368,7 +368,12 @@ jobs:
           --keep-build-dirs --arch=${{ matrix.arch }} --jobs=3 \
           build-flatpak inputs/flatpak-manifest/io.github.pob220.OpenCPNCorePreview.json \
           2>&1 | tee evidence/flatpak-build.log
-        flatpak list --user --runtime --columns=ref,commit > evidence/sdk-commits.txt
+        # Older supported Flatpak clients have no `list` commit column.
+        flatpak list --user --runtime --columns=ref > evidence/sdk-refs.txt
+        while IFS= read -r runtime_ref; do
+          printf '%s ' "$runtime_ref"
+          flatpak info --user --show-commit "$runtime_ref"
+        done < evidence/sdk-refs.txt > evidence/sdk-commits.txt
         git rev-parse HEAD > evidence/source-commit.txt
         file build-flatpak/files/bin/opencpn > evidence/architecture.txt
     - name: Retain actual Flatpak test report
