@@ -39,6 +39,8 @@ dbus-run-session "$test_binary" \
   --gtest_output="xml:$test_dir/external-control.xml" \
   --gtest_filter='ExternalApiTest.*:InProcessPlanningJobServiceTest.*:BoundedApplicationEventStreamTest.*:ChartSafetyDepth.*:ChartSafetyService.*' \
   2>&1 | tee "$log_dir/external-control-tests.log"
+python3 "$source_dir/ci/external-control-demo/verify-test-report.py" \
+  "$test_dir/external-control.xml"
 
 DESTDIR="$stage_dir" cmake --install "$build_dir" \
   2>&1 | tee "$log_dir/install.log"
