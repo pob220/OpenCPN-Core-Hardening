@@ -105,6 +105,11 @@ to avoid Flatpak's default `make check` target, which this
 CMake project does not define. Tests remain enabled; missing or failed reports
 are fatal. The generated manifest's isolation, source pins and test invocation
 are covered by a local regression test.
+SDK evidence uses `flatpak list --columns=ref` followed by
+`flatpak info --show-commit` for each installed runtime. Ubuntu's supported
+Flatpak client has no `list` column named `commit`; that metadata error had
+occurred after a successful ARM64 build and all 36 tests in run 34603398453.
+That failed overall job is not counted as a completed qualification.
 
 ## Independently checked evidence
 
@@ -112,6 +117,11 @@ The following results were checked from downloaded artifacts, not just the
 workflow's green/red status. This table records targeted runs; it does not
 claim that all platforms came from one revision or that native core probes
 are installable bundles.
+
+All ten qualification targets now have successful complete jobs. Each retained
+core XML report was downloaded and validated independently. The ten local
+qualification-tool regression tests also pass. Existing public preview assets
+and the user's installed OpenCPN were not modified.
 
 | Target | Run | Checked result |
 | --- | --- | --- |
@@ -123,6 +133,8 @@ are installable bundles.
 | macOS Apple Silicon core | [34601989436](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34601989436) | 36 focused core tests passed; XML independently validated; executable checked as Mach-O ARM64 |
 | macOS Intel core | [34601989436](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34601989436) | 36 focused core tests passed; XML independently validated; executable checked as Mach-O x86_64 |
 | Arch Linux x86_64 core | [34602485919](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34602485919) | 47 core/renderer tests passed; XML independently validated; native x86_64 ELF and no unresolved `ldd` dependencies |
+| Flatpak x86_64 core | [34605890322](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34605890322) | 36 focused core tests passed inside the SDK sandbox; XML independently validated; native x86_64 ELF and SDK commit evidence retained |
+| Flatpak ARM64 core | [34605890322](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34605890322) | 36 focused core tests passed inside the SDK sandbox; XML independently validated; native AArch64 ELF and SDK commit evidence retained |
 
 Some of these older runs contain failed jobs for other targets which were
 subsequently retried separately. Arch run 34600696702 compiled and passed 47
