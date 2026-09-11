@@ -50,6 +50,9 @@ modules.insert(modules.index(core), {
                  "commit": "58d77fa8070e8cec2dc1ed015d66b454c8d78850"}],
 })
 core["run-tests"] = True
+# Flatpak defaults to `make check`; OpenCPN uses explicit GoogleTest commands.
+# Disable only the implicit target, not the test phase or report validation.
+core["test-rule"] = ""
 core["test-commands"] = [
     "test/tests --gtest_filter=ExternalApiTest.*:InProcessPlanningJobServiceTest.*:"
     "BoundedApplicationEventStreamTest.*:ChartSafetyDepth.*:ChartSafetyService.* "

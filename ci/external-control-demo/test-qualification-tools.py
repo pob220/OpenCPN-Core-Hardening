@@ -66,6 +66,39 @@ class PlatformMatrix(unittest.TestCase):
             self.assertGreater(target["parallel"], 0)
 
 
+class FlatpakManifest(unittest.TestCase):
+    def test_isolation_pins_and_explicit_tests(self):
+        with tempfile.TemporaryDirectory(prefix="preview-manifest-test-") as work:
+            original = Path(work) / "org.opencpn.OpenCPN.yaml"
+            original.write_text(json.dumps({
+                "app-id": "org.opencpn.OpenCPN", "add-extensions": {"stock": {}},
+                "finish-args": ["--filesystem=home"],
+                "modules": [{"name": "opencpn", "config-opts": ["-DOCPN_RELEASE=1"],
+                             "sources": [{"type": "git", "url": "https://example.invalid"}]}],
+            }))
+            revision = "a" * 40
+            result = subprocess.run(
+                [sys.executable, str(HERE / "prepare-flatpak-probe.py"), str(original), revision],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            manifest = json.loads(Path(result.stdout.strip()).read_text())
+            self.assertEqual(manifest["app-id"], "io.github.pob220.OpenCPNCorePreview")
+            self.assertNotIn("add-extensions", manifest)
+            self.assertFalse(any("filesystem" in arg for arg in manifest["finish-args"]))
+            core = manifest["modules"][-1]
+            self.assertEqual(core["sources"][0]["commit"], revision)
+            self.assertTrue(core["run-tests"])
+            self.assertEqual(core["test-rule"], "")
+            self.assertEqual(len(core["test-commands"]), 2)
+            self.assertIn("--gtest_output=xml:", core["test-commands"][0])
+            self.assertIn("verify-test-report.py", core["test-commands"][1])
+            self.assertEqual([m["name"] for m in manifest["modules"][:-1]],
+                             ["nlohmann-json", "googletest"])
+            for dependency in manifest["modules"][:-1]:
+                self.assertRegex(dependency["sources"][0]["commit"], r"^[0-9a-f]{40}$")
+
+
 class DependencyPatching(unittest.TestCase):
     def test_patch_reconfigure_and_failure(self):
         source_root = HERE.parent.parent
