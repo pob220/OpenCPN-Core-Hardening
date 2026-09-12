@@ -19,6 +19,14 @@ on:
         description: Optional successful workflow run containing the x86_64 core artifact
         required: false
         type: string
+      candidate_run_id:
+        description: Optional existing candidate run to requalify without rebuilding plugins (also supply both core run IDs)
+        required: false
+        type: string
+      candidate_source:
+        description: Required assembly commit SHA when requalifying an existing candidate
+        required: false
+        type: string
 
 jobs:
   debian12-arm64:
@@ -126,6 +134,7 @@ jobs:
           python3 -m pip install --break-system-packages \
             'packaging==25.0' 'setuptools==80.9.0' 'wheel==0.45.1'
       - uses: actions/download-artifact@v4
+        if: ${{ inputs.candidate_run_id == '' }}
         with:
           name: opencpn-external-control-core-debian12-x86_64
           path: inputs/core
@@ -133,6 +142,7 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ inputs.x86_core_run_id || github.run_id }}
       - name: Fetch exact qualified plug-in and o-charts runtime packages
+        if: ${{ inputs.candidate_run_id == '' }}
         run: |
           mkdir -p inputs/plugins
           curl --fail --location \
@@ -144,6 +154,7 @@ jobs:
           echo '6130386533e5661cc6f940a30ab0633af5c30ec5efac2697d72e08634cbb08fc  inputs/plugins/polar.tar.gz' | sha256sum --check
           echo '432eccc267d9ca70d2fcd067db5e792d88fd5c437013d11da8d96ef131252dd0  inputs/plugins/ocharts-official.tar.gz' | sha256sum --check
       - name: Build and test exact fixed xGRIB source
+        if: ${{ inputs.candidate_run_id == '' }}
         env:
           CMAKE_BUILD_PARALLEL_LEVEL: '3'
           OCPN_TARGET: bookworm
@@ -164,6 +175,7 @@ jobs:
           test -n "$xgrib_archive"
           cp "$xgrib_archive" inputs/plugins/xgrib.tar.gz
       - name: Build and test exact chart-aware xWeatherRouting source
+        if: ${{ inputs.candidate_run_id == '' }}
         env:
           CMAKE_BUILD_PARALLEL_LEVEL: '3'
           CIRCLE_PROJECT_REPONAME: xweather_routing_pi
@@ -180,6 +192,7 @@ jobs:
           test -n "$xweather_archive"
           cp "$xweather_archive" inputs/plugins/xweather.tar.gz
       - name: Build exact o-charts chart-safety provider
+        if: ${{ inputs.candidate_run_id == '' }}
         env:
           CMAKE_BUILD_PARALLEL_LEVEL: '3'
           OCPN_TARGET: bookworm
@@ -194,6 +207,7 @@ jobs:
             inputs/plugins/ocharts-preview.tar.gz \
             'Advanced Micro Devices X86-64'
       - name: Build and test exact upgraded Climatology source
+        if: ${{ inputs.candidate_run_id == '' }}
         env:
           CMAKE_BUILD_PARALLEL_LEVEL: '3'
           OCPN_TARGET: bookworm
@@ -206,6 +220,7 @@ jobs:
             inputs/plugins/climatology.tar.gz \
             'Advanced Micro Devices X86-64'
       - name: Build and test exact upgraded Celestial Navigation source
+        if: ${{ inputs.candidate_run_id == '' }}
         env:
           CMAKE_BUILD_PARALLEL_LEVEL: '3'
           GIT_LFS_SKIP_SMUDGE: '1'
@@ -230,10 +245,12 @@ jobs:
             inputs/plugins/celestial-navigation.tar.gz \
             'Advanced Micro Devices X86-64'
       - name: Check out exact Scheduler source
+        if: ${{ inputs.candidate_run_id == '' }}
         run: |
           git clone https://github.com/pob220/opencpn-scheduler.git inputs/opencpn-scheduler
           git -C inputs/opencpn-scheduler checkout 539e1e80a00aa2ca0df0853fc9ebd0f4c8bffa9e
       - name: Assemble isolated bundle
+        if: ${{ inputs.candidate_run_id == '' }}
         run: |
           core_installer=$(find inputs/core/package -maxdepth 1 -type f -name '*.sh' -print -quit)
           test -n "$core_installer"
@@ -250,6 +267,28 @@ jobs:
               inputs/plugins/celestial-navigation.tar.gz \
               inputs/opencpn-scheduler \
               candidate debian12-x86_64 x86_64
+      - name: Download existing candidate for qualification
+        if: ${{ inputs.candidate_run_id != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: opencpn-external-control-demo-debian12-x86_64
+          path: candidate
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.candidate_run_id }}
+      - name: Verify and extract the exact existing candidate
+        if: ${{ inputs.candidate_run_id != '' }}
+        env:
+          EXPECTED_CANDIDATE_SOURCE: ${{ inputs.candidate_source }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_CANDIDATE_SOURCE" =~ ^[0-9a-f]{40}$ ]]
+          cd candidate
+          archive=OpenCPN-External-Control-Demo-2026-09-12-debian12-x86_64.tar.gz
+          sha256sum --check "$archive.sha256"
+          tar -xzf "$archive"
+          grep -F "$EXPECTED_CANDIDATE_SOURCE" "${archive%.tar.gz}/COMPONENTS.md"
       - name: Clean-install and API/MCP smoke qualification
         env:
           RUN_GUI_SMOKE: '1'
@@ -315,6 +354,7 @@ jobs:
           python3 -m pip install --break-system-packages \
             'packaging==25.0' 'setuptools==80.9.0' 'wheel==0.45.1'
       - uses: actions/download-artifact@v4
+        if: ${{ inputs.candidate_run_id == '' }}
         with:
           name: opencpn-external-control-core-debian12-arm64
           path: inputs/core
@@ -322,6 +362,7 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ inputs.core_run_id || github.run_id }}
       - name: Fetch exact qualified plug-in and o-charts runtime packages
+        if: ${{ inputs.candidate_run_id == '' }}
         run: |
           mkdir -p inputs/plugins
           curl --fail --location \
@@ -333,6 +374,7 @@ jobs:
           echo '85e000060e7f10df4a01424257e685ac6a8b8bd1cd145030a1a4c8bdb50ce470  inputs/plugins/polar.tar.gz' | sha256sum --check
           echo '861ad2ec41b00afbbabcae1d7bd989d2afec3c9e428227cecb28b9b87fffe104  inputs/plugins/ocharts-official.tar.gz' | sha256sum --check
       - name: Build and test exact fixed xGRIB source
+        if: ${{ inputs.candidate_run_id == '' }}
         env:
           CMAKE_BUILD_PARALLEL_LEVEL: '2'
           OCPN_TARGET: bookworm-arm64
@@ -353,6 +395,7 @@ jobs:
           test -n "$xgrib_archive"
           cp "$xgrib_archive" inputs/plugins/xgrib.tar.gz
       - name: Build and test exact chart-aware xWeatherRouting source
+        if: ${{ inputs.candidate_run_id == '' }}
         env:
           CMAKE_BUILD_PARALLEL_LEVEL: '2'
           CIRCLE_PROJECT_REPONAME: xweather_routing_pi
@@ -369,6 +412,7 @@ jobs:
           test -n "$xweather_archive"
           cp "$xweather_archive" inputs/plugins/xweather.tar.gz
       - name: Build exact o-charts chart-safety provider
+        if: ${{ inputs.candidate_run_id == '' }}
         env:
           CMAKE_BUILD_PARALLEL_LEVEL: '2'
           OCPN_TARGET: bookworm-arm64
@@ -382,6 +426,7 @@ jobs:
             inputs/plugins/ocharts-official.tar.gz \
             inputs/plugins/ocharts-preview.tar.gz AArch64
       - name: Build and test exact upgraded Climatology source
+        if: ${{ inputs.candidate_run_id == '' }}
         env:
           CMAKE_BUILD_PARALLEL_LEVEL: '2'
           OCPN_TARGET: bookworm-arm64
@@ -394,6 +439,7 @@ jobs:
             inputs/plugins/climatology.tar.gz \
             AArch64
       - name: Build and test exact upgraded Celestial Navigation source
+        if: ${{ inputs.candidate_run_id == '' }}
         env:
           CMAKE_BUILD_PARALLEL_LEVEL: '2'
           GIT_LFS_SKIP_SMUDGE: '1'
@@ -420,10 +466,12 @@ jobs:
             inputs/plugins/celestial-navigation.tar.gz \
             AArch64
       - name: Check out exact Scheduler source
+        if: ${{ inputs.candidate_run_id == '' }}
         run: |
           git clone https://github.com/pob220/opencpn-scheduler.git inputs/opencpn-scheduler
           git -C inputs/opencpn-scheduler checkout 539e1e80a00aa2ca0df0853fc9ebd0f4c8bffa9e
       - name: Assemble isolated bundle
+        if: ${{ inputs.candidate_run_id == '' }}
         run: |
           core_installer=$(find inputs/core/package -maxdepth 1 -type f -name '*.sh' -print -quit)
           test -n "$core_installer"
@@ -440,6 +488,28 @@ jobs:
               inputs/plugins/celestial-navigation.tar.gz \
               inputs/opencpn-scheduler \
               candidate debian12-arm64 aarch64
+      - name: Download existing candidate for qualification
+        if: ${{ inputs.candidate_run_id != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: opencpn-external-control-demo-debian12-arm64
+          path: candidate
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.candidate_run_id }}
+      - name: Verify and extract the exact existing candidate
+        if: ${{ inputs.candidate_run_id != '' }}
+        env:
+          EXPECTED_CANDIDATE_SOURCE: ${{ inputs.candidate_source }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_CANDIDATE_SOURCE" =~ ^[0-9a-f]{40}$ ]]
+          cd candidate
+          archive=OpenCPN-External-Control-Demo-2026-09-12-debian12-arm64.tar.gz
+          sha256sum --check "$archive.sha256"
+          tar -xzf "$archive"
+          grep -F "$EXPECTED_CANDIDATE_SOURCE" "${archive%.tar.gz}/COMPONENTS.md"
       - name: Clean-install and API smoke qualification
         env:
           RUN_GUI_SMOKE: '1'
