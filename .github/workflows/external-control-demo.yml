@@ -214,9 +214,9 @@ jobs:
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/celestial_navigation_pi.git \
             inputs/celestial_navigation_pi
-          git -C inputs/celestial_navigation_pi checkout --detach 49ecbe0c8b68e486595c86966054a741a97f6475
+          git -C inputs/celestial_navigation_pi checkout --detach a003cf7d36880ca38d15a172bcde48ef5c3fa421
           test "$(git -C inputs/celestial_navigation_pi rev-parse HEAD)" = \
-            49ecbe0c8b68e486595c86966054a741a97f6475
+            a003cf7d36880ca38d15a172bcde48ef5c3fa421
           git -C inputs/celestial_navigation_pi submodule update --init --recursive
           curl --fail --location \
             https://github.com/pob220/celestial_navigation_pi/releases/download/eclipse-data-2026.1/de440s.bsp \
@@ -402,9 +402,9 @@ jobs:
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/celestial_navigation_pi.git \
             inputs/celestial_navigation_pi
-          git -C inputs/celestial_navigation_pi checkout --detach 49ecbe0c8b68e486595c86966054a741a97f6475
+          git -C inputs/celestial_navigation_pi checkout --detach a003cf7d36880ca38d15a172bcde48ef5c3fa421
           test "$(git -C inputs/celestial_navigation_pi rev-parse HEAD)" = \
-            49ecbe0c8b68e486595c86966054a741a97f6475
+            a003cf7d36880ca38d15a172bcde48ef5c3fa421
           git -C inputs/celestial_navigation_pi submodule update --init --recursive
           # The lunar-distance tests require DE440, but the full optional
           # eclipse data pack is deliberately not fetched or distributed.
