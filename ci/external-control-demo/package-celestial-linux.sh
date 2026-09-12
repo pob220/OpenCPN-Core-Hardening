@@ -22,6 +22,12 @@ cmake -S "$source_dir" -B "$build_dir" -G Ninja \
   -DOCPN_BUILD_TEST=ON
 cmake --build "$build_dir" --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
 ctest --test-dir "$build_dir" --output-on-failure
+# Each opt-in wxWidgets suite needs its own process and display lifecycle.
+# Exercise the Find popup fix as well as the retained lunar/coastal UI contracts.
+for suite in FindBodyUi LunarUiSmoke CoastalUiSmoke; do
+  timeout 180 xvfb-run -a env CELESTIAL_RUN_UI_TESTS=1 \
+    "$build_dir/test/celestial_tests" --gtest_filter="$suite.*"
+done
 DESTDIR="$stage_dir" cmake --install "$build_dir"
 
 plugin="$stage_dir/usr/local/lib/opencpn/libcelestial_navigation_pi.so"
