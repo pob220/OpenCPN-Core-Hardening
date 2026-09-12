@@ -150,12 +150,12 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/xgrib_pi.git inputs/xgrib_pi
-          git -C inputs/xgrib_pi checkout b4fd23d75df24e6c8bb6c3ac2ac502dd8e15b637
-          git -C inputs/xgrib_pi apply --check "$GITHUB_WORKSPACE/ci/external-control-demo/xgrib-0.2.5.1-provider.patch"
-          git -C inputs/xgrib_pi apply "$GITHUB_WORKSPACE/ci/external-control-demo/xgrib-0.2.5.1-provider.patch"
+          git -C inputs/xgrib_pi checkout f5e1ea1019f37af4d8d8e951f43213e8d122f96d
+          git -C inputs/xgrib_pi apply --check "$GITHUB_WORKSPACE/ci/external-control-demo/xgrib-0.2.5.2-provider.patch"
+          git -C inputs/xgrib_pi apply "$GITHUB_WORKSPACE/ci/external-control-demo/xgrib-0.2.5.2-provider.patch"
           git -C inputs/xgrib_pi submodule update --init --recursive
           test "$(git -C inputs/xgrib_pi/generator rev-parse HEAD)" = \
-            6156c997191ffbfa9fba39385e84fa06a2fed353
+            bf650d8960423461f607f9d96edb257e1092a7b9
           inputs/xgrib_pi/ci/build-linux-catalogue.sh \
             inputs/xgrib_pi inputs/xgrib-build inputs/xgrib-stage \
             inputs/xgrib-build/artifacts/bookworm
@@ -171,7 +171,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/weather_routing_pi.git inputs/xweather_routing_pi
-          git -C inputs/xweather_routing_pi checkout c5801db79948435b5c2231b763c580cc1f5ddcf1
+          git -C inputs/xweather_routing_pi checkout f33a53ec536f6be1849eb289e27ce6c4f3dda1c4
           git -C inputs/xweather_routing_pi submodule update --init --recursive
           inputs/xweather_routing_pi/ci/build-linux-catalogue.sh \
             inputs/xweather_routing_pi inputs/xweather-build
@@ -339,12 +339,12 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/xgrib_pi.git inputs/xgrib_pi
-          git -C inputs/xgrib_pi checkout b4fd23d75df24e6c8bb6c3ac2ac502dd8e15b637
-          git -C inputs/xgrib_pi apply --check "$GITHUB_WORKSPACE/ci/external-control-demo/xgrib-0.2.5.1-provider.patch"
-          git -C inputs/xgrib_pi apply "$GITHUB_WORKSPACE/ci/external-control-demo/xgrib-0.2.5.1-provider.patch"
+          git -C inputs/xgrib_pi checkout f5e1ea1019f37af4d8d8e951f43213e8d122f96d
+          git -C inputs/xgrib_pi apply --check "$GITHUB_WORKSPACE/ci/external-control-demo/xgrib-0.2.5.2-provider.patch"
+          git -C inputs/xgrib_pi apply "$GITHUB_WORKSPACE/ci/external-control-demo/xgrib-0.2.5.2-provider.patch"
           git -C inputs/xgrib_pi submodule update --init --recursive
           test "$(git -C inputs/xgrib_pi/generator rev-parse HEAD)" = \
-            6156c997191ffbfa9fba39385e84fa06a2fed353
+            bf650d8960423461f607f9d96edb257e1092a7b9
           inputs/xgrib_pi/ci/build-linux-catalogue.sh \
             inputs/xgrib_pi inputs/xgrib-build inputs/xgrib-stage \
             inputs/xgrib-build/artifacts/bookworm-arm64
@@ -360,7 +360,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/weather_routing_pi.git inputs/xweather_routing_pi
-          git -C inputs/xweather_routing_pi checkout c5801db79948435b5c2231b763c580cc1f5ddcf1
+          git -C inputs/xweather_routing_pi checkout f33a53ec536f6be1849eb289e27ce6c4f3dda1c4
           git -C inputs/xweather_routing_pi submodule update --init --recursive
           inputs/xweather_routing_pi/ci/build-linux-catalogue.sh \
             inputs/xweather_routing_pi inputs/xweather-build

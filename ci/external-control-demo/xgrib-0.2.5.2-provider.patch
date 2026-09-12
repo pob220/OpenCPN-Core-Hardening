@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 52570c7..ee53065 100644
+index 3c1d2a2..7f36630 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -193,6 +193,8 @@ set(SRCS
@@ -20,7 +20,7 @@ index 52570c7..ee53065 100644
      src/GeneratorJobJson.h
      src/ProcessCommand.h
      src/TimeZoneDisplay.h
-@@ -601,11 +605,22 @@ if (NOT OCPN_FLATPAK_CONFIG)
+@@ -602,11 +606,22 @@ if (NOT OCPN_FLATPAK_CONFIG)
      add_test(NAME xgrib_process_command_tests
               COMMAND xgrib_process_command_tests)
  
@@ -43,6 +43,113 @@ index 52570c7..ee53065 100644
      add_test(NAME xgrib_environmental_config_contract
        COMMAND ${CMAKE_COMMAND}
          -DSOURCE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/src/EnvironmentalGribDialog.cpp
+diff --git a/src/grib_pi.cpp b/src/grib_pi.cpp
+index 8058967..3521a32 100644
+--- a/src/grib_pi.cpp
++++ b/src/grib_pi.cpp
+@@ -36,7 +36,9 @@
+ #include <wx/stdpaths.h>
+ 
+ #include <limits>
++#include <memory>
+ 
++#include "ExternalEnvironmentProvider.h"
+ #include "GribProtocolVersion.h"
+ #include "grib_pi.h"
+ 
+@@ -210,6 +212,12 @@ int grib_pi::Init(void) {
+     });
+   }
+ 
++  if (!m_bBundledGribConflict) {
++    m_externalEnvironmentProvider =
++        std::make_unique<ExternalEnvironmentProvider>(*this);
++    m_externalEnvironmentProvider->RegisterIfSupported();
++  }
++
+   return (WANTS_OVERLAY_CALLBACK | WANTS_OPENGL_OVERLAY_CALLBACK |
+           WANTS_CURSOR_LATLON | WANTS_TOOLBAR_CALLBACK | INSTALLS_TOOLBAR_TOOL |
+           WANTS_CONFIG | WANTS_PREFERENCES | WANTS_PLUGIN_MESSAGING |
+@@ -217,6 +225,12 @@ int grib_pi::Init(void) {
+ }
+ 
+ bool grib_pi::DeInit(void) {
++  if (m_externalEnvironmentProvider &&
++      !m_externalEnvironmentProvider->Unregister()) {
++    wxLogWarning("xGRIB: environmental provider still has active work");
++    return false;
++  }
++  m_externalEnvironmentProvider.reset();
+   // Reset timeline to system time before shutting down
+   SendTimelineMessage(wxInvalidDateTime);
+ 
+@@ -233,6 +247,29 @@ bool grib_pi::DeInit(void) {
+   return true;
+ }
+ 
++bool grib_pi::OpenExternalDataset(const wxString& path, wxString* error) {
++  if (m_bBundledGribConflict) {
++    if (error) *error = "Bundled GRIB is enabled; xGRIB cannot own the viewer";
++    return false;
++  }
++  if (!wxFileExists(path)) {
++    if (error) *error = "Dataset file does not exist";
++    return false;
++  }
++  if (!m_pGribCtrlBar) OnToolbarToolCallback(-1);
++  if (!m_pGribCtrlBar) {
++    if (error) *error = "xGRIB control bar is unavailable";
++    return false;
++  }
++  m_pGribCtrlBar->OpenGeneratedGrib(path);
++  return true;
++}
++
++bool OpenExternalGribDataset(grib_pi& plugin, const wxString& path,
++                             wxString* error) {
++  return plugin.OpenExternalDataset(path, error);
++}
++
+ int grib_pi::GetAPIVersionMajor() { return MY_API_VERSION_MAJOR; }
+ 
+ int grib_pi::GetAPIVersionMinor() { return MY_API_VERSION_MINOR; }
+diff --git a/src/grib_pi.h b/src/grib_pi.h
+index a478936..c9457e0 100644
+--- a/src/grib_pi.h
++++ b/src/grib_pi.h
+@@ -36,6 +36,8 @@
+ #ifndef _GRIBPI_H_
+ #define _GRIBPI_H_
+ 
++#include <memory>
++
+ #include "wx/wxprec.h"
+ 
+ #ifndef WX_PRECOMP
+@@ -58,6 +60,7 @@
+ #include "GribUIDialog.h"
+ 
+ class GribPreferencesDialog;
++class ExternalEnvironmentProvider;
+ 
+ //----------------------------------------------------------------------------------------------------------
+ //    The PlugIn Class Definition
+@@ -138,6 +141,7 @@ public:
+ 
+   void OnGribCtrlBarClose();
+   void OnGribCtrlBarDestroyed(GRIBUICtrlBar* ctrlBar);
++  bool OpenExternalDataset(const wxString& path, wxString* error);
+ 
+   wxPoint GetCtrlBarXY() { return m_CtrlBarxy; }
+   wxPoint GetCursorDataXY() { return m_CursorDataxy; }
+@@ -238,6 +242,7 @@ private:
+    */
+   PlugIn_ViewPort m_current_vp;
+   wxBitmap m_panelBitmap;
++  std::unique_ptr<ExternalEnvironmentProvider> m_externalEnvironmentProvider;
+ };
+ 
+ //----------------------------------------------------------------------------------------
 diff --git a/docs/external-control-demo-cross-platform.md b/docs/external-control-demo-cross-platform.md
 new file mode 100644
 index 0000000..4fb6041
@@ -881,113 +988,6 @@ index 0000000..3428983
 +std::optional<std::string> Sha256File(const std::filesystem::path& path);
 +
 +}  // namespace xgrib
-diff --git a/src/grib_pi.cpp b/src/grib_pi.cpp
-index 8058967..3521a32 100644
---- a/src/grib_pi.cpp
-+++ b/src/grib_pi.cpp
-@@ -36,7 +36,9 @@
- #include <wx/stdpaths.h>
- 
- #include <limits>
-+#include <memory>
- 
-+#include "ExternalEnvironmentProvider.h"
- #include "GribProtocolVersion.h"
- #include "grib_pi.h"
- 
-@@ -210,6 +212,12 @@ int grib_pi::Init(void) {
-     });
-   }
- 
-+  if (!m_bBundledGribConflict) {
-+    m_externalEnvironmentProvider =
-+        std::make_unique<ExternalEnvironmentProvider>(*this);
-+    m_externalEnvironmentProvider->RegisterIfSupported();
-+  }
-+
-   return (WANTS_OVERLAY_CALLBACK | WANTS_OPENGL_OVERLAY_CALLBACK |
-           WANTS_CURSOR_LATLON | WANTS_TOOLBAR_CALLBACK | INSTALLS_TOOLBAR_TOOL |
-           WANTS_CONFIG | WANTS_PREFERENCES | WANTS_PLUGIN_MESSAGING |
-@@ -217,6 +225,12 @@ int grib_pi::Init(void) {
- }
- 
- bool grib_pi::DeInit(void) {
-+  if (m_externalEnvironmentProvider &&
-+      !m_externalEnvironmentProvider->Unregister()) {
-+    wxLogWarning("xGRIB: environmental provider still has active work");
-+    return false;
-+  }
-+  m_externalEnvironmentProvider.reset();
-   // Reset timeline to system time before shutting down
-   SendTimelineMessage(wxInvalidDateTime);
- 
-@@ -233,6 +247,29 @@ bool grib_pi::DeInit(void) {
-   return true;
- }
- 
-+bool grib_pi::OpenExternalDataset(const wxString& path, wxString* error) {
-+  if (m_bBundledGribConflict) {
-+    if (error) *error = "Bundled GRIB is enabled; xGRIB cannot own the viewer";
-+    return false;
-+  }
-+  if (!wxFileExists(path)) {
-+    if (error) *error = "Dataset file does not exist";
-+    return false;
-+  }
-+  if (!m_pGribCtrlBar) OnToolbarToolCallback(-1);
-+  if (!m_pGribCtrlBar) {
-+    if (error) *error = "xGRIB control bar is unavailable";
-+    return false;
-+  }
-+  m_pGribCtrlBar->OpenGeneratedGrib(path);
-+  return true;
-+}
-+
-+bool OpenExternalGribDataset(grib_pi& plugin, const wxString& path,
-+                             wxString* error) {
-+  return plugin.OpenExternalDataset(path, error);
-+}
-+
- int grib_pi::GetAPIVersionMajor() { return MY_API_VERSION_MAJOR; }
- 
- int grib_pi::GetAPIVersionMinor() { return MY_API_VERSION_MINOR; }
-diff --git a/src/grib_pi.h b/src/grib_pi.h
-index a478936..c9457e0 100644
---- a/src/grib_pi.h
-+++ b/src/grib_pi.h
-@@ -36,6 +36,8 @@
- #ifndef _GRIBPI_H_
- #define _GRIBPI_H_
- 
-+#include <memory>
-+
- #include "wx/wxprec.h"
- 
- #ifndef WX_PRECOMP
-@@ -58,6 +60,7 @@
- #include "GribUIDialog.h"
- 
- class GribPreferencesDialog;
-+class ExternalEnvironmentProvider;
- 
- //----------------------------------------------------------------------------------------------------------
- //    The PlugIn Class Definition
-@@ -138,6 +141,7 @@ public:
- 
-   void OnGribCtrlBarClose();
-   void OnGribCtrlBarDestroyed(GRIBUICtrlBar* ctrlBar);
-+  bool OpenExternalDataset(const wxString& path, wxString* error);
- 
-   wxPoint GetCtrlBarXY() { return m_CtrlBarxy; }
-   wxPoint GetCursorDataXY() { return m_CursorDataxy; }
-@@ -238,6 +242,7 @@ private:
-    */
-   PlugIn_ViewPort m_current_vp;
-   wxBitmap m_panelBitmap;
-+  std::unique_ptr<ExternalEnvironmentProvider> m_externalEnvironmentProvider;
- };
- 
- //----------------------------------------------------------------------------------------
 diff --git a/test/ExternalEnvironmentProviderContract.cmake b/test/ExternalEnvironmentProviderContract.cmake
 new file mode 100644
 index 0000000..837f432

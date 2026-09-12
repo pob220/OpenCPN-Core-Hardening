@@ -1,19 +1,15 @@
-# xGRIB 0.2.5.1 developer-bundle integration
+# xGRIB 0.2.5.2 developer-bundle integration
 
-The public xGRIB release and its CircleCI/Cloudsmith configuration are unchanged.
-This bundle builds immutable xGRIB source
-`b4fd23d75df24e6c8bb6c3ac2ac502dd8e15b637` (0.2.5.1) and applies the adjacent
-`xgrib-0.2.5.1-provider.patch` with `git apply --check` first.
+The bundle pins public xGRIB `f5e1ea1019f37af4d8d8e951f43213e8d122f96d` (0.2.5.2),
+with generator 0.1.8 at `bf650d8960423461f607f9d96edb257e1092a7b9`.
+It applies `xgrib-0.2.5.2-provider.patch` after checking it with `git apply --check`.
 
-The patch preserves the external environment provider from the previous bundle's
-`446814bafe6edfeaf23fadc3f478864f56d81362`. It was produced by merging the two
-pinned source trees in a disposable checkout. Version/translation/documentation
-conflicts retain the newer release; both environmental configuration and external
-provider contract tests are retained. The resulting delta against 0.2.5.1 is
-additive and contains no CI/publication changes. Generator remains 0.1.7 at
-`6156c997191ffbfa9fba39385e84fa06a2fed353`.
+The patch preserves the previous bundle's external environmental acquisition
+provider, originally from `446814bafe6edfeaf23fadc3f478864f56d81362`.
+The previous 0.2.5.1 integration patch applies cleanly to 0.2.5.2; this patch is
+regenerated against the new immutable source, including its added provider files.
+Live size estimates, measured totals and comparison reporting remain from 0.2.5.2.
+No public plugin CI or publishing configuration is changed.
 
 Both architectures must pass the complete xGRIB tests and the bundle's clean
 installation, provider registration and API smoke checks before publication.
-Do not substitute the unpatched main-branch plugin: it lacks the bundle's
-unattended environmental acquisition provider.
