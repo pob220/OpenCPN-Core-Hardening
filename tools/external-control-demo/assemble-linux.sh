@@ -128,7 +128,7 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 | OpenCPN hardened core binary and API | $core_revision (external-control code based on release tag external-control-demo-20260821) |
 | Demo assembly and qualification tooling | $assembly_revision |
 | xGRIB 0.2.5.2 provider build | f5e1ea1019f37af4d8d8e951f43213e8d122f96d plus ci/external-control-demo/xgrib-0.2.5.2-provider.patch from this assembly revision (preserves provider from 446814bafe6edfeaf23fadc3f478864f56d81362; generator 0.1.8 at bf650d8960423461f607f9d96edb257e1092a7b9) |
-| Weather Routing 1.17.5.0 chart-aware provider (isolated xWeatherRouting identity) | 39a8f88e2fa2528f603b113443e446b22ba7e481 (adds bounded ocean-detour recovery, explicit depth prerequisites, per-route worker progress and safe GPX filenames; retains prior routing fixes) |
+| Weather Routing 1.17.7.0 chart-aware provider (isolated xWeatherRouting identity) | 15c1369b6fbd71715dac598688c1b733a6e4fe7b (adds selectable Main and memory-budgeted Quick engines, five selectable GSHHS shoreline levels, chart-aware shoreline policy, preserved configuration and improved Main-engine arrival handling) |
 | o-charts chart-safety provider | b369c4cae0e84ea43847f64a26cb107ae1ffebe5 (modified plug-in over the official 2.2.1 licensed helper/runtime package) |
 | Upgraded Climatology plug-in and dataset 2026.2 | cd00282e6ea2784a6d78ccfe47fed713269ad87e |
 | Polar plug-in | 1.2.38.0 official OpenCPN package, SHA-256 $(sha256sum "$polar_archive" | cut -d ' ' -f 1) |
