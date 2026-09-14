@@ -23,7 +23,7 @@ This is the broader developer bundle, including external-control, SDK/MCP and Sc
 
 ## Exact sources
 
-- Bundle assembly: `ffbff589bb0bbd3d20c374f42888471b7b140f89` on `preview/weather-routing-1.17.7-20260914`.
+- Bundle assembly: `16405a760c0dd9bd61a2e4e4ca49a25674120e8e` on `preview/weather-routing-1.17.7-20260914`.
 - Unchanged core artifacts: successful [core build 34130966851](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34130966851); the full core revision is recorded inside each bundle's `COMPONENTS.md`.
 - Weather Routing 1.17.7.0: `9bf27ef4537c1a56680267b75851a08340d30efd`.
 - xGRIB 0.2.5.2: `f5e1ea1019f37af4d8d8e951f43213e8d122f96d`, plus the assembly revision's `ci/external-control-demo/xgrib-0.2.5.2-provider.patch`.
@@ -34,14 +34,14 @@ This is the broader developer bundle, including external-control, SDK/MCP and Sc
 
 ## Qualification
 
-Both Debian 12 x86_64 and ARM64 candidates passed [qualification run 34828679307](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34828679307): Weather Routing **287 tests**, xGRIB **29 tests**, Climatology **3 tests**, and all **7 Celestial Navigation CTest targets**, on each architecture. The opt-in Find, lunar and coastal GUI regression suites also passed in separate Xvfb processes on both architectures. A refreshed qualification run for the coastal-recovery update is required before replacing the published bundle checksums below.
+Both Debian 12 x86_64 and ARM64 candidates passed [qualification run 34848829610](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34848829610): Weather Routing **288 tests**, xGRIB **29 tests**, Climatology **3 tests**, and all **7 Celestial Navigation CTest targets**, on each architecture. The opt-in Find, lunar and coastal GUI regression suites also passed in separate Xvfb processes on both architectures.
 
 Bundle checks covered clean isolated installation, all ten plugin binaries, provider/API checks, GUI startup and lifecycle; x86_64 also passed the full MCP smoke qualification. Downloaded archives were independently checked against their SHA-256 files, internal checksums, component pins, ELF architecture, embedded plugin versions, and all five GSHHG datasets. Platform qualification logs accompany this release.
 
 SHA-256:
 
-- x86_64: `b9f748e28f13a19f12881a2f5075456cfc82e2f6fb8965cc8d977e8f37590337`
-- ARM64: `9422e2e4b54098bfe5c57b126322da818264f236c36cf1d90239a01a64d91261`
+- x86_64: `60b82d168e4b33d626abc3a975ab2e3433037f8100337fc0dd04ba4c7d4f0bfb`
+- ARM64: `306119a425e256979a531b13f9bcca43809ceeb787eb9d56df23352cf58d5530`
 
 No licensed charts, entitlements or semantic-atlas cache are included. Real licensed-chart access, chart coverage, GPU/hardware behavior and route suitability require testing on the user's own system.
 
