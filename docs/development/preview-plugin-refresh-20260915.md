@@ -26,7 +26,7 @@ This is the broader developer bundle, including external-control, SDK/MCP and Sc
 
 ## Exact sources
 
-- Bundle assembly: recorded after qualification on `preview/weather-routing-1.17.9-20260915`.
+- Bundle assembly: `5881d3c9b33ddd030884e6f7b352918b5f958887` on `preview/weather-routing-1.17.9-20260915`.
 - Unchanged core artifacts: successful [core build 34130966851](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34130966851); the full core revision is recorded inside each bundle's `COMPONENTS.md`.
 - Weather Routing 1.17.9.0: `e5975b7bbd57eb4d2ca95b0dbea810e20605bdf1`.
 - xGRIB 0.2.5.2: `f5e1ea1019f37af4d8d8e951f43213e8d122f96d`, plus the assembly revision's `ci/external-control-demo/xgrib-0.2.5.2-provider.patch`.
@@ -37,11 +37,14 @@ This is the broader developer bundle, including external-control, SDK/MCP and Sc
 
 ## Qualification
 
-Qualification evidence for both architectures is added here after the pinned candidates pass. Weather Routing 1.17.9 has **295 tests** in its current regression suite.
+Both Debian 12 x86_64 and ARM64 candidates passed [qualification run 34907725607](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34907725607): Weather Routing **295 tests**, xGRIB **29 tests**, Climatology **3 tests**, and all **7 Celestial Navigation CTest targets**, on each architecture. The opt-in Find, lunar and coastal GUI regression suites also passed in separate Xvfb processes on both architectures.
 
 Bundle checks covered clean isolated installation, all ten plugin binaries, provider/API checks, GUI startup and lifecycle; x86_64 also passed the full MCP smoke qualification. Downloaded archives were independently checked against their SHA-256 files, internal checksums, component pins, ELF architecture, embedded plugin versions, and all five GSHHG datasets. Platform qualification logs accompany this release.
 
-Candidate SHA-256 values are added after qualification.
+SHA-256:
+
+- x86_64: `11f4e1d73028946e09a7e53d979f74857dea7fc11ff22888770811541e953ce2`
+- ARM64: `4a4a7ec4b4e7caf2262eab09ee71c157cd90be78d3747ffb81f288d0b3f631a4`
 
 No licensed charts, entitlements or semantic-atlas cache are included. Real licensed-chart access, chart coverage, GPU/hardware behavior and route suitability require testing on the user's own system.
 
