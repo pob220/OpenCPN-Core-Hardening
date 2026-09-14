@@ -183,7 +183,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/weather_routing_pi.git inputs/xweather_routing_pi
-          git -C inputs/xweather_routing_pi checkout 15c1369b6fbd71715dac598688c1b733a6e4fe7b
+          git -C inputs/xweather_routing_pi checkout 9bf27ef4537c1a56680267b75851a08340d30efd
           git -C inputs/xweather_routing_pi submodule update --init --recursive
           inputs/xweather_routing_pi/ci/build-linux-catalogue.sh \
             inputs/xweather_routing_pi inputs/xweather-build
@@ -403,7 +403,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/weather_routing_pi.git inputs/xweather_routing_pi
-          git -C inputs/xweather_routing_pi checkout 15c1369b6fbd71715dac598688c1b733a6e4fe7b
+          git -C inputs/xweather_routing_pi checkout 9bf27ef4537c1a56680267b75851a08340d30efd
           git -C inputs/xweather_routing_pi submodule update --init --recursive
           inputs/xweather_routing_pi/ci/build-linux-catalogue.sh \
             inputs/xweather_routing_pi inputs/xweather-build
