@@ -2,10 +2,11 @@ Developer preview for testing the hardened OpenCPN external-control stack and ch
 
 ## 15 September 2026 refresh
 
-- **xWeatherRouting 1.17.9.0** includes two selectable native C++ engines. **Main remains the default** and upgrades preserve existing route and last-used settings. **Quick** is a separate bounded beam-search engine with its own tuning and a configurable 256 MiB default per-route search-storage ceiling.
+- **xWeatherRouting 1.17.10.0** includes two selectable native C++ engines. **Main remains the default** and upgrades preserve existing route and last-used settings. **Quick** is a separate bounded beam-search engine with its own tuning and a configurable 256 MiB default per-route search-storage ceiling.
 - Each engine now has a bounded **GRIB timeline cache**. It retains interpolated frames shared by all routes in a departure-time batch, admits the requested limit only when physical-memory safeguards pass, and releases the frames after the batch. Fresh defaults are 512 MiB for Main and 64 MiB for Quick; saved configurations are preserved.
 - Chart-aware preparation now reports the exact tile and percentage for wider-envelope, scout-corridor, search-margin and endpoint passes, keeps the dialog responsive, and makes **Stop all computations** cancel at the next tile boundary. The route table shows **Preparing chart safety grid** while this work is active.
 - Routes requiring positive minimum charted depth check their endpoint tiles before wider prewarming. Missing endpoint depth coverage now fails in seconds with the endpoint name and normalized coordinates instead of spending many minutes preparing thousands of unrelated tiles first.
+- Land-only chart-aware routing now starts with a distance-scaled scout corridor and expands with the live solver frontier. Clear open-water misses are scheduled in aligned 0.2-degree blocks, but every fine mask remains authoritative and a coarse safe result requires all 16 masks to be present and clear. Mixed, missing, coastal, depth-enabled and final-validation cases retain the fine path.
 - **Shoreline detail 0–4** selects Crude, Low, Intermediate, High or Full GSHHG 2.3.7 data. All five datasets are included for offline use and were independently checked against their embedded compressed and uncompressed hashes. Main starts at Full on a fresh install; Quick starts at Crude and each engine remembers its choice.
 - With enforced chart safety on this modified core, chart and depth evidence remain authoritative and the shoreline control becomes an editable, separately saved **Scout shoreline resolution**, initially Crude. Stock OpenCPN installations retain the five ordinary shoreline choices.
 - Main gains a small bounded final-arrival allowance when a route reaches the normal work limit close to its destination. The normal motion checks, independent final validation, fallback allocations and retained-state limits remain in force.
@@ -16,19 +17,19 @@ Developer preview for testing the hardened OpenCPN external-control stack and ch
 
 Quick shares Main's physical propagation and independent final validation, but prunes the search much more aggressively and can miss a feasible or faster route that Main finds. Its memory setting limits tracked Quick search storage; it is not a cap on total OpenCPN memory and does not establish that the Windows 32-bit process fits its address-space limit.
 
-The existing hardened OpenCPN core is unchanged. The clean, pinned `pob220/weather_routing_pi` source is built under the isolated **xWeatherRouting** identity. No tester-local changes are included.
+The hardened OpenCPN core adds the matching conservative open-water scheduling support. The clean, pinned `pob220/weather_routing_pi` source is built under the isolated **xWeatherRouting** identity. No tester-local changes are included.
 
 ## Download and install
 
-Choose the **2026-09-15** archive for **Debian 12 x86_64** or **Debian 12 ARM64**, matching your machine, and its `.sha256` file. Verify the checksum, extract into a fresh directory, and follow its `README.md` and isolated installer instructions. Do not mix files from an older extracted bundle with this refresh.
+Choose the **2026-09-15.2** archive for **Debian 12 x86_64** or **Debian 12 ARM64**, matching your machine, and its `.sha256` file. Verify the checksum, extract into a fresh directory, and follow its `README.md` and isolated installer instructions. Do not mix files from an older extracted bundle with this refresh.
 
 This is the broader developer bundle, including external-control, SDK/MCP and Scheduler tools. For the focused Debian 13 installer without the added external-control service or Vulkan experiment, use the separate [Chart-Aware preview](https://github.com/pob220/OpenCPN-Chart-Aware/releases/tag/debian13-preview-20260910).
 
 ## Exact sources
 
-- Bundle assembly: `5881d3c9b33ddd030884e6f7b352918b5f958887` on `preview/weather-routing-1.17.9-20260915`.
-- Unchanged core artifacts: successful [core build 34130966851](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34130966851); the full core revision is recorded inside each bundle's `COMPONENTS.md`.
-- Weather Routing 1.17.9.0: `e5975b7bbd57eb4d2ca95b0dbea810e20605bdf1`.
+- Bundle assembly: recorded after qualification on `preview/weather-routing-1.17.10-20260915`.
+- Updated core artifacts: recorded after qualification; the full core revision is recorded inside each bundle's `COMPONENTS.md`.
+- Weather Routing 1.17.10.0: `66a3f952dc6eb6823f9c8e7812e74615b6f8a4fb`.
 - xGRIB 0.2.5.2: `f5e1ea1019f37af4d8d8e951f43213e8d122f96d`, plus the assembly revision's `ci/external-control-demo/xgrib-0.2.5.2-provider.patch`.
 - Generator 0.1.8: `bf650d8960423461f607f9d96edb257e1092a7b9`.
 - Climatology: `cd00282e6ea2784a6d78ccfe47fed713269ad87e`.
@@ -37,14 +38,11 @@ This is the broader developer bundle, including external-control, SDK/MCP and Sc
 
 ## Qualification
 
-Both Debian 12 x86_64 and ARM64 candidates passed [qualification run 34907725607](https://github.com/pob220/OpenCPN-Core-Hardening/actions/runs/34907725607): Weather Routing **295 tests**, xGRIB **29 tests**, Climatology **3 tests**, and all **7 Celestial Navigation CTest targets**, on each architecture. The opt-in Find, lunar and coastal GUI regression suites also passed in separate Xvfb processes on both architectures.
+Qualification evidence for both architectures is added here after the pinned candidates pass. Weather Routing 1.17.10 has **298 tests** in its current regression suite.
 
 Bundle checks covered clean isolated installation, all ten plugin binaries, provider/API checks, GUI startup and lifecycle; x86_64 also passed the full MCP smoke qualification. Downloaded archives were independently checked against their SHA-256 files, internal checksums, component pins, ELF architecture, embedded plugin versions, and all five GSHHG datasets. Platform qualification logs accompany this release.
 
-SHA-256:
-
-- x86_64: `11f4e1d73028946e09a7e53d979f74857dea7fc11ff22888770811541e953ce2`
-- ARM64: `4a4a7ec4b4e7caf2262eab09ee71c157cd90be78d3747ffb81f288d0b3f631a4`
+Candidate SHA-256 values are added after qualification.
 
 No licensed charts, entitlements or semantic-atlas cache are included. Real licensed-chart access, chart coverage, GPU/hardware behavior and route suitability require testing on the user's own system.
 
@@ -52,6 +50,8 @@ No licensed charts, entitlements or semantic-atlas cache are included. Real lice
 
 In controlled development runs of the same Quick policy, a completed Provincetown–Lizard case using Main at 6h/20° took 324.780 seconds and peaked at 1,594.4 MiB process RSS; Quick completed in 69.476–77.886 seconds and peaked at 557.7–557.8 MiB. The two Quick memory settings tested, 96 MiB and 256 MiB, produced the same independently validated route and used only 0.368 MiB of tracked search storage. These are observations on one Linux machine under controlled inputs, not guaranteed speed or memory figures. The engines use different search policies.
 
-The 1.17.9 regression set also covers configuration migration, independent engine settings, bounded memory/work exhaustion, GRIB cache admission and sharing, authoritative chart rejection, endpoint-first depth validation, chart-preparation progress and cancellation, coastal egress, all five offline shoreline levels, and preservation of the earlier Atlantic controls. Main remains the broader solver; Quick can trade route quality and solvability for speed and lower retained state. Neither these Linux bundles nor the separate Linux 32-bit engine test constitute Windows runtime qualification.
+The 1.17.10 regression set also covers configuration migration, independent engine settings, bounded memory/work exhaustion, GRIB cache admission and sharing, authoritative chart rejection, endpoint-first depth validation, adaptive chart preparation and cancellation, coastal egress, all five offline shoreline levels, and preservation of the earlier Atlantic controls. Main remains the broader solver; Quick can trade route quality and solvability for speed and lower retained state. Neither these Linux bundles nor the separate Linux 32-bit engine test constitute Windows runtime qualification.
 
 For the Niue–Vava'u minimum-depth case that exposed the preparation delay, the previous build prepared 4,074 wider-area tiles before rejecting the destination after about 44 minutes. The 1.17.9 endpoint-first path prepared the two endpoint tiles and returned the same authoritative missing-depth-coverage result in 2.069 seconds on the development machine. This measures earlier detection of an invalid prerequisite, not faster extraction of a complex chart tile or a successful-route speedup.
+
+With minimum depth set to 0 m, controlled cold-cache Niue–Vava'u runs reduced initial preparation from 4,074 to 1,196 tiles and improved median wall time from 60.977 to 54.573 seconds. All seven adaptive/control runs produced identical route geometry, candidate hash, search counts, distance, ETA and final authoritative safety Pass. Holyhead–Conwy also reproduced its exact coastal reference route. These are case-specific measurements on the development machine.
