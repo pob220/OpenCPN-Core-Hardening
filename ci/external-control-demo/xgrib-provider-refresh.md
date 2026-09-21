@@ -1,14 +1,15 @@
-# xGRIB 0.2.5.2 developer-bundle integration
+# xGRIB 0.3.0.0 developer-bundle integration
 
-The bundle pins public xGRIB `f5e1ea1019f37af4d8d8e951f43213e8d122f96d` (0.2.5.2),
-with generator 0.1.8 at `bf650d8960423461f607f9d96edb257e1092a7b9`.
-It applies `xgrib-0.2.5.2-provider.patch` after checking it with `git apply --check`.
+The bundle pins public xGRIB `c0ca9d10640562b560be97727b897766889a6b55` (0.3.0.0),
+with Generator 0.3.0 at `0cca0871c04f273579b4c69d6cb8fe26e8596677`.
+It applies `xgrib-0.3.0.0-provider.patch` after checking it with `git apply --check`.
 
 The patch preserves the previous bundle's external environmental acquisition
 provider, originally from `446814bafe6edfeaf23fadc3f478864f56d81362`.
-The previous 0.2.5.1 integration patch applies cleanly to 0.2.5.2; this patch is
-regenerated against the new immutable source, including its added provider files.
-Live size estimates, measured totals and comparison reporting remain from 0.2.5.2.
+The provider patch applies cleanly to the pinned 0.3.0.0 source. It adds the
+external-control provider only to this isolated developer bundle; the ordinary
+published xGRIB package is unchanged. The 0.3 generator and size estimates are
+retained.
 No public plugin CI or publishing configuration is changed.
 
 Both architectures must pass the complete xGRIB tests and the bundle's clean
