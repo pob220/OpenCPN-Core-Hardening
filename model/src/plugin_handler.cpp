@@ -148,7 +148,7 @@ static ssize_t PlugInIxByName(const std::string& name,
 }
 
 static std::string pluginsConfigDir() {
-  auto pluginDataDir = g_BasePlatform->DefaultPrivateDataDir().ToStdString();
+  auto pluginDataDir = g_BasePlatform->GetPrivateDataDir().ToStdString();
   pluginDataDir += SEP + "plugins";
   if (!ocpn::exists(pluginDataDir)) {
     mkdir(pluginDataDir);

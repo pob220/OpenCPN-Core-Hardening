@@ -123,6 +123,14 @@ installed in the same directories as the plugin.
 Plugin load path, see PLUGIN LOADING. If existing, overrides all default entries.
 The path is ';'-separated on Windows but uses ':' on other platforms.
 .TP
+.B OPENCPN_PLUGIN_INSTALL_PREFIX
+On native Linux, an optional absolute, user-writable installation prefix for
+plugins imported or installed by Plugin Manager. Libraries, helpers and data
+are installed under lib, bin and share. The default is ~/.local.
+When set, plugin data lookup uses this prefix and XDG_DATA_DIRS without adding
+~/.local/share. OPENCPN_PLUGIN_DIRS, when set, must include the prefix's
+lib/opencpn directory. Installation records and load stamps follow --configdir.
+.TP
 .B OPENCPN_LOGLEVEL
 Default loglevel if not defined on command line using -l/--loglevel. See
 the --loglevel option for allowed values.

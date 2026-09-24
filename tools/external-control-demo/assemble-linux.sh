@@ -128,11 +128,11 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 | OpenCPN hardened core binary and API | $core_revision (external-control code based on release tag external-control-demo-20260821) |
 | Demo assembly and qualification tooling | $assembly_revision |
 | xGRIB 0.3.0.0 provider build | c0ca9d10640562b560be97727b897766889a6b55 plus ci/external-control-demo/xgrib-0.3.0.0-provider.patch from this assembly revision (preserves provider from 446814bafe6edfeaf23fadc3f478864f56d81362; generator 0.3.0 at 0cca0871c04f273579b4c69d6cb8fe26e8596677) |
-| xWeatherRouting 1.18.0.0 chart-aware provider | b42d27b942961fa4cda9fad0866bf9fbb8c5c4ed (selectable Main, Quick and Professional engines, five selectable GSHHS shoreline levels, bounded GRIB timeline caches, responsive chart preparation and final chart/depth validation) |
+| xWeatherRouting 1.18.1.0 chart-aware provider | 17982619b73c7fc265a03c7891ff0534795bc471 (selectable Quick, Standard and Professional engines; bounded Quick tack/gybe candidate repair, five selectable GSHHS shoreline levels, bounded GRIB timeline caches, responsive chart preparation and final chart/depth validation) |
 | o-charts chart-safety provider | b369c4cae0e84ea43847f64a26cb107ae1ffebe5 (modified plug-in over the official 2.2.1 licensed helper/runtime package) |
 | Upgraded Climatology plug-in and dataset 2026.2 | cd00282e6ea2784a6d78ccfe47fed713269ad87e |
 | Polar plug-in | 1.2.38.0 official OpenCPN package, SHA-256 $(sha256sum "$polar_archive" | cut -d ' ' -f 1) |
-| Upgraded Celestial Navigation plug-in | 2.8.9.0 at 8f187bdefd362e42c778b2331f2eb18046e25da8 |
+| Upgraded Celestial Navigation plug-in | 2.9.0.0 at 67bd8fffc8d5e6dbad246bbac88832f8655bbe2c |
 | OpenCPN Scheduler | $(git -C "$scheduler_repo" rev-parse HEAD) |
 
 Target: \`$platform\` (kernel architecture \`$expected_uname\`). Native plug-in
@@ -182,7 +182,7 @@ on an entry in the public OpenCPN Master catalogue.
 | o-charts 2.2.1 chart-safety preview | Licensed vector charts and batched semantic safety provider | Enabled; requires the developer's own licensed charts |
 | Climatology 1.6.39 / dataset 2026.2 | Updated offline climate statistics | Enabled |
 | Polar 1.2.38 | Polar inspection and editing companion | Enabled |
-| Celestial Navigation 2.8.9.0 | Offline almanac, sight planning, fixes, lunar tools and eclipse planning | Enabled |
+| Celestial Navigation 2.9.0.0 | Offline almanac, sight planning, fixes, lunar tools and eclipse planning | Enabled |
 
 The installer and CI qualification both fail if any listed binary is absent.
 EOF
@@ -190,7 +190,7 @@ EOF
 cat > "$bundle_dir/CELESTIAL-ECLIPSE-DATA.md" <<'EOF'
 # Optional Celestial Navigation eclipse data
 
-Celestial Navigation 2.8.9.0 is included, but the large
+Celestial Navigation 2.9.0.0 is included, but the large
 optional eclipse kernels and lunar-terrain packs are deliberately not embedded
 in this External Control Demo. They are not required for the almanac,
 sight-planning or celestial-fix features demonstrated by the baseline.
@@ -203,9 +203,9 @@ downloads either optional refinement. Local-file import remains available.
 
 The exact reviewed implementation, data checksums and separate data assets are:
 
-- [Pinned Celestial Navigation 2.8.9.0 source](https://github.com/pob220/celestial_navigation_pi/tree/8f187bdefd362e42c778b2331f2eb18046e25da8)
-- [Eclipse engine and build files](https://github.com/pob220/celestial_navigation_pi/tree/8f187bdefd362e42c778b2331f2eb18046e25da8/eclipse)
-- [Exact data files, checksums and provenance](https://github.com/pob220/celestial_navigation_pi/blob/8f187bdefd362e42c778b2331f2eb18046e25da8/eclipse/DATA.md)
+- [Pinned Celestial Navigation 2.9.0.0 source](https://github.com/pob220/celestial_navigation_pi/tree/67bd8fffc8d5e6dbad246bbac88832f8655bbe2c)
+- [Eclipse engine and build files](https://github.com/pob220/celestial_navigation_pi/tree/67bd8fffc8d5e6dbad246bbac88832f8655bbe2c/eclipse)
+- [Exact data files, checksums and provenance](https://github.com/pob220/celestial_navigation_pi/blob/67bd8fffc8d5e6dbad246bbac88832f8655bbe2c/eclipse/DATA.md)
 - [Unsplit optional data release](https://github.com/pob220/celestial_navigation_pi/releases/tag/eclipse-data-2026.1)
 
 The Celestial code validates the documented sizes, SHA-256 digests and kernel

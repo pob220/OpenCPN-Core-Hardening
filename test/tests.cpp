@@ -46,6 +46,8 @@
 #include "model/ocpn_types.h"
 #include "model/ocpn_utils.h"
 #include "model/own_ship.h"
+#include "model/plugin_handler.h"
+#include "model/plugin_loader.h"
 #include "model/routeman.h"
 #include "model/select.h"
 #include "model/semantic_vers.h"
@@ -1478,6 +1480,65 @@ TEST(PlatformPaths, OpenCpnPrefixRelocatesSharedDataAndPlugins) {
   } else {
     EXPECT_TRUE(wxUnsetEnv("OPENCPN_PREFIX"));
   }
+}
+
+TEST(PlatformPaths, PrivatePluginPrefixExcludesImplicitUserData) {
+  wxInitializer initializer;
+  ASSERT_TRUE(initializer.IsOk());
+  wxString saved_prefix, saved_dirs;
+  const bool had_prefix = wxGetEnv("OPENCPN_PLUGIN_INSTALL_PREFIX", &saved_prefix);
+  const bool had_dirs = wxGetEnv("XDG_DATA_DIRS", &saved_dirs);
+  const wxString prefix = wxString::FromUTF8(
+      (fs::path(CMAKE_BINARY_DIR) / "private-plugin-prefix").string());
+  wxSetEnv("OPENCPN_PLUGIN_INSTALL_PREFIX", prefix);
+  wxSetEnv("XDG_DATA_DIRS", "/usr/local/share:/usr/share");
+
+  BasePlatform platform;
+  const auto paths = platform.GetPluginDataPath();
+  EXPECT_TRUE(paths.StartsWith(prefix + "/share/opencpn/plugins"));
+  EXPECT_FALSE(paths.Contains(".local/share"));
+
+  if (had_prefix) wxSetEnv("OPENCPN_PLUGIN_INSTALL_PREFIX", saved_prefix);
+  else wxUnsetEnv("OPENCPN_PLUGIN_INSTALL_PREFIX");
+  if (had_dirs) wxSetEnv("XDG_DATA_DIRS", saved_dirs);
+  else wxUnsetEnv("XDG_DATA_DIRS");
+}
+
+TEST(PluginApi, InstallRecordsAndLoadStampsRespectConfigDir) {
+  wxInitializer initializer;
+  ASSERT_TRUE(initializer.IsOk());
+  const auto root = fs::path(CMAKE_BINARY_DIR) / "plugin-profile-isolation-test";
+  const auto profile = root / "preview";
+  const auto ordinary = root / "ordinary";
+  fs::create_directories(profile / "load_stamps");
+  fs::create_directories(ordinary / "load_stamps");
+  wxString saved_home;
+  const bool had_home = wxGetEnv("OCPN_TEST_HOMEDIR", &saved_home);
+  wxSetEnv("OCPN_TEST_HOMEDIR", ordinary.string());
+  const auto saved_configdir = g_configdir;
+  auto* saved_platform = g_BasePlatform;
+  BasePlatform platform;
+  g_BasePlatform = &platform;
+  // Populate the ordinary path first, reproducing application startup.
+  EXPECT_EQ(platform.DefaultPrivateDataDir().ToStdString(), ordinary.string());
+  g_configdir = profile.string();
+
+  EXPECT_EQ(PluginHandler::PluginsInstallDataPath(),
+            (profile / "plugins/install_data").string());
+  EXPECT_EQ(PluginHandler::ImportedMetadataPath("xWeatherRouting"),
+            (profile / "plugins/install_data/imports/xweatherrouting.xml").string());
+  std::ofstream(profile / "load_stamps/libpreview_test_pi") << "preview";
+  std::ofstream(ordinary / "load_stamps/libpreview_test_pi") << "ordinary";
+  PluginLoader::MarkAsLoadable("libpreview_test_pi");
+  EXPECT_FALSE(fs::exists(profile / "load_stamps/libpreview_test_pi"));
+  EXPECT_TRUE(fs::exists(ordinary / "load_stamps/libpreview_test_pi"));
+  EXPECT_FALSE(fs::exists(ordinary / "plugins/install_data"));
+
+  g_configdir = saved_configdir;
+  g_BasePlatform = saved_platform;
+  if (had_home) wxSetEnv("OCPN_TEST_HOMEDIR", saved_home);
+  else wxUnsetEnv("OCPN_TEST_HOMEDIR");
+  fs::remove_all(root);
 }
 #endif
 

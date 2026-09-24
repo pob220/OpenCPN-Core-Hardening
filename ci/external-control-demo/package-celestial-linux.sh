@@ -24,7 +24,7 @@ cmake --build "$build_dir" --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
 ctest --test-dir "$build_dir" --output-on-failure
 # Each opt-in wxWidgets suite needs its own process and display lifecycle.
 # Exercise the Find popup fix as well as the retained lunar/coastal UI contracts.
-for suite in FindBodyUi LunarUiSmoke CoastalUiSmoke; do
+for suite in DisplayUi FindBodyUi LunarUiSmoke FixUi SightLogUi CoastalUiSmoke AlmanacUi HorizonEventUi; do
   timeout 180 xvfb-run -a env CELESTIAL_RUN_UI_TESTS=1 \
     "$build_dir/test/celestial_tests" --gtest_filter="$suite.*"
 done

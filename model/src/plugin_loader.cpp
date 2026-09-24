@@ -161,7 +161,7 @@ static PluginMetadata CreateMetadata(const PlugInContainer* pic) {
 
 /** Return path for loadstamp file created when loading. */
 static fs::path LoadStampPath(const std::string& file_path) {
-  fs::path path(g_BasePlatform->DefaultPrivateDataDir().ToStdString());
+  fs::path path(g_BasePlatform->GetPrivateDataDir().ToStdString());
   path = path / "load_stamps";
   if (!ocpn::exists(path.string())) {
     ocpn::mkdir(path.string());

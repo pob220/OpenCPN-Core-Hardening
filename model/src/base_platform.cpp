@@ -129,19 +129,31 @@ static wxString ExpandPaths(wxString paths, AbstractPlatform* platform);
 
 static wxString GetLinuxDataPath() {
   wxString dirs;
+  wxString plugin_prefix;
   wxString install_prefix;
-  if (wxGetEnv("OPENCPN_PREFIX", &install_prefix) &&
-      !install_prefix.IsEmpty()) {
-    if (install_prefix.EndsWith("/")) install_prefix.RemoveLast();
-    dirs = install_prefix + "/share";
-  }
-  if (wxGetEnv("XDG_DATA_DIRS", &dirs)) {
-    dirs = install_prefix.IsEmpty()
-               ? wxString("~/.local/share:") + dirs
-               : install_prefix + "/share:~/.local/share:" + dirs;
+  if (wxGetEnv("OPENCPN_PLUGIN_INSTALL_PREFIX", &plugin_prefix) &&
+      !plugin_prefix.IsEmpty()) {
+    // Explicit private plugin installations must not borrow resources from
+    // ~/.local/share, which may belong to a different host or distribution.
+    if (plugin_prefix.EndsWith("/")) plugin_prefix.RemoveLast();
+    wxString data_dirs;
+    dirs = plugin_prefix + "/share";
+    if (wxGetEnv("XDG_DATA_DIRS", &data_dirs) && !data_dirs.IsEmpty())
+      dirs += ":" + data_dirs;
   } else {
-    dirs += dirs.IsEmpty() ? wxString(DEFAULT_XDG_DATA_DIRS)
-                           : wxString(":") + DEFAULT_XDG_DATA_DIRS;
+    if (wxGetEnv("OPENCPN_PREFIX", &install_prefix) &&
+        !install_prefix.IsEmpty()) {
+      if (install_prefix.EndsWith("/")) install_prefix.RemoveLast();
+      dirs = install_prefix + "/share";
+    }
+    if (wxGetEnv("XDG_DATA_DIRS", &dirs)) {
+      dirs = install_prefix.IsEmpty()
+                 ? wxString("~/.local/share:") + dirs
+                 : install_prefix + "/share:~/.local/share:" + dirs;
+    } else {
+      dirs += dirs.IsEmpty() ? wxString(DEFAULT_XDG_DATA_DIRS)
+                             : wxString(":") + DEFAULT_XDG_DATA_DIRS;
+    }
   }
   wxString s;
   wxStringTokenizer tokens(dirs, ':');

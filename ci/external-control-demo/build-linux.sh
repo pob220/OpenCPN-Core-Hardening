@@ -37,7 +37,7 @@ test_binary="$build_dir/test/tests"
 test -x "$test_binary"
 dbus-run-session "$test_binary" \
   --gtest_output="xml:$test_dir/external-control.xml" \
-  --gtest_filter='ExternalApiTest.*:InProcessPlanningJobServiceTest.*:BoundedApplicationEventStreamTest.*:ChartSafetyDepth.*:ChartSafetyService.*' \
+  --gtest_filter='ExternalApiTest.*:InProcessPlanningJobServiceTest.*:BoundedApplicationEventStreamTest.*:ChartSafetyDepth.*:ChartSafetyService.*:PlatformPaths.*:PluginApi.*' \
   2>&1 | tee "$log_dir/external-control-tests.log"
 
 DESTDIR="$stage_dir" cmake --install "$build_dir" \

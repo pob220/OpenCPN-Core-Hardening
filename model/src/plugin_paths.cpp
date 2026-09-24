@@ -133,9 +133,15 @@ void PluginPaths::InitLinuxPaths() {
     return;
   }
 
-  m_userLibdir = m_home + "/.local/lib";
-  m_user_bindir = m_home + "/.local/bin";
-  m_user_datadir = m_home + "/.local/share";
+  // A user-owned preview can install imports beside its bundled plugins.
+  // OPENCPN_PLUGIN_DIRS controls discovery only, not the extraction target.
+  const char* install_prefix = getenv("OPENCPN_PLUGIN_INSTALL_PREFIX");
+  const string user_prefix = install_prefix && *install_prefix
+                                 ? expand(install_prefix)
+                                 : m_home + "/.local";
+  m_userLibdir = user_prefix + "/lib";
+  m_user_bindir = user_prefix + "/bin";
+  m_user_datadir = user_prefix + "/share";
 
   std::vector<std::string> base_plugin_paths;
 #if defined(__WXGTK__) || defined(__WXQT__)
@@ -155,7 +161,7 @@ void PluginPaths::InitLinuxPaths() {
 #endif
 
   const char* const envdirs = getenv("OPENCPN_PLUGIN_DIRS");
-  string dirlist = envdirs ? envdirs : "~/.local/lib/opencpn";
+  string dirlist = envdirs ? envdirs : m_userLibdir + "/opencpn";
   m_libdirs = split(dirlist, ':');
   for (auto& dir : m_libdirs) {
     dir = expand(dir);

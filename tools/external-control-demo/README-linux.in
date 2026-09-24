@@ -45,6 +45,14 @@ initially enabled; bundled GRIB is present for compatibility but disabled to
 avoid two GRIB displays competing.
 The exact list is in `docs/PLUGIN-INVENTORY.md` after installation.
 
+To update a plugin, use **Options → Plugins → Import plugin…** with a tarball
+for **Debian 12** and this bundle's CPU architecture. When running in a
+container, match the container's Debian version. Launch through the supplied
+launcher: imports replace the copy in this writable preview installation and
+their installation records stay in its private profile. Restart OpenCPN after
+updating an active plugin. Do not add your normal `~/.local/lib/opencpn`
+directory to the launcher's search path.
+
 The Python SDK, `opencpnctl`, least-privilege MCP adapter and Scheduler are
 installed in the isolated `client` environment. MCP hosts should launch
 `bin/launch-opencpn-mcp-external-control-demo`; it supplies only the demo's

@@ -162,10 +162,10 @@ grep -q 'requests additional fail-closed safety' \
 grep -q 'eclipse-data-2026.1' \
   "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ||
   fail 'Celestial eclipse-data guidance does not link the pinned data release'
-grep -q '2.8.9.0 at 8f187bdefd362e42c778b2331f2eb18046e25da8' \
+grep -q '2.9.0.0 at 67bd8fffc8d5e6dbad246bbac88832f8655bbe2c' \
   "$install_dir/docs/COMPONENTS.md" ||
-  fail 'component manifest does not identify reviewed Celestial Navigation 2.8.9.0'
-grep -q 'tree/8f187bdefd362e42c778b2331f2eb18046e25da8' \
+  fail 'component manifest does not identify reviewed Celestial Navigation 2.9.0.0'
+grep -q 'tree/67bd8fffc8d5e6dbad246bbac88832f8655bbe2c' \
   "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ||
   fail 'Celestial guidance does not link the exact reviewed source revision'
 "$install_dir/client/bin/python" -c \
@@ -195,6 +195,53 @@ if "$bundle_dir/install-external-control-demo.sh" "$install_dir" \
 fi
 grep -q 'Refusing to overwrite' "$work_dir/second-install.log" ||
   fail 'second-install refusal did not report its reason'
+
+# Exercise the same extraction and manifest code used by GUI Import plugin.
+# Two imports cover replacement as well as first installation; the GUI smoke
+# below then loads that installed copy in a fresh process.
+require_executable "$install_dir/usr/local/bin/opencpn-cmd"
+mapfile -t routing_archives < <(find "$bundle_dir/assets" -maxdepth 1 -type f \
+  -name 'xweather-routing-*.tar.gz')
+(( ${#routing_archives[@]} == 1 )) || fail 'expected one routing import archive'
+for import_attempt in 1 2; do
+  env OPENCPN_PREFIX="$install_dir/usr/local" \
+    OPENCPN_PLUGIN_INSTALL_PREFIX="$install_dir/usr/local" \
+    OPENCPN_PLUGIN_DIRS="$install_dir/usr/local/lib/opencpn" \
+    XDG_DATA_DIRS="$install_dir/usr/local/share:/usr/share" \
+    OCPN_TEST_HOMEDIR="$install_dir/config" \
+    LD_LIBRARY_PATH="$install_dir/usr/local/lib/opencpn${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+    "$install_dir/usr/local/bin/opencpn-cmd" import-plugin "${routing_archives[0]}" \
+    >"$work_dir/plugin-import-$import_attempt.log" 2>&1 || {
+      cat "$work_dir/plugin-import-$import_attempt.log" >&2
+      fail "private plugin import $import_attempt failed"
+    }
+done
+python3 - "$install_dir" "${routing_archives[0]}" <<'PY'
+from pathlib import Path
+import hashlib
+import sys
+import tarfile
+import xml.etree.ElementTree as ET
+
+root = Path(sys.argv[1])
+prefix = root / 'usr/local'
+records = root / 'config/plugins/install_data'
+assert (records / 'xweatherrouting.version').read_text().strip() == '1.18.1.0'
+metadata = ET.parse(records / 'imports/xweatherrouting.xml').getroot()
+assert metadata.findtext('version').strip() == '1.18.1.0'
+installed = prefix / 'lib/opencpn/libxweather_routing_pi.so'
+with tarfile.open(sys.argv[2]) as archive:
+    libraries = [m for m in archive.getmembers()
+                 if m.name.endswith('/libxweather_routing_pi.so')]
+    assert len(libraries) == 1
+    assert hashlib.sha256(archive.extractfile(libraries[0]).read()).digest() == \
+        hashlib.sha256(installed.read_bytes()).digest()
+paths = [Path(p) for p in (records / 'xweatherrouting.files').read_text().splitlines()]
+assert installed in paths
+assert all(p.is_relative_to(prefix) for p in paths if p.is_file())
+assert (prefix / 'share/opencpn/plugins/xweather_routing_pi/data').is_dir()
+print('Plugin import/replacement passed: library, data and metadata stay in preview.')
+PY
 
 if [[ ${RUN_GUI_SMOKE:-0} == 1 ]]; then
   token=$(<"$install_dir/secrets/api-token")
@@ -251,6 +298,21 @@ if [[ ${RUN_GUI_SMOKE:-0} == 1 ]]; then
     echo 'The isolated External Control Demo API did not become ready.' >&2
     exit 1
   fi
+  python3 - "$install_dir" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+log = (root / 'config/opencpn.log').read_text(errors='replace')
+plugin_dir = root / 'usr/local/lib/opencpn'
+searches = [line.split('PluginLoader: loading plugins from ', 1)[1].strip()
+            for line in log.splitlines() if 'PluginLoader: loading plugins from ' in line]
+assert searches and all(path == str(plugin_dir) for path in searches), searches
+assert f'Loading PlugIn: {plugin_dir}/libxweather_routing_pi.so' in log
+data_paths = [line for line in log.splitlines() if 'Using plugin data path:' in line]
+assert data_paths and all('/.local/' not in line for line in data_paths), data_paths
+print('Imported xWeatherRouting loaded after restart; ordinary plugin paths excluded.')
+PY
   listeners=$(ss -H -ltn 'sport = :8443')
   [[ -n $listeners ]] || fail 'external-control listener is absent'
   if grep -Eq '(^|[[:space:]])(0\.0\.0\.0|\*|\[::\]):8443([[:space:]]|$)' \
