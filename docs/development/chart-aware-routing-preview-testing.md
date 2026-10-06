@@ -116,7 +116,7 @@ third-party working-tree changes are included.
 ## 6 October 2026 refresh
 
 The current bundle pins xWeatherRouting 1.26 with its corrected local endpoint
-clearance policy. Coastal endpoint access is limited to 1.5 times the configured
+clearance policy. Coastal endpoint access is limited to twice the configured
 margin, with a 0.5 NM minimum and 2 NM maximum. An endpoint flag cannot waive the
 margin along an arbitrarily long plotted chord. The full margin is enforced
 outside that access area; land, exclusion and depth constraints remain active
@@ -136,3 +136,10 @@ Navigation 2.9.7 includes the Compact runtime payload, restored desktop FIX,
 additional lunar checks, and its desktop guide. Optional eclipse/lunar-terrain
 packs remain opt-in. Both native architectures must pass the fresh component,
 GUI, import/replacement, isolated-install and API/MCP checks before publication.
+
+The corrected native build passes 416 unit tests. A Holyhead–Conwy GUI batch
+completes 20 of 25 hourly departures at 1 NM clearance and 3 m minimum depth;
+five search failures remain. The separately audited single passage has full
+clearance outside its bounded endpoint areas and land/depth checks throughout.
+Do not treat the batch as proof that every feasible departure is found.
+Auto retains Quick, Standard and Professional; Alternative is not added to it.
