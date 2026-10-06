@@ -24,9 +24,11 @@ cmake --build "$build_dir" --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
 ctest --test-dir "$build_dir" --output-on-failure
 # Each opt-in wxWidgets suite needs its own process and display lifecycle.
 # Exercise the Find popup fix as well as the retained lunar/coastal UI contracts.
-for suite in DisplayUi FindBodyUi LunarUiSmoke FixUi SightLogUi CoastalUiSmoke AlmanacUi HorizonEventUi; do
+for suite in DisplayUi FindBodyUi LunarUiSmoke FixUi SightLogUi SightSearchSpanUi CoastalUiSmoke AlmanacUi HorizonEventUi; do
   timeout 180 xvfb-run -a env CELESTIAL_RUN_UI_TESTS=1 \
-    "$build_dir/test/celestial_tests" --gtest_filter="$suite.*"
+    "$build_dir/test/celestial_tests" --gtest_filter="$suite.*" \
+    --gtest_output="xml:$work_dir/gui-$suite.xml"
+  grep -Eq 'tests="[1-9][0-9]*"' "$work_dir/gui-$suite.xml"
 done
 DESTDIR="$stage_dir" cmake --install "$build_dir"
 
@@ -34,6 +36,7 @@ plugin="$stage_dir/usr/local/lib/opencpn/libcelestial_navigation_pi.so"
 data_dir="$stage_dir/usr/local/share/opencpn/plugins/celestial_navigation_pi/data"
 test -f "$plugin"
 test -f "$data_dir/vsop87d.txt"
+test -d "$data_dir/compact"
 test -f "$data_dir/Celestial_Navigation_Information.html"
 machine=$(readelf -h "$plugin" | sed -n 's/^ *Machine: *//p')
 [[ $machine == "$expected_machine" ]]

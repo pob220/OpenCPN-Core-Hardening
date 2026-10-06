@@ -112,3 +112,27 @@ now detaches from route overlays before they are deleted and validates that a
 route remains managed before dereferencing it. It is built directly from the
 pinned `pob220/weather_routing_pi` source revision; no tester-local or
 third-party working-tree changes are included.
+
+## 6 October 2026 refresh
+
+The current bundle pins xWeatherRouting 1.26 with its corrected local endpoint
+clearance policy. Coastal endpoint access is limited to 1.5 times the configured
+margin, with a 0.5 NM minimum and 2 NM maximum. An endpoint flag cannot waive the
+margin along an arbitrarily long plotted chord. The full margin is enforced
+outside that access area; land, exclusion and depth constraints remain active
+within it. Test both a local coastal departure and an offshore passage. A
+failed route search is not evidence that no safe passage exists.
+
+The core prepares CM93 area rules and attributes once per safety tile, retains
+exact per-point polygon classification, and avoids rebuilding geometry after
+an empty missing-cell lookup. xWeatherRouting services the shared chart queue
+once per timer callback across concurrent routes. These reduce cold chart
+preparation work; the earlier benchmark did not measure a warm-cache gain.
+S-57/S-63 provider expansion remains separate from this performance refresh.
+
+xGRIB 0.3.7 includes the current date-line and older-ecCodes wave fixes while
+retaining the preview's optional environmental-data API provider. Celestial
+Navigation 2.9.7 includes the Compact runtime payload, restored desktop FIX,
+additional lunar checks, and its desktop guide. Optional eclipse/lunar-terrain
+packs remain opt-in. Both native architectures must pass the fresh component,
+GUI, import/replacement, isolated-install and API/MCP checks before publication.

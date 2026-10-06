@@ -162,12 +162,16 @@ grep -q 'requests additional fail-closed safety' \
 grep -q 'eclipse-data-2026.1' \
   "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ||
   fail 'Celestial eclipse-data guidance does not link the pinned data release'
-grep -q '2.9.0.0 at 67bd8fffc8d5e6dbad246bbac88832f8655bbe2c' \
+grep -q '2.9.7.0 at c7e571585eb6e8c82d333346d5e64f83dbc3f190' \
   "$install_dir/docs/COMPONENTS.md" ||
-  fail 'component manifest does not identify reviewed Celestial Navigation 2.9.0.0'
-grep -q 'tree/67bd8fffc8d5e6dbad246bbac88832f8655bbe2c' \
+  fail 'component manifest does not identify reviewed Celestial Navigation 2.9.7.0'
+grep -q 'tree/c7e571585eb6e8c82d333346d5e64f83dbc3f190' \
   "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ||
   fail 'Celestial guidance does not link the exact reviewed source revision'
+[[ -d "$install_dir/usr/local/share/opencpn/plugins/celestial_navigation_pi/data/compact" ]] ||
+  fail 'mandatory Celestial Compact ephemeris payload is missing'
+[[ -f "$install_dir/usr/local/share/opencpn/plugins/xweather_routing_pi/data/shoreline/manifest.json" ]] ||
+  fail 'bundled routing shoreline manifest is missing'
 "$install_dir/client/bin/python" -c \
   'import opencpn_control, opencpn_mcp, opencpn_scheduler' ||
   fail 'installed Python client packages cannot be imported'
@@ -226,9 +230,9 @@ import xml.etree.ElementTree as ET
 root = Path(sys.argv[1])
 prefix = root / 'usr/local'
 records = root / 'config/plugins/install_data'
-assert (records / 'xweatherrouting.version').read_text().strip() == '1.18.1.0'
+assert (records / 'xweatherrouting.version').read_text().strip() == '1.26.0'
 metadata = ET.parse(records / 'imports/xweatherrouting.xml').getroot()
-assert metadata.findtext('version').strip() == '1.18.1.0'
+assert metadata.findtext('version').strip() == '1.26.0'
 installed = prefix / 'lib/opencpn/libxweather_routing_pi.so'
 with tarfile.open(sys.argv[2]) as archive:
     libraries = [m for m in archive.getmembers()

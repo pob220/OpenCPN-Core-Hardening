@@ -161,12 +161,10 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/xgrib_pi.git inputs/xgrib_pi
-          git -C inputs/xgrib_pi checkout c0ca9d10640562b560be97727b897766889a6b55
-          git -C inputs/xgrib_pi apply --check "$GITHUB_WORKSPACE/ci/external-control-demo/xgrib-0.3.0.0-provider.patch"
-          git -C inputs/xgrib_pi apply "$GITHUB_WORKSPACE/ci/external-control-demo/xgrib-0.3.0.0-provider.patch"
+          git -C inputs/xgrib_pi checkout 114910f38d19336c85f2bb441dce1ff688696f9b
           git -C inputs/xgrib_pi submodule update --init --recursive
           test "$(git -C inputs/xgrib_pi/generator rev-parse HEAD)" = \
-            0cca0871c04f273579b4c69d6cb8fe26e8596677
+            0e61b6b3b4b126503fddd1721d2bdd219c9956ee
           inputs/xgrib_pi/ci/build-linux-catalogue.sh \
             inputs/xgrib_pi inputs/xgrib-build inputs/xgrib-stage \
             inputs/xgrib-build/artifacts/bookworm
@@ -183,7 +181,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/xweather_routing_pi.git inputs/xweather_routing_pi
-          git -C inputs/xweather_routing_pi checkout 17982619b73c7fc265a03c7891ff0534795bc471
+          git -C inputs/xweather_routing_pi checkout 9ec1ced1c78e4bb00a2369a0f271f72d2298e1a3
           git -C inputs/xweather_routing_pi submodule update --init --recursive
           inputs/xweather_routing_pi/ci/build-linux-catalogue.sh \
             inputs/xweather_routing_pi inputs/xweather-build
@@ -229,9 +227,9 @@ jobs:
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/celestial_navigation_pi.git \
             inputs/celestial_navigation_pi
-          git -C inputs/celestial_navigation_pi checkout --detach 67bd8fffc8d5e6dbad246bbac88832f8655bbe2c
+          git -C inputs/celestial_navigation_pi checkout --detach c7e571585eb6e8c82d333346d5e64f83dbc3f190
           test "$(git -C inputs/celestial_navigation_pi rev-parse HEAD)" = \
-            67bd8fffc8d5e6dbad246bbac88832f8655bbe2c
+            c7e571585eb6e8c82d333346d5e64f83dbc3f190
           git -C inputs/celestial_navigation_pi submodule update --init --recursive
           curl --fail --location \
             https://github.com/pob220/celestial_navigation_pi/releases/download/eclipse-data-2026.1/de440s.bsp \
@@ -255,7 +253,7 @@ jobs:
           core_installer=$(find inputs/core/package -maxdepth 1 -type f -name '*.sh' -print -quit)
           test -n "$core_installer"
           core_revision=$(cat inputs/core/source-commit.txt)
-          EXTERNAL_CONTROL_DEMO_DATE=2026-09-24 \
+          EXTERNAL_CONTROL_DEMO_DATE=2026-10-06 \
             EXTERNAL_CONTROL_CORE_REVISION="$core_revision" \
             tools/external-control-demo/assemble-linux.sh \
               "$core_installer" \
@@ -285,7 +283,7 @@ jobs:
           set -euo pipefail
           [[ "$EXPECTED_CANDIDATE_SOURCE" =~ ^[0-9a-f]{40}$ ]]
           cd candidate
-          archive=OpenCPN-External-Control-Demo-2026-09-24-debian12-x86_64.tar.gz
+          archive=OpenCPN-External-Control-Demo-2026-10-06-debian12-x86_64.tar.gz
           sha256sum --check "$archive.sha256"
           tar -xzf "$archive"
           grep -F "$EXPECTED_CANDIDATE_SOURCE" "${archive%.tar.gz}/COMPONENTS.md"
@@ -295,7 +293,7 @@ jobs:
         run: |
           qualification_log=candidate/qualification.log
           if ! tools/external-control-demo/qualify-linux-bundle.sh \
-              candidate/OpenCPN-External-Control-Demo-2026-09-24-debian12-x86_64 \
+              candidate/OpenCPN-External-Control-Demo-2026-10-06-debian12-x86_64 \
               'Advanced Micro Devices X86-64' >"$qualification_log" 2>&1; then
             cat "$qualification_log"
             exit 1
@@ -307,8 +305,8 @@ jobs:
         with:
           name: opencpn-external-control-demo-debian12-x86_64
           path: |
-            candidate/OpenCPN-External-Control-Demo-2026-09-24-debian12-x86_64.tar.gz
-            candidate/OpenCPN-External-Control-Demo-2026-09-24-debian12-x86_64.tar.gz.sha256
+            candidate/OpenCPN-External-Control-Demo-2026-10-06-debian12-x86_64.tar.gz
+            candidate/OpenCPN-External-Control-Demo-2026-10-06-debian12-x86_64.tar.gz.sha256
             candidate/qualification.log
           if-no-files-found: warn
           retention-days: 14
@@ -381,12 +379,10 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/xgrib_pi.git inputs/xgrib_pi
-          git -C inputs/xgrib_pi checkout c0ca9d10640562b560be97727b897766889a6b55
-          git -C inputs/xgrib_pi apply --check "$GITHUB_WORKSPACE/ci/external-control-demo/xgrib-0.3.0.0-provider.patch"
-          git -C inputs/xgrib_pi apply "$GITHUB_WORKSPACE/ci/external-control-demo/xgrib-0.3.0.0-provider.patch"
+          git -C inputs/xgrib_pi checkout 114910f38d19336c85f2bb441dce1ff688696f9b
           git -C inputs/xgrib_pi submodule update --init --recursive
           test "$(git -C inputs/xgrib_pi/generator rev-parse HEAD)" = \
-            0cca0871c04f273579b4c69d6cb8fe26e8596677
+            0e61b6b3b4b126503fddd1721d2bdd219c9956ee
           inputs/xgrib_pi/ci/build-linux-catalogue.sh \
             inputs/xgrib_pi inputs/xgrib-build inputs/xgrib-stage \
             inputs/xgrib-build/artifacts/bookworm-arm64
@@ -403,7 +399,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/xweather_routing_pi.git inputs/xweather_routing_pi
-          git -C inputs/xweather_routing_pi checkout 17982619b73c7fc265a03c7891ff0534795bc471
+          git -C inputs/xweather_routing_pi checkout 9ec1ced1c78e4bb00a2369a0f271f72d2298e1a3
           git -C inputs/xweather_routing_pi submodule update --init --recursive
           inputs/xweather_routing_pi/ci/build-linux-catalogue.sh \
             inputs/xweather_routing_pi inputs/xweather-build
@@ -448,9 +444,9 @@ jobs:
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/celestial_navigation_pi.git \
             inputs/celestial_navigation_pi
-          git -C inputs/celestial_navigation_pi checkout --detach 67bd8fffc8d5e6dbad246bbac88832f8655bbe2c
+          git -C inputs/celestial_navigation_pi checkout --detach c7e571585eb6e8c82d333346d5e64f83dbc3f190
           test "$(git -C inputs/celestial_navigation_pi rev-parse HEAD)" = \
-            67bd8fffc8d5e6dbad246bbac88832f8655bbe2c
+            c7e571585eb6e8c82d333346d5e64f83dbc3f190
           git -C inputs/celestial_navigation_pi submodule update --init --recursive
           # The lunar-distance tests require DE440, but the full optional
           # eclipse data pack is deliberately not fetched or distributed.
@@ -476,7 +472,7 @@ jobs:
           core_installer=$(find inputs/core/package -maxdepth 1 -type f -name '*.sh' -print -quit)
           test -n "$core_installer"
           core_revision=$(cat inputs/core/source-commit.txt)
-          EXTERNAL_CONTROL_DEMO_DATE=2026-09-24 \
+          EXTERNAL_CONTROL_DEMO_DATE=2026-10-06 \
             EXTERNAL_CONTROL_CORE_REVISION="$core_revision" \
             tools/external-control-demo/assemble-linux.sh \
               "$core_installer" \
@@ -506,7 +502,7 @@ jobs:
           set -euo pipefail
           [[ "$EXPECTED_CANDIDATE_SOURCE" =~ ^[0-9a-f]{40}$ ]]
           cd candidate
-          archive=OpenCPN-External-Control-Demo-2026-09-24-debian12-arm64.tar.gz
+          archive=OpenCPN-External-Control-Demo-2026-10-06-debian12-arm64.tar.gz
           sha256sum --check "$archive.sha256"
           tar -xzf "$archive"
           grep -F "$EXPECTED_CANDIDATE_SOURCE" "${archive%.tar.gz}/COMPONENTS.md"
@@ -516,7 +512,7 @@ jobs:
         run: |
           qualification_log=candidate/qualification.log
           if ! tools/external-control-demo/qualify-linux-bundle.sh \
-              candidate/OpenCPN-External-Control-Demo-2026-09-24-debian12-arm64 \
+              candidate/OpenCPN-External-Control-Demo-2026-10-06-debian12-arm64 \
               AArch64 >"$qualification_log" 2>&1; then
             cat "$qualification_log"
             exit 1
@@ -528,8 +524,8 @@ jobs:
         with:
           name: opencpn-external-control-demo-debian12-arm64
           path: |
-            candidate/OpenCPN-External-Control-Demo-2026-09-24-debian12-arm64.tar.gz
-            candidate/OpenCPN-External-Control-Demo-2026-09-24-debian12-arm64.tar.gz.sha256
+            candidate/OpenCPN-External-Control-Demo-2026-10-06-debian12-arm64.tar.gz
+            candidate/OpenCPN-External-Control-Demo-2026-10-06-debian12-arm64.tar.gz.sha256
             candidate/qualification.log
           if-no-files-found: warn
           retention-days: 14
