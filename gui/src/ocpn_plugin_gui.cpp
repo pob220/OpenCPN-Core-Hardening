@@ -5319,6 +5319,7 @@ SegmentSafetyPointClass ChartPointSafetyClassAtRaw(
     return SEGMENT_SAFETY_POINT_NO_DATA;
   }
 
+  Cm93SafetyQueryScope cm93_query_scope;
   std::set<int> chart_indexes;
   SegmentSafetyCandidateChartsAt(lat, lon, chart_indexes, stats);
 
@@ -5541,10 +5542,40 @@ SegmentSafetyPointClass ChartPointSafetyClassAtRaw(
   return point_class;
 }
 
+// Immutable semantic attributes of a borrowed area rule, valid for one tile.
+struct Cm93SafetyTileRule {
+  ObjRazRules* rule;
+  bool land;
+  bool drying;
+  bool has_depth;
+  double min_depth_m;
+  wxString summary;
+};
+
+std::vector<Cm93SafetyTileRule> CollectCm93SafetyTileRules(
+    cm93chart* chart, ViewPort* viewport) {
+  std::vector<ObjRazRules*> area_rules;
+  chart->CollectSafetyTileAreaRules(viewport, area_rules);
+  std::vector<Cm93SafetyTileRule> rules;
+  for (auto* rule : area_rules) {
+    if (!rule || !rule->obj) continue;
+    const bool land = !strncmp(rule->obj->FeatureName, "LNDARE", 6);
+    const bool drying = SegmentSafetyRuleIsDrying(rule);
+    double depth = 0.0;
+    const bool has_depth = SegmentSafetyRuleDepthMinM(rule, &depth);
+    // Other area objects do not contribute to this existing CM93 classifier.
+    if (land || drying || has_depth)
+      rules.push_back({rule, land, drying, has_depth, depth,
+                       SegmentSafetyRuleSummary(rule)});
+  }
+  return rules;
+}
+
 SegmentSafetyPointClass ChartPointSafetyClassAtPreparedCm93(
     cm93chart* chart, int chart_db_index, double lat, double lon,
     ViewPort* viewport, PlugInSegmentSafetySource* source,
-    SegmentSafetyCoreStats* stats, PlugInSegmentSafetyResult* result) {
+    SegmentSafetyCoreStats* stats, PlugInSegmentSafetyResult* result,
+    const std::vector<Cm93SafetyTileRule>& tile_rules) {
   if (!chart || !viewport) return SEGMENT_SAFETY_POINT_NO_DATA;
 
   const std::string point_cache_key = SegmentSafetyPointCacheKey(lat, lon);
@@ -5563,52 +5594,45 @@ SegmentSafetyPointClass ChartPointSafetyClassAtPreparedCm93(
   const PlugInSegmentSafetySource chart_source = PI_SEGMENT_SAFETY_SOURCE_CM93;
   if (source) *source = chart_source;
 
-  ListOfObjRazRules* rule_list =
-      chart->GetObjRuleListAtLatLon(lat, lon, 0.0, viewport, MASK_AREA);
   bool drying = false;
   bool has_depth = false;
   double min_depth_m = 0.0;
   wxString depth_object;
-  if (rule_list) {
-    for (ListOfObjRazRules::Node* node = rule_list->GetFirst(); node;
-         node = node->GetNext()) {
-      ObjRazRules* rule = node->GetData();
-      if (!rule || !rule->obj) continue;
-      if (!strncmp(rule->obj->FeatureName, "LNDARE", 6)) {
-        const wxString chart_path = chart->GetFullPath();
-        const wxString object = SegmentSafetyRuleSummary(rule);
-        if (SegmentSafetyResultHas(
-                result, offsetof(PlugInSegmentSafetyResult, hit_object),
-                sizeof(result->hit_object))) {
-          result->chart_db_index = chart_db_index;
-          result->chart_scale = chart->GetNativeScale();
-          strncpy(result->chart_path, chart_path.mb_str(),
-                  sizeof(result->chart_path) - 1);
-          result->chart_path[sizeof(result->chart_path) - 1] = '\0';
-          strncpy(result->hit_object, object.mb_str(),
-                  sizeof(result->hit_object) - 1);
-          result->hit_object[sizeof(result->hit_object) - 1] = '\0';
-        }
-        StoreSegmentSafetyPointCache(
-            point_cache_key,
-            MakeSegmentSafetyPointCacheEntry(
-                SEGMENT_SAFETY_POINT_LAND, chart_source, chart_db_index,
-                chart->GetNativeScale(), chart_path.mb_str(), object.mb_str()));
-        rule_list->Clear();
-        delete rule_list;
-        return SEGMENT_SAFETY_POINT_LAND;
+  for (const auto& prepared_rule : tile_rules) {
+    ObjRazRules* rule = prepared_rule.rule;
+    if (!rule || !rule->obj ||
+        !chart->DoesLatLonSelectObject(lat, lon, 0.0, rule->obj))
+      continue;
+    if (prepared_rule.land) {
+      const wxString chart_path = chart->GetFullPath();
+      const wxString& object = prepared_rule.summary;
+      if (SegmentSafetyResultHas(
+              result, offsetof(PlugInSegmentSafetyResult, hit_object),
+              sizeof(result->hit_object))) {
+        result->chart_db_index = chart_db_index;
+        result->chart_scale = chart->GetNativeScale();
+        strncpy(result->chart_path, chart_path.mb_str(),
+                sizeof(result->chart_path) - 1);
+        result->chart_path[sizeof(result->chart_path) - 1] = '\0';
+        strncpy(result->hit_object, object.mb_str(),
+                sizeof(result->hit_object) - 1);
+        result->hit_object[sizeof(result->hit_object) - 1] = '\0';
       }
-      if (SegmentSafetyRuleIsDrying(rule)) drying = true;
-      double rule_depth = 0.0;
-      if (SegmentSafetyRuleDepthMinM(rule, &rule_depth) &&
-          (!has_depth || rule_depth < min_depth_m)) {
-        has_depth = true;
-        min_depth_m = rule_depth;
-        depth_object = SegmentSafetyRuleSummary(rule);
-      }
+      StoreSegmentSafetyPointCache(
+          point_cache_key,
+          MakeSegmentSafetyPointCacheEntry(
+              SEGMENT_SAFETY_POINT_LAND, chart_source, chart_db_index,
+              chart->GetNativeScale(), chart_path.mb_str(), object.mb_str()));
+      return SEGMENT_SAFETY_POINT_LAND;
     }
-    rule_list->Clear();
-    delete rule_list;
+    if (prepared_rule.drying) drying = true;
+    const double rule_depth = prepared_rule.min_depth_m;
+    if (prepared_rule.has_depth &&
+        (!has_depth || rule_depth < min_depth_m)) {
+      has_depth = true;
+      min_depth_m = rule_depth;
+      depth_object = prepared_rule.summary;
+    }
   }
 
   const SegmentSafetyPointClass point_class =
@@ -6205,6 +6229,7 @@ CachedPointSafetyGridTile BuildSegmentSafetyGridTile(
     return CachedPointSafetyGridTile();
   }
 
+  Cm93SafetyQueryScope cm93_query_scope;
   wxStopWatch timer;
   CachedPointSafetyGridTile tile;
   constexpr int kTileCells = 40;
@@ -6696,6 +6721,9 @@ CachedPointSafetyGridTile BuildSegmentSafetyGridTile(
     }
   }
 
+  // Rule pointers are local to this prepared tile. General chart queries can
+  // mutate the working set; discard all borrowed pointers before those calls.
+  std::map<cm93chart*, std::vector<Cm93SafetyTileRule>> cm93_tile_rules;
   int land = 0, water = 0, drying = 0, unknown = 0;
   for (int r = 0; r < tile.rows; ++r) {
     const double cell_lat = ocpn::chart_safety::GlobalGridCoordinate(
@@ -6744,11 +6772,18 @@ CachedPointSafetyGridTile BuildSegmentSafetyGridTile(
               ? prepared_cm93->GetHighestDetailSafetyChartAt(cell_lat, cell_lon)
               : NULL;
       if (prepared_point_chart) {
+        auto inserted = cm93_tile_rules.emplace(
+            prepared_point_chart, std::vector<Cm93SafetyTileRule>{});
+        if (inserted.second)
+          inserted.first->second = CollectCm93SafetyTileRules(
+              prepared_point_chart, &prepared_cm93_vp);
         point_class = ChartPointSafetyClassAtPreparedCm93(
             prepared_point_chart, prepared_cm93_db_index, cell_lat, cell_lon,
-            &prepared_cm93_vp, &source, stats, &cell_result);
+            &prepared_cm93_vp, &source, stats, &cell_result,
+            inserted.first->second);
         ++cm93_batch_cells;
       } else {
+        cm93_tile_rules.clear();
         point_class = ChartPointSafetyClassAtRaw(cell_lat, cell_lon, &source,
                                                  stats, &cell_result);
         if (prepared_cm93) ++cm93_fallback_cells;
@@ -6764,6 +6799,7 @@ CachedPointSafetyGridTile BuildSegmentSafetyGridTile(
           point_class == SEGMENT_SAFETY_POINT_WATER &&
           !cell_result.has_depth) {
         ++cm93_depth_boundary_attempts;
+        cm93_tile_rules.clear();
         if (RecoverPreparedCm93BoundaryDepth(cell_lat, cell_lon,
                                              tile.resolution, stats,
                                              &cell_result))

@@ -153,6 +153,10 @@ public:
   virtual ListOfObjRazRules *GetObjRuleListAtLatLon(
       float lat, float lon, float select_radius, ViewPort *VPoint,
       int selection_mask = MASK_ALL);
+  /** Collect the existing MASK_AREA-eligible rules for a prepared safety tile.
+   * The pointers are borrowed and must be discarded before chart mutation. */
+  void CollectSafetyTileAreaRules(ViewPort *viewport,
+                                 std::vector<ObjRazRules *> &rules);
   virtual size_t CollectFeatureAreaRings(
       const char *feature_name,
       std::vector<std::vector<wxPoint2DDouble> > &rings);

@@ -4838,6 +4838,20 @@ ListOfObjRazRules *s57chart::GetObjRuleListAtLatLon(float lat, float lon,
   return ret_ptr;
 }
 
+void s57chart::CollectSafetyTileAreaRules(
+    ViewPort *viewport, std::vector<ObjRazRules *> &rules) {
+  rules.clear();
+  PrepareForRender(viewport, ps52plib);
+  const int area_index =
+      ps52plib->m_nBoundaryStyle == PLAIN_BOUNDARIES ? 3 : 4;
+  for (int priority = 0; priority < PRIO_NUM; ++priority) {
+    for (ObjRazRules *rule = razRules[priority][area_index]; rule;
+         rule = rule->next) {
+      if (ps52plib->ObjectRenderCheck(rule)) rules.push_back(rule);
+    }
+  }
+}
+
 size_t s57chart::CollectFeatureAreaRings(
     const char *feature_name,
     std::vector<std::vector<wxPoint2DDouble> > &rings) {

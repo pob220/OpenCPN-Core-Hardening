@@ -69,6 +69,13 @@
 #include <wx/msw/msvcrt.h>
 #endif
 
+namespace {
+thread_local unsigned cm93_safety_query_depth = 0;
+}
+
+Cm93SafetyQueryScope::Cm93SafetyQueryScope() { ++cm93_safety_query_depth; }
+Cm93SafetyQueryScope::~Cm93SafetyQueryScope() { --cm93_safety_query_depth; }
+
 extern s52plib *ps52plib;
 
 CM93OffsetDialog *g_pCM93OffsetDialog;
@@ -1996,13 +2003,15 @@ void cm93chart::SetVPParms(const ViewPort &vpt) {
 
     //    The cell is not in place, so go load it
     if (!bcell_is_in) {
+      bool added_geometry = false;
 #ifndef __OCPN__ANDROID__
-      AbstractPlatform::ShowBusySpinner();
+      if (!cm93_safety_query_depth) AbstractPlatform::ShowBusySpinner();
 #endif
       int cell_index = vpcells[i];
 
       if (loadcell_in_sequence(cell_index, '0'))  // Base cell
       {
+        added_geometry = true;
         ProcessVectorEdges();
         CreateObjChain(cell_index, (int)'0', vpt.view_scale_ppm);
 
@@ -2018,6 +2027,7 @@ void cm93chart::SetVPParms(const ViewPort &vpt) {
       //    Load any subcells in sequence
       //    On successful load, add it to the member list and process the cell
       while (loadcell_in_sequence(cell_index, loadcell_key)) {
+        added_geometry = true;
         ProcessVectorEdges();
         CreateObjChain(cell_index, (int)loadcell_key, vpt.view_scale_ppm);
 
@@ -2032,6 +2042,11 @@ void cm93chart::SetVPParms(const ViewPort &vpt) {
         loadcell_key++;
       }
 
+      // Keep absent-cell retries, but unchanged geometry needs no rebuild.
+      if (!added_geometry) {
+        if (!cm93_safety_query_depth) AbstractPlatform::HideBusySpinner();
+        continue;
+      }
       AssembleLineGeometry();
 
       ClearDepthContourArray();
@@ -2062,7 +2077,7 @@ void cm93chart::SetVPParms(const ViewPort &vpt) {
         }
       }
 
-      AbstractPlatform::HideBusySpinner();
+      if (!cm93_safety_query_depth) AbstractPlatform::HideBusySpinner();
     }
   }
 }

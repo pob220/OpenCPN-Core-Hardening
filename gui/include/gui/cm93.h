@@ -36,6 +36,16 @@
 
 #define CM93_ZOOM_FACTOR_MAX_RANGE 5
 
+/** Safety extraction has its own progress reporting. Suppress per-cell
+ * global busy-cursor changes only for this thread and this nested scope. */
+class Cm93SafetyQueryScope {
+public:
+  Cm93SafetyQueryScope();
+  ~Cm93SafetyQueryScope();
+  Cm93SafetyQueryScope(const Cm93SafetyQueryScope &) = delete;
+  Cm93SafetyQueryScope &operator=(const Cm93SafetyQueryScope &) = delete;
+};
+
 class CM93OffsetDialog;                       // Forward
 extern CM93OffsetDialog *g_pCM93OffsetDialog; /**< Global instance */
 
