@@ -55,6 +55,23 @@ require_mode() {
     fail "expected mode $expected for $path; found $actual"
 }
 
+# Run the complete header-only production geometry suite directly: older
+# CMake gtest_add_tests does not discover every multiline TEST declaration.
+c++ -std=c++17 -I"$source_root/gui/include" \
+  "$source_root/test/chart_safety_geometry_tests.cpp" \
+  -lgtest_main -lgtest -pthread -o "$work_dir/geometry-fixtures"
+"$work_dir/geometry-fixtures" \
+  --gtest_output="xml:$work_dir/geometry-fixtures.xml"
+python3 - "$work_dir/geometry-fixtures.xml" <<'PYTEST'
+import sys
+import xml.etree.ElementTree as ET
+root = ET.parse(sys.argv[1]).getroot()
+assert len(list(root.iter('testcase'))) == 17
+assert not list(root.iter('failure')) and not list(root.iter('error'))
+assert not list(root.iter('skipped'))
+print('Complete geometry oracle suite passed: 17 tests; 70000 comparisons.')
+PYTEST
+
 (cd "$bundle_dir" && sha256sum --check SHA256SUMS)
 "$bundle_dir/install-external-control-demo.sh" "$install_dir"
 

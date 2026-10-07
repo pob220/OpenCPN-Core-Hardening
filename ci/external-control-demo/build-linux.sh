@@ -40,6 +40,11 @@ dbus-run-session "$test_binary" \
   --gtest_filter='ExternalApiTest.*:InProcessPlanningJobServiceTest.*:BoundedApplicationEventStreamTest.*:ChartSafetyDepth.*:ChartSafetyService.*:PlatformPaths.*:PluginApi.*' \
   2>&1 | tee "$log_dir/external-control-tests.log"
 
+# Direct discovery includes multiline declarations on older CMake releases.
+"$test_binary" --gtest_filter='ChartSafetyGeometry.*' \
+  --gtest_output="xml:$test_dir/geometry.xml" \
+  2>&1 | tee "$log_dir/geometry-tests.log"
+
 # Exercise all deterministic model/geometry tests, then private production
 # native classifiers against this exact host build (no extra ABI exports).
 dbus-run-session ctest --test-dir "$build_dir" --label-regex deterministic \
