@@ -45,6 +45,7 @@
 
 #include "chcanv.h"
 #include "cm93.h"
+#include "chart_safety_geometry.h"
 #include "cm93_dictionary_parser.h"
 #include "detail_slider.h"
 #include "gui_lib.h"
@@ -4175,6 +4176,39 @@ bool cm93chart::UpdateCovrSet(ViewPort *vpt) {
   return true;
 }
 
+int cm93chart::SafetyCoverageBoxRelation(double min_lat, double max_lat,
+                                         double min_lon, double max_lon) {
+  using namespace ocpn::chart_safety;
+  const CellBox box{min_lon, min_lat, max_lon, max_lat};
+  if (!box.Valid() || max_lon - min_lon >= 180 || min_lat <= -85 ||
+      max_lat >= 85)
+    return -1;
+  const double centre = (min_lon + max_lon) / 2;
+  bool covered = false, partial = false;
+  for (unsigned i = 0; i < m_pcovr_array_loaded.GetCount(); ++i) {
+    const auto *coverage = m_pcovr_array_loaded[i];
+    if (!coverage || coverage->m_nvertices < 3 || !coverage->pvertices ||
+        coverage->user_xoff != 0 || coverage->user_yoff != 0)
+      return -1;
+    std::vector<std::vector<Point>> rings(1);
+    auto &ring = rings.front();
+    for (int v = 0; v < coverage->m_nvertices; ++v) {
+      const auto p = coverage->pvertices[v];
+      if (!std::isfinite(p.x) || !std::isfinite(p.y)) return -1;
+      ring.push_back({centre + std::remainder(p.x - centre, 360.0), p.y});
+    }
+    for (size_t v = 0; v < ring.size(); ++v)
+      if (std::abs(ring[v].x - ring[(v + 1) % ring.size()].x) >= 180) return -1;
+    if (BoundaryMayIntersectCell(rings, box))
+      partial = true;
+    else if (PointInsideRings(rings, {centre, (min_lat + max_lat) / 2}))
+      covered = true;
+  }
+  // Refuse partial coverage even if another overlapping polygon contains the
+  // box: this keeps the first prototype conservative at coverage boundaries.
+  return partial ? 1 : covered ? 2 : 0;
+}
+
 bool cm93chart::IsPointInLoadedM_COVR(double xc, double yc) {
   //  Provisionally revert to older method pending investigation.
 #if 1
@@ -4986,6 +5020,22 @@ cm93chart *cm93compchart::GetHighestDetailSafetyChartAt(double lat,
     if (chart && chart->IsPointInLoadedM_COVR(lon, lat)) return chart;
   }
   return NULL;
+}
+
+cm93chart *cm93compchart::GetUniformSafetyChartForBox(double min_lat,
+                                                      double max_lat,
+                                                      double min_lon,
+                                                      double max_lon) {
+  if (min_lon <= -180 || max_lon >= 180) return nullptr;
+  for (int scale = 7; scale >= 0; --scale) {
+    auto *chart = m_pcm93chart_array[scale];
+    if (!chart) continue;
+    const int relation =
+        chart->SafetyCoverageBoxRelation(min_lat, max_lat, min_lon, max_lon);
+    if (relation == 2) return chart;
+    if (relation != 0) return nullptr;
+  }
+  return nullptr;
 }
 
 bool cm93compchart::SafetyAreaHazardMayIntersect(double min_lat, double max_lat,
