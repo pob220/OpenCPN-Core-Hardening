@@ -182,3 +182,10 @@ Both Debian 12 architectures must pass the new geometry and isolated-danger
 fixtures, component tests, clean-install/import/replacement, GUI and API/MCP
 checks before release publication. Earlier benchmark and coastal batch results
 above are historical 1.26 evidence, not a fresh 1.27 batch claim.
+
+The expanded ARM64 deterministic suite also exposed a pre-existing cardinal
+cross-track quadrant error in core route-leg state. The normal bearing now uses
+`atan2`, avoiding division by an exactly zero component. Both steering sides of
+north, south, east and west legs are covered. The original failure was also
+reproduced with fused arithmetic on x86_64; the corrected production code
+passes the new fixture. Both release cores are rebuilt with this correction.

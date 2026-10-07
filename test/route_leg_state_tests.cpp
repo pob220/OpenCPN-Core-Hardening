@@ -20,6 +20,7 @@ TEST(RouteLegState, EastboundLegUsesCrossTrackCorrectionDirection) {
 
   EXPECT_NEAR(state.segment_course, 90.0, 0.01);
   EXPECT_NEAR(state.cross_track_error, 6.0, 0.1);
+  EXPECT_NEAR(state.course_to_segment, 180.0, 0.01);
   EXPECT_EQ(state.cross_track_direction, 1);  // South/right toward track.
   EXPECT_TRUE(std::isfinite(state.range_to_arrival_normal));
 }
@@ -48,4 +49,33 @@ TEST(RouteLegState, HandlesAntimeridianBearing) {
   EXPECT_NEAR(state.bearing_to_waypoint, 90.0, 0.01);
   EXPECT_TRUE(std::isfinite(state.range_to_waypoint));
   EXPECT_LT(state.range_to_waypoint, 20.0);
+}
+
+TEST(RouteLegState, CardinalLegsSteerTowardTrackFromBothSides) {
+  struct Case {
+    RoutePosition vessel;
+    RoutePosition waypoint;
+    double correction_bearing;
+    int direction;
+  };
+  const Case cases[] = {
+      {{0.1, 0.5}, {0.0, 1.0}, 180.0, 1},
+      {{-0.1, 0.5}, {0.0, 1.0}, 0.0, -1},
+      {{0.1, -0.5}, {0.0, -1.0}, 180.0, -1},
+      {{-0.1, -0.5}, {0.0, -1.0}, 0.0, 1},
+      {{0.5, 0.1}, {1.0, 0.0}, 270.0, -1},
+      {{0.5, -0.1}, {1.0, 0.0}, 90.0, 1},
+      {{-0.5, 0.1}, {-1.0, 0.0}, 270.0, 1},
+      {{-0.5, -0.1}, {-1.0, 0.0}, 90.0, -1},
+  };
+  for (const auto &test : cases) {
+    SCOPED_TRACE(test.correction_bearing);
+    const auto state = CalculateRouteLegState(
+        test.vessel, RoutePosition{0.0, 0.0}, test.waypoint);
+    EXPECT_NEAR(std::remainder(state.course_to_segment -
+                                  test.correction_bearing, 360.0),
+                0.0, 0.01);
+    EXPECT_EQ(state.cross_track_direction, test.direction);
+    EXPECT_GT(state.cross_track_error, 5.0);
+  }
 }

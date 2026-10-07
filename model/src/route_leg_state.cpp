@@ -82,10 +82,11 @@ RouteLegState CalculateRouteLegState(RoutePosition vessel,
   state.segment_course = std::atan2(x2 - x1, y2 - y1) * 180.0 / kPi;
   if (state.segment_course < 0.0) state.segment_course += 360.0;
 
-  const double normal_angle = std::atan(normal.y / normal.x);
-  state.course_to_segment = normal.x > 0.0
-                                ? 90.0 - normal_angle * 180.0 / kPi
-                                : 270.0 - normal_angle * 180.0 / kPi;
+  // atan2 preserves the quadrant when a cardinal-track normal has an exact
+  // zero east component (including signed zero after fused operations).
+  // Dividing by that component made the steering side architecture-dependent.
+  state.course_to_segment = std::atan2(normal.x, normal.y) * 180.0 / kPi;
+  if (state.course_to_segment < 0.0) state.course_to_segment += 360.0;
 
   double direction_angle =
       state.bearing_to_waypoint - state.course_to_segment;
