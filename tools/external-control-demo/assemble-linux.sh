@@ -135,7 +135,7 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 | o-charts chart-safety provider | b369c4cae0e84ea43847f64a26cb107ae1ffebe5 (modified plug-in over the official 2.2.1 licensed helper/runtime package) |
 | Upgraded Climatology plug-in and dataset 2026.2 | cd00282e6ea2784a6d78ccfe47fed713269ad87e |
 | Polar plug-in | 1.2.38.0 official OpenCPN package, SHA-256 $(sha256sum "$polar_archive" | cut -d ' ' -f 1) |
-| Upgraded Celestial Navigation plug-in | 2.9.7.0 at c7e571585eb6e8c82d333346d5e64f83dbc3f190 |
+| Upgraded Celestial Navigation plug-in | 2.9.7.0 at d2d5c8caee9e0914ae7831bc48fac2b8d82bff15 (Debian 12 future-UTC conversion and source-relative lunar fixture fixes) |
 | OpenCPN Scheduler | $(git -C "$scheduler_repo" rev-parse HEAD) |
 
 Target: \`$platform\` (kernel architecture \`$expected_uname\`). Native plug-in
@@ -206,9 +206,9 @@ downloads either optional refinement. Local-file import remains available.
 
 The exact reviewed implementation, data checksums and separate data assets are:
 
-- [Pinned Celestial Navigation 2.9.7.0 source](https://github.com/pob220/celestial_navigation_pi/tree/c7e571585eb6e8c82d333346d5e64f83dbc3f190)
-- [Eclipse engine and build files](https://github.com/pob220/celestial_navigation_pi/tree/c7e571585eb6e8c82d333346d5e64f83dbc3f190/eclipse)
-- [Exact data files, checksums and provenance](https://github.com/pob220/celestial_navigation_pi/blob/c7e571585eb6e8c82d333346d5e64f83dbc3f190/eclipse/DATA.md)
+- [Pinned Celestial Navigation 2.9.7.0 source](https://github.com/pob220/celestial_navigation_pi/tree/d2d5c8caee9e0914ae7831bc48fac2b8d82bff15)
+- [Eclipse engine and build files](https://github.com/pob220/celestial_navigation_pi/tree/d2d5c8caee9e0914ae7831bc48fac2b8d82bff15/eclipse)
+- [Exact data files, checksums and provenance](https://github.com/pob220/celestial_navigation_pi/blob/d2d5c8caee9e0914ae7831bc48fac2b8d82bff15/eclipse/DATA.md)
 - [Unsplit optional data release](https://github.com/pob220/celestial_navigation_pi/releases/tag/eclipse-data-2026.1)
 
 The Celestial code validates the documented sizes, SHA-256 digests and kernel
