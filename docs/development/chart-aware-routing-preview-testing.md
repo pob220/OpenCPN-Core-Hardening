@@ -113,7 +113,7 @@ route remains managed before dereferencing it. It is built directly from the
 pinned `pob220/weather_routing_pi` source revision; no tester-local or
 third-party working-tree changes are included.
 
-## 6 October 2026 refresh
+## 7 October 2026 refresh
 
 The current bundle pins xWeatherRouting 1.26 with its corrected local endpoint
 clearance policy. Coastal endpoint access is limited to twice the configured
@@ -143,3 +143,11 @@ five search failures remain. The separately audited single passage has full
 clearance outside its bounded endpoint areas and land/depth checks throughout.
 Do not treat the batch as proof that every feasible departure is found.
 Auto retains Quick, Standard and Professional; Alternative is not added to it.
+
+The routing pin is the published 1.26 alpha source, including its Android
+packaging qualification; these archives are native Debian 12 desktop builds.
+The final controlled cold-cache comparison is approximately 2.68 times faster
+on the fixed Hawaiian substitute fixture, while selecting a longer passage.
+See `CHART-SAFETY-PERFORMANCE-1.26.md` beside this guide for the method,
+independent safety checks and route-quality limitation. This is not a claim
+that every chart-aware passage improves by that factor.

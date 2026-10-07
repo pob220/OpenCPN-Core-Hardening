@@ -94,6 +94,9 @@ install -m 644 \
 install -m 644 \
   "$source_root/docs/development/chart-aware-routing-preview-testing.md" \
   "$bundle_dir/docs/CHART-AWARE-ROUTING-PREVIEW.md"
+install -m 644 \
+  "$source_root/docs/chart-safety-performance-1.26.md" \
+  "$bundle_dir/docs/CHART-SAFETY-PERFORMANCE-1.26.md"
 
 sed \
   -e "s/@PLATFORM@/$platform/g" \
@@ -127,8 +130,8 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 |---|---|
 | OpenCPN hardened core binary and API | $core_revision (external-control code based on release tag external-control-demo-20260821) |
 | Demo assembly and qualification tooling | $assembly_revision |
-| xGRIB 0.3.7.0 provider build | 114910f38d19336c85f2bb441dce1ff688696f9b (current 0.3.7 plus retained preview environmental provider; generator 0.3.0 at 0e61b6b3b4b126503fddd1721d2bdd219c9956ee, including date-line and surface-wave compatibility fixes) |
-| xWeatherRouting 1.26.0 chart-aware provider | cd3db9e811f6c5852e711fecf052f9397f91a983 (corrected bounded coastal endpoint clearance and continuous chart-grid chord traversal, shared chart request budget, read-only existing-route checks, Quick, Standard, Alternative and Professional routing) |
+| xGRIB 0.3.7.0 provider build | ab15f86216245a946e7889986c0081e12afa2fba (current 0.3.7 plus retained preview environmental provider; generator 0.3.0 at 0e61b6b3b4b126503fddd1721d2bdd219c9956ee, including date-line and surface-wave compatibility fixes) |
+| xWeatherRouting 1.26.0 chart-aware provider | caa9152cb78151129175aeddb98708652c248c68 (corrected bounded coastal endpoint clearance and continuous chart-grid chord traversal, shared chart request budget, read-only existing-route checks, Quick, Standard, Alternative and Professional routing) |
 | o-charts chart-safety provider | b369c4cae0e84ea43847f64a26cb107ae1ffebe5 (modified plug-in over the official 2.2.1 licensed helper/runtime package) |
 | Upgraded Climatology plug-in and dataset 2026.2 | cd00282e6ea2784a6d78ccfe47fed713269ad87e |
 | Polar plug-in | 1.2.38.0 official OpenCPN package, SHA-256 $(sha256sum "$polar_archive" | cut -d ' ' -f 1) |
