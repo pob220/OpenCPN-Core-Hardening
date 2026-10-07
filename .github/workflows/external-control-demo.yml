@@ -12,11 +12,11 @@ on:
   workflow_dispatch:
     inputs:
       core_run_id:
-        description: Optional successful workflow run containing the ARM64 core artifact
+        description: Optional workflow run with a successful ARM64 core job and its artifact
         required: false
         type: string
       x86_core_run_id:
-        description: Optional successful workflow run containing the x86_64 core artifact
+        description: Optional workflow run with a successful x86_64 core job and its artifact
         required: false
         type: string
       candidate_run_id:
@@ -152,7 +152,7 @@ jobs:
             'https://dl.cloudsmith.io/public/opencpn/o-charts-prod/raw/names/o-charts-v2.2.1-debian-x86_64-12-tarball/versions/v2.2.1/o-charts-v2.2.1_debian-x86_64-12-x86_64.tar.gz' \
             --output inputs/plugins/ocharts-official.tar.gz
           echo '6130386533e5661cc6f940a30ab0633af5c30ec5efac2697d72e08634cbb08fc  inputs/plugins/polar.tar.gz' | sha256sum --check
-          echo '432eccc267d9ca70d2fcd067db5e792d88fd5c437013d11da8d96ef131252dd0  inputs/plugins/ocharts-official.tar.gz' | sha256sum --check
+          echo '0f0d15d3aa2e9598e3d43d73b1c9035c29e54ef7b82cca0d98a13bd6fec3f122  inputs/plugins/ocharts-official.tar.gz' | sha256sum --check
       - name: Build and test exact fixed xGRIB source
         if: ${{ inputs.candidate_run_id == '' }}
         env:
@@ -370,7 +370,7 @@ jobs:
             'https://dl.cloudsmith.io/public/opencpn/o-charts-prod/raw/names/o-charts-v2.2.1-debian-arm64-A64-12-tarball/versions/v2.2.1/o-charts-v2.2.1_debian-arm64-12-arm64.tar.gz' \
             --output inputs/plugins/ocharts-official.tar.gz
           echo '85e000060e7f10df4a01424257e685ac6a8b8bd1cd145030a1a4c8bdb50ce470  inputs/plugins/polar.tar.gz' | sha256sum --check
-          echo '861ad2ec41b00afbbabcae1d7bd989d2afec3c9e428227cecb28b9b87fffe104  inputs/plugins/ocharts-official.tar.gz' | sha256sum --check
+          echo '930316f22e76fb1fac0017c5756e3e79ab7b755a4b5ff39b92fba82e125577bb  inputs/plugins/ocharts-official.tar.gz' | sha256sum --check
       - name: Build and test exact fixed xGRIB source
         if: ${{ inputs.candidate_run_id == '' }}
         env:
