@@ -25,6 +25,8 @@ export XDG_DATA_HOME="$demo_root/xdg-data"
 export XDG_CACHE_HOME="$demo_root/xdg-cache"
 export XDG_DATA_DIRS="$demo_prefix/share:/usr/local/share:/usr/share"
 export OPENCPN_PREFIX="$demo_prefix"
+# Whole-tile proofs require complete coverage and conservative depth evidence.
+export OCPN_CHART_SAFETY_GEOMETRY_PROOF=1
 export OPENCPN_PLUGIN_INSTALL_PREFIX="$demo_prefix"
 export OPENCPN_PLUGIN_DIRS="$demo_prefix/lib/opencpn"
 export LD_LIBRARY_PATH="$demo_prefix/lib/opencpn${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"

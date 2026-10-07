@@ -8,11 +8,15 @@ human-readable Scheduler. It targets `@EXPECTED_UNAME@` systems running
 the `@PLATFORM@` build environment; native packages should not be treated as
 portable across incompatible distributions.
 
-This October refresh includes xWeatherRouting 1.26 with the land-margin fix,
-xGRIB 0.3.7, and the CM93 chart-preparation performance improvements in the
-companion core. Coastal endpoint access is bounded; the full requested margin
-is enforced offshore, while land and depth checks remain active locally.
-Missing chart/depth evidence remains unverified. See `COMPONENTS.md` for pins.
+This October refresh includes xWeatherRouting 1.27, xGRIB 0.3.9 with Generator
+0.3.4, and the geometry-based CM93 preparation improvements in the companion
+core. The launcher enables the qualified whole-tile proof path. A tile is
+certified only with complete chart coverage and conservative area-depth
+evidence; isolated rocks, wrecks, obstructions, reefs and missing evidence
+retain detailed checks. Coastal endpoint access remains bounded; full clearance
+applies offshore and land/depth checks remain active locally. See
+`docs/CHART-SAFETY-PERFORMANCE-1.27.md` for evidence and limits, and
+`COMPONENTS.md` for exact pins.
 
 It is a developer demonstration, not a navigation release. It does not replace
 an existing OpenCPN installation, use an existing profile, activate routes or

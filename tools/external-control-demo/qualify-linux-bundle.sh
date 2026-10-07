@@ -230,9 +230,9 @@ import xml.etree.ElementTree as ET
 root = Path(sys.argv[1])
 prefix = root / 'usr/local'
 records = root / 'config/plugins/install_data'
-assert (records / 'xweatherrouting.version').read_text().strip() == '1.26.0'
+assert (records / 'xweatherrouting.version').read_text().strip() == '1.27.0'
 metadata = ET.parse(records / 'imports/xweatherrouting.xml').getroot()
-assert metadata.findtext('version').strip() == '1.26.0'
+assert metadata.findtext('version').strip() == '1.27.0'
 installed = prefix / 'lib/opencpn/libxweather_routing_pi.so'
 with tarfile.open(sys.argv[2]) as archive:
     libraries = [m for m in archive.getmembers()

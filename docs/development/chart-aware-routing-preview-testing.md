@@ -151,3 +151,34 @@ on the fixed Hawaiian substitute fixture, while selecting a longer passage.
 See `CHART-SAFETY-PERFORMANCE-1.26.md` beside this guide for the method,
 independent safety checks and route-quality limitation. This is not a claim
 that every chart-aware passage improves by that factor.
+
+## 7 October 2026 second refresh — 1.27 / 0.3.9
+
+Use the **2026-10-07.2** archives for this refresh. The earlier October and
+September archives remain available for rollback. Install into a fresh
+directory and use its own launcher; it enables
+`OCPN_CHART_SAFETY_GEOMETRY_PROOF=1`.
+
+xWeatherRouting 1.27 retains the corrected 1.26 routing engines and coastal
+endpoint policy. The updated core copies immutable native safety geometry,
+indexes soundings, rejects distant objects by authoritative bounds and reuses
+whole-area coverage evidence. Uniform CM93 tile proofs require complete
+highest-detail coverage and known conservative area depth. Every isolated
+rock, wreck or obstruction prevents this shortcut, including deep known ones;
+missing danger depth remains unknown. Tiny reefs, shallows, drying areas,
+coverage holes and boundary contacts remain part of detailed checks. Changed
+cache identities invalidate earlier derived data. See
+`CHART-SAFETY-PERFORMANCE-1.27.md` for measured evidence and limitations.
+
+xGRIB 0.3.9 / Generator 0.3.4 retains the optional preview environmental API
+provider, with immediate area/time checks and clearer Copernicus authentication
+errors. Celestial Navigation 2.9.7 and the other component pins are retained.
+Native plugin API 1.21 remains unchanged. On stock OpenCPN, xWeatherRouting
+still uses GSHHG with chart-awareness controls disabled; an explicit chart-depth
+requirement is refused rather than silently weakened. These developer bundles
+supply the enhanced core. No real licensed S-63 qualification is claimed.
+
+Both Debian 12 architectures must pass the new geometry and isolated-danger
+fixtures, component tests, clean-install/import/replacement, GUI and API/MCP
+checks before release publication. Earlier benchmark and coastal batch results
+above are historical 1.26 evidence, not a fresh 1.27 batch claim.

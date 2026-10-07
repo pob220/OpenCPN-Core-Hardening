@@ -17,6 +17,7 @@ apt-get install -y --no-install-recommends \
   gettext \
   git \
   googletest \
+  libgtest-dev \
   libarchive-dev \
   libbz2-dev \
   libcxx-serial-dev \
@@ -56,6 +57,7 @@ apt-get install -y --no-install-recommends \
   rapidjson-dev \
   uuid-dev \
   zlib1g-dev \
+  xauth \
   xvfb
 
 rm -rf /var/lib/apt/lists/*

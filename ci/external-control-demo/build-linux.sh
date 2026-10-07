@@ -20,7 +20,7 @@ mkdir -p "$build_dir" "$stage_dir" "$package_dir" "$log_dir" "$test_dir"
 # deterministic without weakening Git's ownership checks globally.
 git config --global --add safe.directory "$source_dir"
 
-cmake -S "$source_dir" -B "$build_dir" -G Ninja \
+cmake -S "$source_dir" -B "$build_dir" -G "Unix Makefiles" \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DCMAKE_INSTALL_PREFIX=/usr/local \
   -DOCPN_CI_BUILD=ON \
@@ -39,6 +39,18 @@ dbus-run-session "$test_binary" \
   --gtest_output="xml:$test_dir/external-control.xml" \
   --gtest_filter='ExternalApiTest.*:InProcessPlanningJobServiceTest.*:BoundedApplicationEventStreamTest.*:ChartSafetyDepth.*:ChartSafetyService.*:PlatformPaths.*:PluginApi.*' \
   2>&1 | tee "$log_dir/external-control-tests.log"
+
+# Exercise all deterministic model/geometry tests, then private production
+# native classifiers against this exact host build (no extra ABI exports).
+dbus-run-session ctest --test-dir "$build_dir" --label-regex deterministic \
+  --output-on-failure --output-junit "$test_dir/deterministic.xml" \
+  2>&1 | tee "$log_dir/deterministic-tests.log"
+python3 "$source_dir/test/build_chart_safety_native_tests.py" \
+  --build-dir "$build_dir" --output-dir "$work_dir/native-fixtures" \
+  2>&1 | tee "$log_dir/native-fixtures-build.log"
+xvfb-run -a "$work_dir/native-fixtures/native-fixtures" \
+  --gtest_output="xml:$test_dir/native-fixtures.xml" \
+  2>&1 | tee "$log_dir/native-fixtures.log"
 
 DESTDIR="$stage_dir" cmake --install "$build_dir" \
   2>&1 | tee "$log_dir/install.log"
