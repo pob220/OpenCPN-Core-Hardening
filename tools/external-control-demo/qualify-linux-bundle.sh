@@ -179,10 +179,10 @@ grep -q 'requests additional fail-closed safety' \
 grep -q 'eclipse-data-2026.1' \
   "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ||
   fail 'Celestial eclipse-data guidance does not link the pinned data release'
-grep -q '2.9.7.0 at d2d5c8caee9e0914ae7831bc48fac2b8d82bff15' \
+grep -q '2.9.8.0 at 54f62c0d1e7a9b94ffd5735dc5b3f88b56898dc2' \
   "$install_dir/docs/COMPONENTS.md" ||
-  fail 'component manifest does not identify reviewed Celestial Navigation 2.9.7.0'
-grep -q 'tree/d2d5c8caee9e0914ae7831bc48fac2b8d82bff15' \
+  fail 'component manifest does not identify reviewed Celestial Navigation 2.9.8.0'
+grep -q 'tree/54f62c0d1e7a9b94ffd5735dc5b3f88b56898dc2' \
   "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ||
   fail 'Celestial guidance does not link the exact reviewed source revision'
 [[ -d "$install_dir/usr/local/share/opencpn/plugins/celestial_navigation_pi/data/compact" ]] ||
@@ -247,9 +247,9 @@ import xml.etree.ElementTree as ET
 root = Path(sys.argv[1])
 prefix = root / 'usr/local'
 records = root / 'config/plugins/install_data'
-assert (records / 'xweatherrouting.version').read_text().strip() == '1.27.0'
+assert (records / 'xweatherrouting.version').read_text().strip() == '1.30.0'
 metadata = ET.parse(records / 'imports/xweatherrouting.xml').getroot()
-assert metadata.findtext('version').strip() == '1.27.0'
+assert metadata.findtext('version').strip() == '1.30.0'
 installed = prefix / 'lib/opencpn/libxweather_routing_pi.so'
 with tarfile.open(sys.argv[2]) as archive:
     libraries = [m for m in archive.getmembers()
@@ -330,6 +330,7 @@ searches = [line.split('PluginLoader: loading plugins from ', 1)[1].strip()
             for line in log.splitlines() if 'PluginLoader: loading plugins from ' in line]
 assert searches and all(path == str(plugin_dir) for path in searches), searches
 assert f'Loading PlugIn: {plugin_dir}/libxweather_routing_pi.so' in log
+assert 'WR_BUILD version=1.30.0 api=1.21' in log
 data_paths = [line for line in log.splitlines() if 'Using plugin data path:' in line]
 assert data_paths and all('/.local/' not in line for line in data_paths), data_paths
 print('Imported xWeatherRouting loaded after restart; ordinary plugin paths excluded.')

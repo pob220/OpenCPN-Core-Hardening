@@ -189,3 +189,35 @@ cross-track quadrant error in core route-leg state. The normal bearing now uses
 north, south, east and west legs are covered. The original failure was also
 reproduced with fused arithmetic on x86_64; the corrected production code
 passes the new fixture. Both release cores are rebuilt with this correction.
+
+## 12 October 2026 refresh — 1.30.0 / Celestial 2.9.8
+
+The refreshed Debian 12 bundles retain the qualified external-control preview
+core and its chart-safety geometry. xWeatherRouting 1.30.0 is pinned to the
+published Alpha source `df1726599482e311c9724353d1b42c3f726488b2`;
+Celestial Navigation 2.9.8.0 is pinned to
+`54f62c0d1e7a9b94ffd5735dc5b3f88b56898dc2`, based on the combined
+2.9.8 release with the two previously qualified Debian 12 fixes retained: future
+UTC epoch conversion and source-relative lunar reference fixtures.
+
+Professional's internal Quick search honours the configured nominal timestep.
+Bounded contour reconstruction may reconnect to a nearby later proposed point;
+stationary waits and independent chronological and final chart validation
+remain active. The release also includes consistent route visibility, explicit
+clearing of computed results while preserving settings, and the choice to
+show selected, all or manually chosen departure candidates.
+
+Compare Quick, Professional and All on a fixed tidal passage and departure
+window. Record the configured timestep, retained engine, final validation and
+weather coverage. Repeat with individual routes hidden, selected and cleared.
+A completed computation must respect its visibility choice; clearing results
+must preserve the route configuration for recomputation.
+
+Fresh component, GUI, import/replacement, isolated-install and API/MCP checks
+are required on each architecture before publication. Historical timings in
+the preceding sections do not become new 1.30.0 performance claims.
+
+[PR 5475](https://github.com/OpenCPN/OpenCPN/pull/5475) separately proposes
+modular HostApi123 support and an API 1.22 review consumer. This bundle retains
+the existing external-control preview API and its published API 1.21 plugin
+loading floor; it does not claim to be a binary build of that review branch.
