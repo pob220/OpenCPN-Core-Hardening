@@ -1,0 +1,70 @@
+{
+  "celestial-tests.xml": {
+    "tests": 13,
+    "failures": 0
+  },
+  "climatology-tests.xml": {
+    "tests": 3,
+    "failures": 0
+  },
+  "core-additional-tests.xml": {
+    "tests": 42,
+    "failures": 0
+  },
+  "core-chart-tests.xml": {
+    "tests": 16,
+    "failures": 0
+  },
+  "core-environment-tests.xml": {
+    "tests": 2,
+    "failures": 0
+  },
+  "core-route-leg-tests.xml": {
+    "tests": 4,
+    "failures": 0
+  },
+  "weather_routing-tests.xml": {
+    "tests": 484,
+    "failures": 0
+  },
+  "xgrib-tests.xml": {
+    "tests": 44,
+    "failures": 0
+  },
+  "celestial-gui-AlmanacUi.xml": {
+    "tests": 1,
+    "failures": 0
+  },
+  "celestial-gui-CoastalUiSmoke.xml": {
+    "tests": 1,
+    "failures": 0
+  },
+  "celestial-gui-DisplayUi.xml": {
+    "tests": 1,
+    "failures": 0
+  },
+  "celestial-gui-FindBodyUi.xml": {
+    "tests": 1,
+    "failures": 0
+  },
+  "celestial-gui-FixUi.xml": {
+    "tests": 1,
+    "failures": 0
+  },
+  "celestial-gui-HorizonEventUi.xml": {
+    "tests": 1,
+    "failures": 0
+  },
+  "celestial-gui-LunarUiSmoke.xml": {
+    "tests": 1,
+    "failures": 0
+  },
+  "celestial-gui-SightLogUi.xml": {
+    "tests": 1,
+    "failures": 0
+  },
+  "celestial-gui-SightSearchSpanUi.xml": {
+    "tests": 1,
+    "failures": 0
+  }
+}
