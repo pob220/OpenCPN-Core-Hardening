@@ -221,3 +221,28 @@ the preceding sections do not become new 1.30.0 performance claims.
 modular HostApi123 support and an API 1.22 review consumer. This bundle retains
 the existing external-control preview API and its published API 1.21 plugin
 loading floor; it does not claim to be a binary build of that review branch.
+
+## 24 October 2026 Dateline and gust refresh
+
+The core now canonicalizes chart-safety longitude cells and traverses short
+continuous segments across ±180°. CM93 safety selection bypasses a cached
+chart only when its original coverage polygons prove that the query point is
+outside, allowing valid underlying depth coverage at the seam. Unknown chart
+coverage retains the existing selection and depth policy. Cache semantics
+advance to `geometry-prototype-4-dateline` so old tiles and certificates are
+rebuilt. Land, drying, shallow-water and truly unknown-depth rejection remain
+active. New longitude, native clearance and crossing fixtures run on both
+Debian architectures. Proprietary chart fixtures remain private.
+
+xWeatherRouting 1.34.1 retains optional gusts at each delivered leg's position
+and time before worker-cache release and preserves them in alternatives.
+Gusts display to one decimal after speed-unit conversion. Missing gusts remain
+unavailable. xGRIB 0.4.0 and Generator 0.4.0 add provider-supported gusts to the
+Routing preset. Regenerate older Routing forecasts and recompute routes to
+populate the column. AIFS remains without gusts. Hosted fallback requires the
+matching five-field cache service; see the bundle README for that dependency.
+
+Use a fresh extracted bundle and its own launcher. This remains the external
+control preview API with native plugin API 1.21, separate from the modular
+HostApi123 proposal in PR 5475. Other companion plugin and Scheduler pins are
+retained from the 12 October bundle.

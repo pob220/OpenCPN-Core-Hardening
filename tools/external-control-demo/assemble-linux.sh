@@ -133,8 +133,8 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 |---|---|
 | OpenCPN hardened core binary and API | $core_revision (external-control code based on release tag external-control-demo-20260821) |
 | Demo assembly and qualification tooling | $assembly_revision |
-| xGRIB 0.3.9.0 provider build | 4abc99b2cf8ef298d9c798a13331afdcdfae37b1 (current 0.3.9 plus retained preview environmental provider; generator 0.3.4 at 3922855f4d4709c7d14187d01314c1d3ee82bfd7, including date-line and surface-wave compatibility fixes) |
-| xWeatherRouting 1.30.0 chart-aware provider | df1726599482e311c9724353d1b42c3f726488b2 (configured Quick timesteps inside Professional, bounded validated contour reconstruction, consistent visibility, explicit result clearing and departure-selection display; retained chart/depth checks and local coastal clearance) |
+| xGRIB 0.4.0.0 provider build | c56d6ff32696da83c0af75d3e4bacd95943e84e0 (Routing includes provider-supported gusts; retained preview environmental provider; generator 0.4.0 at 4208c87dbf223bedb78064043313c5fc09c629f1) |
+| xWeatherRouting 1.34.1 chart-aware provider | 602ee5e3b1a939224f18375ec71f3dd409511f9e (retained route-time gusts, one-decimal gust display and corrected missing-gust summaries; retains the 1.34 routing, boat editor and chart/depth checks) |
 | o-charts chart-safety provider | b369c4cae0e84ea43847f64a26cb107ae1ffebe5 (modified plug-in over the official 2.2.1 licensed helper/runtime package) |
 | Upgraded Climatology plug-in and dataset 2026.2 | cd00282e6ea2784a6d78ccfe47fed713269ad87e |
 | Polar plug-in | 1.2.38.0 official OpenCPN package, SHA-256 $(sha256sum "$polar_archive" | cut -d ' ' -f 1) |
