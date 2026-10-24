@@ -347,11 +347,11 @@ TEST(ChartSafetyNative, NonFiniteDangerDepthRemainsUnknown) {
 }
 }  // namespace
 extern "C" int __wrap_main(int argc, char **argv) {
-  // These fixtures have no interactive event loop. The GUI log target would
-  // show buffered safety diagnostics in a modal dialog during wxEntryCleanup.
-  delete wxLog::SetActiveTarget(new wxLogStderr());
   wxApp::SetInstance(new wxApp());
   if (!wxEntryStart(argc, argv)) return 2;
+  // wxEntryStart installs a GUI log target. Replace it after initialization so
+  // buffered safety diagnostics cannot open a modal dialog during cleanup.
+  delete wxLog::SetActiveTarget(new wxLogStderr());
   ::testing::InitGoogleTest(&argc, argv);
   const int result = RUN_ALL_TESTS();
   wxEntryCleanup();
