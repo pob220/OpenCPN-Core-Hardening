@@ -6,6 +6,7 @@
 #include "../gui/src/ocpn_plugin_gui.cpp"
 #include "mygeom.h"
 #include <wx/init.h>
+#include <wx/log.h>
 
 // Provider plugins supply this constructor; the host uses borrowed PI objects.
 // This fixture owns the native attributes and initialises only the ABI fields
@@ -346,6 +347,9 @@ TEST(ChartSafetyNative, NonFiniteDangerDepthRemainsUnknown) {
 }
 }  // namespace
 extern "C" int __wrap_main(int argc, char **argv) {
+  // These fixtures have no interactive event loop. The GUI log target would
+  // show buffered safety diagnostics in a modal dialog during wxEntryCleanup.
+  delete wxLog::SetActiveTarget(new wxLogStderr());
   wxApp::SetInstance(new wxApp());
   if (!wxEntryStart(argc, argv)) return 2;
   ::testing::InitGoogleTest(&argc, argv);

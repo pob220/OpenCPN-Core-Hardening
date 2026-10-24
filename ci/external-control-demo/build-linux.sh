@@ -53,7 +53,8 @@ dbus-run-session ctest --test-dir "$build_dir" --label-regex deterministic \
 python3 "$source_dir/test/build_chart_safety_native_tests.py" \
   --build-dir "$build_dir" --output-dir "$work_dir/native-fixtures" \
   2>&1 | tee "$log_dir/native-fixtures-build.log"
-xvfb-run -a "$work_dir/native-fixtures/native-fixtures" \
+timeout --kill-after=10s 180s xvfb-run -a \
+  "$work_dir/native-fixtures/native-fixtures" \
   --gtest_output="xml:$test_dir/native-fixtures.xml" \
   2>&1 | tee "$log_dir/native-fixtures.log"
 
