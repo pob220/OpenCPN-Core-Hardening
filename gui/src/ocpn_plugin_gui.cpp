@@ -78,6 +78,7 @@
 #include "config_mgr.h"
 #include "font_mgr.h"
 #include "gl_chart_canvas.h"
+#include "chart_safety_longitude.h"
 #include "chart_safety_depth.h"
 #include "chart_safety_geometry.h"
 #include "chart_safety_service.h"
@@ -1784,6 +1785,7 @@ std::string SegmentSafetyGridTileKeyForIndices(long lat_tile, long lon_tile);
 std::string SegmentSafetyRouteMaskKey(long lat_tile, long lon_tile,
                                       double safety_margin_nm, bool check_depth,
                                       double minimum_depth_m) {
+  lon_tile = ocpn::chart_safety::CanonicalLongitudeIndex(lon_tile, 3600);
   long margin_mm = lround(wxMax(0.0, safety_margin_nm) * 1000.0);
   long depth_cm = check_depth ? lround(wxMax(0.0, minimum_depth_m) * 100.0) : 0;
   char buf[160];
@@ -2600,16 +2602,17 @@ wxString SegmentSafetyChartIdentity() {
   // Keep only global semantic inputs here.  Individual chart metadata is
   // fingerprinted per tile, allowing a chart update to invalidate affected
   // waters without discarding an otherwise valid regional atlas.
-  SegmentSafetyHashAdd(&hash, "semantic-grid-v7-geometry-prototype-3");
+  SegmentSafetyHashAdd(&hash, "semantic-grid-v7-geometry-prototype-4-dateline");
   SegmentSafetyHashAdd(
       &hash, wxString::Format("group=%d", SegmentSafetyCurrentGroupIndex()));
   if (g_pi_manager)
     SegmentSafetyHashAdd(
         &hash, "batch-providers=" + SegmentSafetyPluginBatchProviderIdentity());
-  // The prototype adds display-independent isolated dangers and conservative
-  // cell geometry. Older certificates cannot certify the stronger semantics.
-  return wxString::Format("ocpn-chart-safety-v7-geometry-prototype-3-%016llx",
-                          (unsigned long long)hash);
+  // Seam coverage selection and cyclic halo identities changed. Rebuild raw
+  // tiles and every dependent certificate; old unknown/clear cells are stale.
+  return wxString::Format(
+      "ocpn-chart-safety-v7-geometry-prototype-4-dateline-%016llx",
+      (unsigned long long)hash);
 }
 
 wxString SegmentSafetyChartCatalogIdentity() {
@@ -3568,6 +3571,7 @@ CachedPointSafetyClassification MakeSegmentSafetyPointCacheEntry(
 }
 
 std::string SegmentSafetyGridTileKeyForIndices(long lat_tile, long lon_tile) {
+  lon_tile = ocpn::chart_safety::CanonicalLongitudeIndex(lon_tile, 3600);
   char key[96];
   snprintf(key, sizeof(key), "%d:%ld:%ld:%.6f",
            SegmentSafetyCurrentGroupIndex(), lat_tile, lon_tile,
@@ -3578,6 +3582,7 @@ std::string SegmentSafetyGridTileKeyForIndices(long lat_tile, long lon_tile) {
 
 std::string SegmentSafetyGridTileKey(double lat, double lon, long* lat_tile,
                                      long* lon_tile) {
+  lon = ocpn::chart_safety::CanonicalLongitude(lon);
   long lt = floor(lat / kSegmentSafetyGridTileDegrees);
   long ln = floor(lon / kSegmentSafetyGridTileDegrees);
   if (lat_tile) *lat_tile = lt;
@@ -3821,6 +3826,7 @@ bool EnsureSegmentSafetyGridTile(long lat_tile, long lon_tile,
                                  SegmentSafetyCoreStats* stats,
                                  bool* built = NULL,
                                  bool require_depth = false) {
+  lon_tile = ocpn::chart_safety::CanonicalLongitudeIndex(lon_tile, 3600);
   if (built) *built = false;
   std::string key = SegmentSafetyGridTileKeyForIndices(lat_tile, lon_tile);
   CachedPointSafetyGridTile active_tile;
@@ -4367,7 +4373,9 @@ void AddSegmentSafetyTileHalo(long lat_tile, long lon_tile, int radius,
   if (!tiles) return;
   for (int dlat = -radius; dlat <= radius; ++dlat) {
     for (int dlon = -radius; dlon <= radius; ++dlon)
-      tiles->insert(std::make_pair(lat_tile + dlat, lon_tile + dlon));
+      tiles->insert(std::make_pair(
+          lat_tile + dlat,
+          ocpn::chart_safety::CanonicalLongitudeIndex(lon_tile + dlon, 3600)));
   }
 }
 
@@ -4433,6 +4441,7 @@ bool SegmentSafetyBaseCellFlagsAt(long lat_cell, long lon_cell,
                                   PlugInSegmentSafetySource* source,
                                   int* chart_db_index, int* chart_scale,
                                   const char** chart_path) {
+  lon_cell = ocpn::chart_safety::CanonicalLongitudeIndex(lon_cell, 144000);
   double lat = lat_cell * kSegmentSafetyGridResolutionDegrees;
   double lon = lon_cell * kSegmentSafetyGridResolutionDegrees;
   long lat_tile = 0;
@@ -4838,6 +4847,7 @@ bool EnsureSegmentSafetyRouteMaskTile(long lat_tile, long lon_tile,
                                       SegmentSafetyCoreStats* stats,
                                       bool* built = NULL,
                                       bool force_authoritative_fine = false) {
+  lon_tile = ocpn::chart_safety::CanonicalLongitudeIndex(lon_tile, 3600);
   if (built) *built = false;
   std::string key = SegmentSafetyRouteMaskKey(
       lat_tile, lon_tile, safety_margin_nm, check_depth, minimum_depth_m);
@@ -7166,6 +7176,7 @@ bool SegmentSafetyAllTouchedTilesAreWater(double lat1, double lon1, double lat2,
 SegmentSafetyPointClass ChartPointSafetyClassAt(
     double lat, double lon, PlugInSegmentSafetySource* source,
     SegmentSafetyCoreStats* stats, PlugInSegmentSafetyResult* result = NULL) {
+  lon = ocpn::chart_safety::CanonicalLongitude(lon);
   long lat_tile = 0;
   long lon_tile = 0;
   std::string key = SegmentSafetyGridTileKey(lat, lon, &lat_tile, &lon_tile);
@@ -7294,6 +7305,7 @@ bool SegmentSafetyGridCellAt(long lat_cell, long lon_cell,
                              PlugInSegmentSafetyResult* result,
                              SegmentSafetyPointClass* point_class,
                              uint16_t* hazard_flags) {
+  lon_cell = ocpn::chart_safety::CanonicalLongitudeIndex(lon_cell, 144000);
   double lat = lat_cell * kSegmentSafetyGridResolutionDegrees;
   double lon = lon_cell * kSegmentSafetyGridResolutionDegrees;
 
@@ -7379,6 +7391,7 @@ bool SegmentSafetyRouteMaskCellAt(
     double minimum_depth_m, bool force_authoritative_fine,
     SegmentSafetyCoreStats* stats, PlugInSegmentSafetyResult* result,
     uint16_t* block_flags, PlugInSegmentSafetySource* source) {
+  lon_cell = ocpn::chart_safety::CanonicalLongitudeIndex(lon_cell, 144000);
   double lat = lat_cell * kSegmentSafetyGridResolutionDegrees;
   double lon = lon_cell * kSegmentSafetyGridResolutionDegrees;
   long lat_tile = 0;
@@ -7435,7 +7448,8 @@ void SegmentSafetySetRouteMaskHitResult(PlugInSegmentSafetyResult* result,
   if (!result) return;
 
   result->hit_sample_lat = lat_cell * kSegmentSafetyGridResolutionDegrees;
-  result->hit_sample_lon = lon_cell * kSegmentSafetyGridResolutionDegrees;
+  result->hit_sample_lon = ocpn::chart_safety::CanonicalLongitude(
+      lon_cell * kSegmentSafetyGridResolutionDegrees);
   result->hit_sample_index = sample_index;
   result->hit_sample_count = sample_count;
   SetSegmentSafetySource(result, source);
@@ -8648,7 +8662,8 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
             break;
           }
           const long neighbour_lat_tile = tile->first;
-          const long neighbour_lon_tile = tile->second;
+          const long neighbour_lon_tile =
+              ocpn::chart_safety::CanonicalLongitudeIndex(tile->second, 3600);
           const double neighbour_min_lat =
               neighbour_lat_tile * kSegmentSafetyGridTileDegrees;
           const double neighbour_min_lon =
@@ -8747,7 +8762,9 @@ bool PlugIn_PrewarmSegmentSafetyRawTiles(
   SegmentSafetyPersistentCacheEnsureLoaded();
   std::set<std::pair<long, long> > tiles;
   for (int index = 0; index < tile_count; ++index)
-    tiles.insert(std::make_pair(lat_tiles[index], lon_tiles[index]));
+    tiles.insert(std::make_pair(
+        lat_tiles[index],
+        ocpn::chart_safety::CanonicalLongitudeIndex(lon_tiles[index], 3600)));
 
   {
     wxMutexLocker lock(s_segment_safety_cache_mutex);
@@ -8998,6 +9015,10 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
                                double lon2,
                                const PlugInSegmentSafetyOptions* options,
                                PlugInSegmentSafetyResult* result) {
+  // Chart geometry and fine-grid traversal must follow the short crossing,
+  // while point/tile access below uses canonical identities on either side.
+  ocpn::chart_safety::UnwrapSafetySegment(lon1, lon2);
+
   std::chrono::steady_clock::time_point query_start =
       std::chrono::steady_clock::now();
   InitSegmentSafetyResult(result);
@@ -9623,6 +9644,8 @@ void AddSegmentSafetyRouteMaskCorridorTiles(
   if (!tiles || !std::isfinite(lat1) || !std::isfinite(lon1) ||
       !std::isfinite(lat2) || !std::isfinite(lon2))
     return;
+
+  ocpn::chart_safety::UnwrapSafetySegment(lon1, lon2);
 
   double bearing = 0.0;
   double dist_nm = 0.0;

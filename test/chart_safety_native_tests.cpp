@@ -400,3 +400,132 @@ TEST(ChartSafetyNative, PluginProviderVisitorRetainsEveryIsolatedDangerClass) {
         EXPECT_FLOAT_EQ(group.min_depth_m[0], known ? 1 : 1000);
       }
 }
+
+namespace {
+// Immutable chart fixtures exercise the production traversal and clearance
+// dilation, without relying on a proprietary chart set in automated tests.
+class DateLineSafety : public ::testing::Test {
+protected:
+  void SetUp() override {
+    s_segment_safety_grid_cache.clear();
+    s_segment_safety_route_mask_cache.clear();
+    s_segment_safety_coarse_route_mask_cache.clear();
+  }
+  void WaterTiles() {
+    for (long lat = -377; lat <= -374; ++lat)
+      for (long lon : {3598L, 3599L, -3600L, -3599L}) {
+        CachedPointSafetyGridTile tile;
+        tile.built = true;
+        tile.depth_complete = true;
+        tile.group_index = SegmentSafetyCurrentGroupIndex();
+        tile.lat_tile = lat;
+        tile.lon_tile = lon;
+        tile.min_lat = lat * .05;
+        tile.min_lon = lon * .05;
+        tile.resolution = .00125;
+        tile.rows = tile.cols = 41;
+        tile.source = PI_SEGMENT_SAFETY_SOURCE_CM93;
+        tile.classes.assign(1681, SEGMENT_SAFETY_POINT_WATER);
+        tile.hazard_flags.assign(1681, 0);
+        tile.has_depth.assign(1681, 1);
+        tile.min_depth_m.assign(1681, 200);
+        tile.has_drying.assign(1681, 0);
+        StoreSegmentSafetyGridTile(SegmentSafetyGridTileKeyForIndices(lat, lon),
+                                   tile);
+      }
+  }
+};
+TEST_F(DateLineSafety, ClearanceHaloCrossesTheSeamAndRetainsEveryHazard) {
+  for (bool west : {false, true})
+    for (double margin : {.1, .4})
+      for (int hazard = -1; hazard < 5; ++hazard) {
+        SetUp();
+        WaterTiles();
+        const long target_lon = west ? 3599 : -3600;
+        const long neighbour_lon = west ? -3600 : 3599;
+        auto key = SegmentSafetyGridTileKeyForIndices(-376, neighbour_lon);
+        auto tile = s_segment_safety_grid_cache.at(key);
+        const int index = 20 * 41 + (west ? 0 : 39);
+        if (hazard == 0) {
+          tile.classes[index] = SEGMENT_SAFETY_POINT_LAND;
+          tile.hazard_flags[index] = SEGMENT_SAFETY_HAZARD_LAND;
+        }
+        if (hazard == 1) {
+          tile.classes[index] = SEGMENT_SAFETY_POINT_DRYING;
+          tile.hazard_flags[index] = SEGMENT_SAFETY_HAZARD_DRYING;
+        }
+        if (hazard == 2) tile.min_depth_m[index] = 1;
+        StoreSegmentSafetyGridTile(key, tile);
+        // Unknown/no-chart evidence blocks the traversed cell. Existing
+        // clearance policy dilates known land/drying/shallow hazards only.
+        if (hazard >= 3) {
+          key = SegmentSafetyGridTileKeyForIndices(-376, target_lon);
+          tile = s_segment_safety_grid_cache.at(key);
+          const int centre = 20 * 41 + (west ? 39 : 0);
+          if (hazard == 3) tile.has_depth[centre] = 0;
+          if (hazard == 4) {
+            tile.classes[centre] = SEGMENT_SAFETY_POINT_NO_DATA;
+            tile.hazard_flags[centre] = SEGMENT_SAFETY_HAZARD_NO_CHART;
+          }
+          StoreSegmentSafetyGridTile(key, tile);
+        }
+        SegmentSafetyCoreStats stats;
+        const auto mask = BuildSegmentSafetyRouteMaskTile(
+            -376, target_lon, margin, true, 1.5, &stats);
+        ASSERT_TRUE(mask.built);
+        const int target = 20 * 41 + (west ? 39 : 0);
+        EXPECT_EQ(mask.block_flags[target] == SEGMENT_SAFETY_ROUTE_CLEAR,
+                  hazard < 0)
+            << "west=" << west << " margin=" << margin << " hazard=" << hazard;
+        EXPECT_EQ(stats.unexpected_tile_builds, 0);
+      }
+}
+TEST_F(DateLineSafety,
+       PublicCrossingsAreBoundedAndKeepHazardsInBothDirections) {
+  for (bool reverse : {false, true})
+    for (bool blocked : {false, true}) {
+      SetUp();
+      for (long lon : {3599L, -3600L}) {
+        CachedSegmentSafetyRouteMaskTile mask;
+        mask.built = true;
+        mask.authoritative_fine = true;
+        mask.lat_tile = -376;
+        mask.lon_tile = lon;
+        mask.min_lat = -18.8;
+        mask.min_lon = lon * .05;
+        mask.resolution = .00125;
+        mask.rows = mask.cols = 41;
+        mask.source = PI_SEGMENT_SAFETY_SOURCE_CM93;
+        mask.block_flags.assign(1681, SEGMENT_SAFETY_ROUTE_CLEAR);
+        if (blocked && lon == -3600)
+          mask.block_flags[24 * 41] = SEGMENT_SAFETY_ROUTE_BLOCK_LAND;
+        StoreSegmentSafetyRouteMaskTile(
+            SegmentSafetyRouteMaskKey(-376, lon, 0, true, 1.5), mask);
+      }
+      PlugInSegmentSafetyOptions options{};
+      options.struct_size = sizeof(options);
+      options.check_land = options.check_depth = 1;
+      options.minimum_depth_m = 1.5;
+      options.force_authoritative_fine_validation = 1;
+      PlugInSegmentSafetyResult result{};
+      result.struct_size = sizeof(result);
+      ASSERT_TRUE(PlugIn_CheckSegmentSafety(-18.77, reverse ? -179.99 : 179.99,
+                                            -18.77, reverse ? 179.99 : -179.99,
+                                            &options, &result));
+      EXPECT_EQ(result.status, blocked ? PI_SEGMENT_SAFETY_CROSSES_LAND
+                                       : PI_SEGMENT_SAFETY_SAFE);
+      EXPECT_LT(result.hit_sample_count, 30);
+    }
+}
+TEST_F(DateLineSafety, CorridorFootprintUsesOnlyAdjacentCanonicalTiles) {
+  for (bool reverse : {false, true}) {
+    std::set<std::pair<long, long>> tiles;
+    AddSegmentSafetyRouteMaskCorridorTiles(-18.77, reverse ? -179.99 : 179.99,
+                                           -18.77, reverse ? 179.99 : -179.99,
+                                           0, &tiles);
+    EXPECT_EQ(tiles.size(), 2u);
+    EXPECT_EQ(tiles.count({-376, 3599}), 1u);
+    EXPECT_EQ(tiles.count({-376, -3600}), 1u);
+  }
+}
+}  // namespace
