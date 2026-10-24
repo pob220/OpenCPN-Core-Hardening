@@ -107,11 +107,14 @@ wxString toUsrDateTimeFormat(const wxDateTime date_time,
   wxString ret;
   wxString tzName;
   if (effective_time_zone == "Local Time") {
+#if !wxCHECK_VERSION(3, 2, 0)
+    // Retain the legacy wxWidgets workaround until separately qualified.
     wxDateTime now = wxDateTime::Now();
     if (now == now.ToGMT() && t.IsDST()) {
       // bug in wxWingets 3.0 for UTC meridien ?
       t.Add(wxTimeSpan(1, 0, 0, 0));
     }
+#endif
     if (options.show_timezone) {
 #ifdef __WXMSW__
       tzName = _("LOC");
