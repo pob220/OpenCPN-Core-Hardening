@@ -179,10 +179,10 @@ grep -q 'requests additional fail-closed safety' \
 grep -q 'eclipse-data-2026.1' \
   "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ||
   fail 'Celestial eclipse-data guidance does not link the pinned data release'
-grep -q '2.9.12.0 at e9e5a51ef850426243ff74126f6fb2dd644a5a00' \
+grep -q '2.9.12.0 at cdb7ed4e46a1cb9373c30eb449011e0bac19eae8' \
   "$install_dir/docs/COMPONENTS.md" ||
   fail 'component manifest does not identify reviewed Celestial Navigation 2.9.12.0'
-grep -q 'tree/e9e5a51ef850426243ff74126f6fb2dd644a5a00' \
+grep -q 'tree/cdb7ed4e46a1cb9373c30eb449011e0bac19eae8' \
   "$install_dir/docs/CELESTIAL-ECLIPSE-DATA.md" ||
   fail 'Celestial guidance does not link the exact reviewed source revision'
 [[ -d "$install_dir/usr/local/share/opencpn/plugins/celestial_navigation_pi/data/compact" ]] ||
