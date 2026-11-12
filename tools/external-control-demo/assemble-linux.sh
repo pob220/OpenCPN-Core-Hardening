@@ -186,7 +186,7 @@ on an entry in the public OpenCPN Master catalogue.
 | xGRIB | Typed environmental-data provider and GRIB display | Enabled |
 | xWeatherRouting | Typed chart/weather route-planning provider | Enabled |
 | o-charts 2.2.1 chart-safety preview | Licensed vector charts and batched semantic safety provider | Enabled; requires the developer's own licensed charts |
-| Climatology 1.6.39 / dataset 2026.2 | Updated offline climate statistics | Enabled |
+| Climatology 2.0.1 / dataset 2026.2 | Updated offline climate statistics | Enabled |
 | Polar 1.2.38 | Polar inspection and editing companion | Enabled |
 | Celestial Navigation 2.9.12.0 | Offline almanac, sight planning, fixes, lunar tools and eclipse planning | Enabled |
 
