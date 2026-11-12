@@ -246,3 +246,28 @@ Use a fresh extracted bundle and its own launcher. This remains the external
 control preview API with native plugin API 1.21, separate from the modular
 HostApi123 proposal in PR 5475. Other companion plugin and Scheduler pins are
 retained from the 12 October bundle.
+
+
+## 12 November 2026 refresh — core GSHHS correction and current companion plugins
+
+This refresh applies the two bounded changes from OpenCPN PR 5535: a
+magnitude-based parallel test and finite-segment overlap checks. It preserves
+the existing date-line, chart-depth and external-control implementations.
+Relative geometry tolerances and zero-length segments remain separate work.
+The exact production predicate is extracted unchanged for a regression that
+checks endpoint order, overlap, contact, the Lizard case and two million
+non-degenerate integer segment pairs. Real host/API checks remain separate.
+
+The bundle pins xWeatherRouting 1.36.1 at `2e33ae2dae29d74286a4ed4f226d60d5688c7a75`, including the
+coincident consecutive-waypoint diagnostic while preserving nearby points and
+return passages. Its independent shoreline provider is retained. The current
+Celestial Navigation 2.9.12 source is `042ae19f5158117ca322789d778b0de2b3c64445`; Climatology 2.0.1 and
+dataset 2026.2 are pinned at `8d8b9be3b6551133643d2ec641a9d568a8e950c0`. xGRIB 0.4.4 uses the existing
+preview environmental adapter at `2bee0bc8ce68f6da0f70abbfcd6fa03f1f4f3c39`, with generator 0.4.0 unchanged.
+The modified o-charts provider, Polar and Scheduler retain their existing
+qualified pins. Native plugin API remains 1.21.
+
+The Debian 12 x86_64 and ARM64 workflows rebuild the core and plugins and run
+the existing geometry, native fixture, bundle installation, provider and API
+checks. Publication requires successful results for both architectures and
+independent archive verification. Older release assets are retained for rollback.

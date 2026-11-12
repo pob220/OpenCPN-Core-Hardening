@@ -33,6 +33,9 @@ cmake --build "$build_dir" \
   --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-2}" \
   2>&1 | tee "$log_dir/build.log"
 
+python3 "$source_dir/test/gshhs_intersection_regression.py" \
+  2>&1 | tee "$log_dir/gshhs-intersection-regression.log"
+
 test_binary="$build_dir/test/tests"
 test -x "$test_binary"
 dbus-run-session "$test_binary" \
