@@ -261,7 +261,7 @@ non-degenerate integer segment pairs. Real host/API checks remain separate.
 The bundle pins xWeatherRouting 1.36.1 at `2e33ae2dae29d74286a4ed4f226d60d5688c7a75`, including the
 coincident consecutive-waypoint diagnostic while preserving nearby points and
 return passages. Its independent shoreline provider is retained. The current
-Celestial Navigation 2.9.12 source is `042ae19f5158117ca322789d778b0de2b3c64445`; Climatology 2.0.1 and
+Celestial Navigation 2.9.12 source is `e9e5a51ef850426243ff74126f6fb2dd644a5a00`; Climatology 2.0.1 and
 dataset 2026.2 are pinned at `8d8b9be3b6551133643d2ec641a9d568a8e950c0`. xGRIB 0.4.4 uses the existing
 preview environmental adapter at `2bee0bc8ce68f6da0f70abbfcd6fa03f1f4f3c39`, with generator 0.4.0 unchanged.
 The modified o-charts provider, Polar and Scheduler retain their existing

@@ -42,7 +42,9 @@ record historical core evidence; this refresh makes no new provider-speed claim.
 are in `COMPONENTS.md`.
 
 Celestial Navigation 2.9.12 includes corrected CSV index-error units and the
-current offline almanac, planner, lunar and compact-ephemeris tools.
+current offline almanac, planner, lunar and compact-ephemeris tools. The
+previously qualified Debian future-UTC and lunar-fixture compatibility fixes
+are retained on the pinned preview branch.
 
 This bundle retains the qualified external-control preview host and native
 API 1.21 plugins. The separate modular HostApi123 proposal and its API 1.22
