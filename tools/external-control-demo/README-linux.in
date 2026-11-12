@@ -3,17 +3,28 @@
 This isolated developer package demonstrates the authenticated OpenCPN
 `/api/v2` external-control architecture with xGRIB, chart-aware
 xWeatherRouting, the modified o-charts semantic provider, the upgraded
-Climatology dataset, Polar, Celestial Navigation 2.9.8 and the
+Climatology 2.0.1 with dataset 2026.2, Polar, Celestial Navigation 2.9.12 and the
 human-readable Scheduler. It targets `@EXPECTED_UNAME@` systems running
 the `@PLATFORM@` build environment; native packages should not be treated as
 portable across incompatible distributions.
 
-This 24 October refresh includes xWeatherRouting 1.34.1, xGRIB 0.4.0 and
-Generator 0.4.0, together with the core correction for Dateline chart-depth
-queries. CM93 coverage selection and safety-grid traversal stay local at
-±180°. The chart-safety cache identity changes, rebuilding older tiles and
-certificates. Land, drying, shallow-water and genuinely unknown-depth checks
-remain active.
+This 12 November refresh includes xWeatherRouting 1.36.1, xGRIB 0.4.4 and
+Generator 0.4.0. The core carries the bounded GSHHS corrections from
+[OpenCPN PR 5535](https://github.com/OpenCPN/OpenCPN/pull/5535): crossing
+answers are independent of endpoint order, and disjoint collinear segments
+are no longer reported as intersections. The existing absolute tolerances
+are retained; further tolerance changes remain separate work.
+
+xWeatherRouting identifies coincident consecutive waypoints before creating
+or computing legs, naming the points and leg number. Nearby distinct points
+and legitimate return passages remain accepted. Its independent shoreline
+provider and chart/depth checks are retained. xGRIB includes its 0.4.4 early
+Copernicus NWS time-range validation and the preview environmental adapter.
+
+The earlier Dateline correction is retained. CM93 coverage selection and
+safety-grid traversal stay local at ±180°. Its existing cache identity
+continues to separate older tiles and certificates. Land, drying,
+shallow-water and genuinely unknown-depth checks remain active.
 
 The Routing weather preset now includes gusts where the selected provider
 supplies them. Existing Routing GRIB files need regeneration. Recompute routes
@@ -27,11 +38,11 @@ The launcher retains the qualified whole-tile proof path. A tile is certified
 only with complete chart coverage and conservative area-depth evidence;
 isolated hazards and missing evidence retain detailed checks. Coastal endpoint
 access remains bounded, with full clearance offshore. The performance guides
-record historical core evidence, not new 1.34.1 benchmarks. Exact revisions
+record historical core evidence; this refresh makes no new provider-speed claim. Exact revisions
 are in `COMPONENTS.md`.
 
-Celestial Navigation 2.9.8 retains the two previously qualified Debian 12
-fixes for future UTC epochs and source-relative lunar test fixtures.
+Celestial Navigation 2.9.12 includes corrected CSV index-error units and the
+current offline almanac, planner, lunar and compact-ephemeris tools.
 
 This bundle retains the qualified external-control preview host and native
 API 1.21 plugins. The separate modular HostApi123 proposal and its API 1.22
