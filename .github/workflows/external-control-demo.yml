@@ -181,7 +181,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/xweather_routing_pi.git inputs/xweather_routing_pi
-          git -C inputs/xweather_routing_pi checkout 2e33ae2dae29d74286a4ed4f226d60d5688c7a75
+          git -C inputs/xweather_routing_pi checkout 9897c6da47756d85160c0d7631fdb5f403f87981
           git -C inputs/xweather_routing_pi submodule update --init --recursive
           inputs/xweather_routing_pi/ci/build-linux-catalogue.sh \
             inputs/xweather_routing_pi inputs/xweather-build
@@ -253,7 +253,7 @@ jobs:
           core_installer=$(find inputs/core/package -maxdepth 1 -type f -name '*.sh' -print -quit)
           test -n "$core_installer"
           core_revision=$(cat inputs/core/source-commit.txt)
-          EXTERNAL_CONTROL_DEMO_DATE=2026-11-12 \
+          EXTERNAL_CONTROL_DEMO_DATE=2026-11-14 \
             EXTERNAL_CONTROL_CORE_REVISION="$core_revision" \
             tools/external-control-demo/assemble-linux.sh \
               "$core_installer" \
@@ -283,7 +283,7 @@ jobs:
           set -euo pipefail
           [[ "$EXPECTED_CANDIDATE_SOURCE" =~ ^[0-9a-f]{40}$ ]]
           cd candidate
-          archive=OpenCPN-External-Control-Demo-2026-11-12-debian12-x86_64.tar.gz
+          archive=OpenCPN-External-Control-Demo-2026-11-14-debian12-x86_64.tar.gz
           sha256sum --check "$archive.sha256"
           tar -xzf "$archive"
           grep -F "$EXPECTED_CANDIDATE_SOURCE" "${archive%.tar.gz}/COMPONENTS.md"
@@ -293,7 +293,7 @@ jobs:
         run: |
           qualification_log=candidate/qualification.log
           if ! tools/external-control-demo/qualify-linux-bundle.sh \
-              candidate/OpenCPN-External-Control-Demo-2026-11-12-debian12-x86_64 \
+              candidate/OpenCPN-External-Control-Demo-2026-11-14-debian12-x86_64 \
               'Advanced Micro Devices X86-64' >"$qualification_log" 2>&1; then
             cat "$qualification_log"
             exit 1
@@ -305,8 +305,8 @@ jobs:
         with:
           name: opencpn-external-control-demo-debian12-x86_64
           path: |
-            candidate/OpenCPN-External-Control-Demo-2026-11-12-debian12-x86_64.tar.gz
-            candidate/OpenCPN-External-Control-Demo-2026-11-12-debian12-x86_64.tar.gz.sha256
+            candidate/OpenCPN-External-Control-Demo-2026-11-14-debian12-x86_64.tar.gz
+            candidate/OpenCPN-External-Control-Demo-2026-11-14-debian12-x86_64.tar.gz.sha256
             candidate/qualification.log
           if-no-files-found: warn
           retention-days: 14
@@ -399,7 +399,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/xweather_routing_pi.git inputs/xweather_routing_pi
-          git -C inputs/xweather_routing_pi checkout 2e33ae2dae29d74286a4ed4f226d60d5688c7a75
+          git -C inputs/xweather_routing_pi checkout 9897c6da47756d85160c0d7631fdb5f403f87981
           git -C inputs/xweather_routing_pi submodule update --init --recursive
           inputs/xweather_routing_pi/ci/build-linux-catalogue.sh \
             inputs/xweather_routing_pi inputs/xweather-build
@@ -472,7 +472,7 @@ jobs:
           core_installer=$(find inputs/core/package -maxdepth 1 -type f -name '*.sh' -print -quit)
           test -n "$core_installer"
           core_revision=$(cat inputs/core/source-commit.txt)
-          EXTERNAL_CONTROL_DEMO_DATE=2026-11-12 \
+          EXTERNAL_CONTROL_DEMO_DATE=2026-11-14 \
             EXTERNAL_CONTROL_CORE_REVISION="$core_revision" \
             tools/external-control-demo/assemble-linux.sh \
               "$core_installer" \
@@ -502,7 +502,7 @@ jobs:
           set -euo pipefail
           [[ "$EXPECTED_CANDIDATE_SOURCE" =~ ^[0-9a-f]{40}$ ]]
           cd candidate
-          archive=OpenCPN-External-Control-Demo-2026-11-12-debian12-arm64.tar.gz
+          archive=OpenCPN-External-Control-Demo-2026-11-14-debian12-arm64.tar.gz
           sha256sum --check "$archive.sha256"
           tar -xzf "$archive"
           grep -F "$EXPECTED_CANDIDATE_SOURCE" "${archive%.tar.gz}/COMPONENTS.md"
@@ -512,7 +512,7 @@ jobs:
         run: |
           qualification_log=candidate/qualification.log
           if ! tools/external-control-demo/qualify-linux-bundle.sh \
-              candidate/OpenCPN-External-Control-Demo-2026-11-12-debian12-arm64 \
+              candidate/OpenCPN-External-Control-Demo-2026-11-14-debian12-arm64 \
               AArch64 >"$qualification_log" 2>&1; then
             cat "$qualification_log"
             exit 1
@@ -524,8 +524,8 @@ jobs:
         with:
           name: opencpn-external-control-demo-debian12-arm64
           path: |
-            candidate/OpenCPN-External-Control-Demo-2026-11-12-debian12-arm64.tar.gz
-            candidate/OpenCPN-External-Control-Demo-2026-11-12-debian12-arm64.tar.gz.sha256
+            candidate/OpenCPN-External-Control-Demo-2026-11-14-debian12-arm64.tar.gz
+            candidate/OpenCPN-External-Control-Demo-2026-11-14-debian12-arm64.tar.gz.sha256
             candidate/qualification.log
           if-no-files-found: warn
           retention-days: 14
