@@ -1648,7 +1648,7 @@ struct CachedSegmentSafetyRouteMaskTile {
   bool uses_plugin_vector;
   bool persistent_cache_allowed;
   uint64_t last_use{0};
-  bool awaiting_worker{false};
+  ocpn::chart_safety::RouteMaskClock::time_point protected_until{};
 
   bool IsUniformClear() const {
     return built && rows > 0 && cols > 0 && clear_count == rows * cols &&
@@ -1691,6 +1691,8 @@ struct CachedSegmentSafetyRouteMaskTile {
 std::map<std::string, CachedSegmentSafetyRouteMaskTile>
     s_segment_safety_route_mask_cache;
 uint64_t s_segment_safety_route_mask_clock = 0;
+uint64_t s_segment_safety_route_mask_evictions = 0;
+uint64_t s_segment_safety_delivering_mask_evictions = 0;
 std::set<std::string> s_segment_safety_pinned_route_mask_keys;
 std::map<std::string, PlugInSegmentSafetySource>
     s_segment_safety_route_mask_regions;
@@ -3934,25 +3936,31 @@ void StoreSegmentSafetyRouteMaskTile(
     const std::string& key, const CachedSegmentSafetyRouteMaskTile& tile,
     bool deliver_to_worker = false) {
   wxMutexLocker lock(s_segment_safety_cache_mutex);
+  const auto now = ocpn::chart_safety::RouteMaskClock::now();
   if (s_segment_safety_route_mask_cache.find(key) ==
       s_segment_safety_route_mask_cache.end()) {
     while (s_segment_safety_route_mask_cache.size() >=
            kMaxSegmentSafetyGridTiles) {
       const auto victim = ocpn::chart_safety::RouteMaskEvictionVictim(
           s_segment_safety_route_mask_cache,
-          s_segment_safety_pinned_route_mask_keys);
+          s_segment_safety_pinned_route_mask_keys, now);
       if (victim == s_segment_safety_route_mask_cache.end()) break;
+      ++s_segment_safety_route_mask_evictions;
+      if (victim->second.protected_until > now)
+        ++s_segment_safety_delivering_mask_evictions;
       s_segment_safety_route_mask_cache.erase(victim);
     }
   }
   auto& stored = s_segment_safety_route_mask_cache[key];
-  deliver_to_worker = deliver_to_worker || stored.awaiting_worker;
+  const auto protected_until = deliver_to_worker
+      ? now + ocpn::chart_safety::kRouteMaskDeliveryWindow
+      : stored.protected_until;
   stored = tile;
   stored.last_use = ++s_segment_safety_route_mask_clock;
-  stored.awaiting_worker = deliver_to_worker;
+  stored.protected_until = protected_until;
 }
 
-enum class RouteMaskAccess { Lookup, Deliver, Consume };
+enum class RouteMaskAccess { Lookup, Deliver };
 
 bool LookupSegmentSafetyRouteMaskTile(
     const std::string& key, CachedSegmentSafetyRouteMaskTile* tile,
@@ -3964,8 +3972,9 @@ bool LookupSegmentSafetyRouteMaskTile(
       (require_authoritative_fine && !it->second.authoritative_fine))
     return false;
   it->second.last_use = ++s_segment_safety_route_mask_clock;
-  if (access != RouteMaskAccess::Lookup)
-    it->second.awaiting_worker = access == RouteMaskAccess::Deliver;
+  if (access == RouteMaskAccess::Deliver)
+    it->second.protected_until = ocpn::chart_safety::RouteMaskClock::now() +
+                                ocpn::chart_safety::kRouteMaskDeliveryWindow;
   if (tile) *tile = it->second;
   return true;
 }
@@ -7480,10 +7489,7 @@ bool SegmentSafetyRouteMaskCellAt(
   std::string key = SegmentSafetyRouteMaskKey(
       lat_tile, lon_tile, safety_margin_nm, check_depth, minimum_depth_m);
   CachedSegmentSafetyRouteMaskTile mask;
-  const RouteMaskAccess access = wxThread::IsMain() ? RouteMaskAccess::Lookup
-                                                  : RouteMaskAccess::Consume;
-  if (!LookupSegmentSafetyRouteMaskTile(key, &mask, force_authoritative_fine,
-                                        access)) {
+  if (!LookupSegmentSafetyRouteMaskTile(key, &mask, force_authoritative_fine)) {
     bool built = false;
     if (!EnsureSegmentSafetyRouteMaskTile(lat_tile, lon_tile, safety_margin_nm,
                                           check_depth, minimum_depth_m, stats,
@@ -7491,8 +7497,7 @@ bool SegmentSafetyRouteMaskCellAt(
       return false;
     if (built)
       RecordUnexpectedSegmentSafetyTileBuild(stats, lat_tile, lon_tile);
-    if (!LookupSegmentSafetyRouteMaskTile(key, &mask, force_authoritative_fine,
-                                          access))
+    if (!LookupSegmentSafetyRouteMaskTile(key, &mask, force_authoritative_fine))
       return false;
   } else if (stats) {
     ++stats->grid_cache_hits;
@@ -8840,13 +8845,23 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
     result->elapsed_ms = timer.Time();
   }
   if (serviced > 0 || pending_before > 0) {
+    size_t masks;
+    uint64_t evictions, protected_evictions;
+    {
+      wxMutexLocker lock(s_segment_safety_cache_mutex);
+      masks = s_segment_safety_route_mask_cache.size();
+      evictions = s_segment_safety_route_mask_evictions;
+      protected_evictions = s_segment_safety_delivering_mask_evictions;
+    }
     wxLogMessage(
         "WR_GRID_REQUEST_SERVICE pending_before=%d serviced=%d built=%d "
         "prefetched=%d coarse_certified=%d failed=%d pending_after=%d "
-        "elapsed_ms=%ld "
-        "main_thread=1",
+        "elapsed_ms=%ld main_thread=1 mask_cache_size=%zu "
+        "mask_evictions=%llu protected_evictions=%llu",
         pending_before, serviced, built_count, prefetched_count,
-        coarse_certified_count, failed, pending_after, timer.Time());
+        coarse_certified_count, failed, pending_after, timer.Time(), masks,
+        static_cast<unsigned long long>(evictions),
+        static_cast<unsigned long long>(protected_evictions));
   }
   return failed == 0;
 }
@@ -10243,7 +10258,7 @@ void PlugIn_ReleaseSegmentSafetyRouteMaskPins() {
     s_segment_safety_pinned_grid_keys.clear();
     s_segment_safety_pinned_route_mask_keys.clear();
     for (auto& entry : s_segment_safety_route_mask_cache)
-      entry.second.awaiting_worker = false;
+      entry.second.protected_until = {};
 
     while (s_segment_safety_grid_cache.size() > kMaxSegmentSafetyGridTiles) {
       s_segment_safety_grid_cache.erase(s_segment_safety_grid_cache.begin());
@@ -10254,7 +10269,8 @@ void PlugIn_ReleaseSegmentSafetyRouteMaskPins() {
       s_segment_safety_route_mask_cache.erase(
           ocpn::chart_safety::RouteMaskEvictionVictim(
               s_segment_safety_route_mask_cache,
-              s_segment_safety_pinned_route_mask_keys));
+              s_segment_safety_pinned_route_mask_keys,
+              ocpn::chart_safety::RouteMaskClock::now()));
     }
     base_after = s_segment_safety_grid_cache.size();
     masks_after = s_segment_safety_route_mask_cache.size();

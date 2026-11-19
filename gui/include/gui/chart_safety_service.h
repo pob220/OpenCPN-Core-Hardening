@@ -11,6 +11,7 @@
 #define GUI_CHART_SAFETY_SERVICE_H
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <map>
 #include <set>
@@ -30,21 +31,27 @@ inline bool MayPrefetchNeighbour(long elapsed_ms, int max_milliseconds) {
   return max_milliseconds <= 0 || elapsed_ms < max_milliseconds;
 }
 
-/** Prefer an unpinned, consumed mask and evict the least recently used one.
- * Unread demand is protected while any ordinary victim remains available.
- * If all unpinned masks are unread, evict the oldest to keep storage bounded.
+using RouteMaskClock = std::chrono::steady_clock;
+constexpr auto kRouteMaskDeliveryWindow = std::chrono::seconds(5);
+
+/** Keep recent demand available across partial and concurrent traversals.
+ * Protection expires even when a worker finishes through a coarse proof
+ * without reading the mask. Choose the LRU protected entry only if every
+ * unpinned entry is protected, so the ordinary cache stays bounded.
  */
 template <class MaskMap, class Pins>
-auto RouteMaskEvictionVictim(MaskMap& masks, const Pins& pinned) {
+auto RouteMaskEvictionVictim(MaskMap& masks, const Pins& pinned,
+                             RouteMaskClock::time_point now) {
   auto ordinary = masks.end();
-  auto unread = masks.end();
+  auto protected_entry = masks.end();
   for (auto it = masks.begin(); it != masks.end(); ++it) {
     if (pinned.count(it->first)) continue;
-    auto& victim = it->second.awaiting_worker ? unread : ordinary;
+    auto& victim =
+        it->second.protected_until > now ? protected_entry : ordinary;
     if (victim == masks.end() || it->second.last_use < victim->second.last_use)
       victim = it;
   }
-  return ordinary == masks.end() ? unread : ordinary;
+  return ordinary == masks.end() ? protected_entry : ordinary;
 }
 
 /** Align a signed cell index to a region of child cells. */

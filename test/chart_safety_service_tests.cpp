@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <array>
+
 #include "gui/chart_safety_service.h"
 
 namespace {
@@ -16,22 +18,55 @@ using ocpn::chart_safety::GlobalGridCoordinate;
 using ocpn::chart_safety::AddCoverageTiles;
 using ocpn::chart_safety::CoverageRing;
 
+using ocpn::chart_safety::RouteMaskClock;
+using ocpn::chart_safety::kRouteMaskDeliveryWindow;
+
 struct TestRouteMask {
   unsigned last_use;
-  bool awaiting_worker;
+  RouteMaskClock::time_point protected_until;
 };
 
-TEST(ChartSafetyService, EvictionProtectsUnreadDemandAndPinnedMasks) {
+TEST(ChartSafetyService, EvictionProtectsRecentDeliveryAndPinnedMasks) {
+  const auto now = RouteMaskClock::time_point{} + std::chrono::seconds(30);
   std::map<std::string, TestRouteMask> masks = {
-      {"0:1067:-317", {4, true}},
-      {"0:1600:-300", {1, false}},
-      {"0:1601:-300", {3, false}},
-      {"0:1602:-300", {2, false}}};
+      {"0:1067:-317", {4, now + kRouteMaskDeliveryWindow}},
+      {"0:1600:-300", {1, {}}},
+      {"0:1601:-300", {3, {}}},
+      {"0:1602:-300", {2, {}}}};
   const std::set<std::string> pinned = {"0:1600:-300"};
-  EXPECT_EQ(RouteMaskEvictionVictim(masks, pinned)->first, "0:1602:-300");
+  EXPECT_EQ(RouteMaskEvictionVictim(masks, pinned, now)->first, "0:1602:-300");
   masks.erase("0:1602:-300");
   masks.erase("0:1601:-300");
-  EXPECT_EQ(RouteMaskEvictionVictim(masks, pinned)->first, "0:1067:-317");
+  EXPECT_EQ(RouteMaskEvictionVictim(masks, pinned, now)->first, "0:1067:-317");
+}
+
+TEST(ChartSafetyService, PartialRetriesKeepTheirMasksUnderSaturatedCache) {
+  const auto start = RouteMaskClock::time_point{} + std::chrono::seconds(30);
+  const auto retry = start + 2 * kRouteMaskDeliveryWindow;
+  std::map<long, TestRouteMask> masks;
+  constexpr long capacity = 4096;
+  for (long old = 0; old < capacity; ++old)
+    masks.emplace(old, TestRouteMask{static_cast<unsigned>(old),
+                                    start + kRouteMaskDeliveryWindow});
+
+  const std::set<long> pinned{0};
+  // This models a retry that accumulates several recent masks while older
+  // workers took a coarse shortcut and never consumed their own deliveries.
+  const std::array<long, 6> demand{{capacity, capacity + 1, capacity + 2,
+                                    capacity + 3, capacity + 4, capacity + 5}};
+  unsigned clock = capacity;
+  for (const auto key : demand) {
+    const auto victim = RouteMaskEvictionVictim(masks, pinned, retry);
+    ASSERT_NE(victim, masks.end());
+    EXPECT_LT(victim->first, capacity);
+    masks.erase(victim);
+    masks.emplace(key, TestRouteMask{++clock, retry + kRouteMaskDeliveryWindow});
+    for (auto& existing : masks)
+      if (existing.first >= capacity) existing.second.last_use = ++clock;
+  }
+  for (const auto key : demand) EXPECT_EQ(masks.count(key), 1u);
+  EXPECT_EQ(masks.count(0), 1u);
+  EXPECT_EQ(masks.size(), static_cast<std::size_t>(capacity));
 }
 
 TEST(ChartSafetyService, RegionalProofRequiresEveryChild) {
