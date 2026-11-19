@@ -6,6 +6,7 @@
 #include "../gui/src/ocpn_plugin_gui.cpp"
 #include "mygeom.h"
 #include <wx/init.h>
+#include <wx/log.h>
 
 // Provider plugins supply this constructor; the host uses borrowed PI objects.
 // This fixture owns the native attributes and initialises only the ABI fields
@@ -348,6 +349,7 @@ TEST(ChartSafetyNative, NonFiniteDangerDepthRemainsUnknown) {
 extern "C" int __wrap_main(int argc, char **argv) {
   wxApp::SetInstance(new wxApp());
   if (!wxEntryStart(argc, argv)) return 2;
+  delete wxLog::SetActiveTarget(new wxLogStderr());
   ::testing::InitGoogleTest(&argc, argv);
   const int result = RUN_ALL_TESTS();
   wxEntryCleanup();
@@ -529,3 +531,54 @@ TEST_F(DateLineSafety, CorridorFootprintUsesOnlyAdjacentCanonicalTiles) {
   }
 }
 }  // namespace
+
+TEST(ChartSafetyNative, OpenWaterRegionRequiresCompleteDepthArea) {
+  FixtureChart chart;
+  chart.Ocean();
+  EXPECT_DOUBLE_EQ(
+      OpenWaterDepthLowerBound(CollectSafetyBoxRules(&chart, 0, 0, .2, .02)),
+      1000.0);
+  // Same depths on part of a region cannot prove the remaining area.
+  EXPECT_DOUBLE_EQ(
+      OpenWaterDepthLowerBound(CollectSafetyBoxRules(&chart, 0, 0, 1, .02)),
+      0.0);
+}
+
+TEST(ChartSafetyNative, OpenWaterRegionRejectsAnIsolatedDangerInItsHalo) {
+  FixtureChart chart;
+  chart.Ocean();
+  auto* rock = chart.Add("UWTROC", GEO_POINT, 1);
+  chart.Point(rock, .21, .1);
+  rock->AddDoubleAttribute("VALSOU", 6.0);
+  EXPECT_DOUBLE_EQ(
+      OpenWaterDepthLowerBound(CollectSafetyBoxRules(&chart, 0, 0, .2, .02)),
+      0.0);
+}
+
+TEST(ChartSafetyNative, OpenWaterCrossingsNeedEvidenceForEveryTouchedRegion) {
+  s_segment_safety_open_water_regions.clear();
+  s_segment_safety_open_water_requested = true;
+  const auto add = [](long lon, double depth) {
+    s_segment_safety_open_water_regions.emplace(
+        SegmentSafetyOpenWaterKey(kOpenWaterRegionTiles, 0, lon),
+        SegmentSafetyOpenWaterRegion{PI_SEGMENT_SAFETY_SOURCE_CM93, depth});
+  };
+  add(0, 100.0);
+  SegmentSafetyOpenWaterRegion proof;
+  EXPECT_TRUE(SegmentSafetyOpenWaterForChord(.25, .25, .75, .75, .4, true,
+                                             5.0, &proof));
+  EXPECT_FALSE(SegmentSafetyOpenWaterForChord(.5, .5, .5, 1.5, .4, true,
+                                              5.0, &proof));
+  add(20, 60.0);
+  EXPECT_TRUE(SegmentSafetyOpenWaterForChord(.5, .5, .5, 1.5, .4, true,
+                                             5.0, &proof));
+  EXPECT_DOUBLE_EQ(proof.minimum_depth_m, 60.0);
+  EXPECT_FALSE(SegmentSafetyOpenWaterForChord(.5, .5, .5, 1.5, .4, true,
+                                              70.0, &proof));
+  EXPECT_FALSE(SegmentSafetyOpenWaterForChord(.5, .5, .5, 1.5, 2.5, false,
+                                              0.0, &proof));
+  EXPECT_FALSE(SegmentSafetyOpenWaterForChord(.5, 179.99, .5, 180.01, .4,
+                                              false, 0.0, &proof));
+  s_segment_safety_open_water_regions.clear();
+  s_segment_safety_open_water_requested = false;
+}

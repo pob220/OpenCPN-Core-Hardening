@@ -3748,6 +3748,15 @@ extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyRawTiles(
     int require_depth, PlugInSegmentSafetyResult *result);
 
 /**
+ * Try to cover a requested 0.05-degree search tile with an open-water
+ * region proven directly from chart geometry. The main-thread call returns
+ * true only when workers can use the proof in place of the raw tile.
+ * It never exports a raw tile and does not apply to force-fine validation.
+ */
+extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyOpenWater(
+    long lat_tile, long lon_tile, const PlugInSegmentSafetyOptions *options);
+
+/**
  * Builds an immutable, best-available-chart hazard snapshot for an area.
  *
  * Snapshot construction is main-thread only.  Worker segment checks may use

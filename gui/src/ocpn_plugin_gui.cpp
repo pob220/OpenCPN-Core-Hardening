@@ -30,6 +30,7 @@
 #include <cstring>
 #include <fstream>
 #include <map>
+#include <tuple>
 #include <memory>
 #include <set>
 #include <sstream>
@@ -1770,6 +1771,18 @@ struct CachedSegmentSafetyCoarseRouteMaskCell {
 std::map<std::string, CachedSegmentSafetyCoarseRouteMaskCell>
     s_segment_safety_coarse_route_mask_cache;
 
+struct SegmentSafetyOpenWaterRegion {
+  PlugInSegmentSafetySource source{PI_SEGMENT_SAFETY_SOURCE_NONE};
+  double minimum_depth_m{0.0};
+};
+
+// Memory-only. The chart identity and catalogue refresh discard the whole
+// set, including failed proofs, before the next chart preparation.
+std::map<std::tuple<int, int, long, long>, SegmentSafetyOpenWaterRegion>
+    s_segment_safety_open_water_regions;
+bool s_segment_safety_open_water_requested = false;
+
+
 std::map<std::string, CachedSegmentSafetyCoarseRouteMaskCell>
     s_segment_safety_persistent_certified_safe_cache;
 bool s_segment_safety_persistent_cache_enabled = false;
@@ -2681,6 +2694,7 @@ void SegmentSafetyRefreshPersistentChartIdentity() {
       s_segment_safety_grid_cache.clear();
       s_segment_safety_route_mask_cache.clear();
       s_segment_safety_route_mask_regions.clear();
+      s_segment_safety_open_water_regions.clear();
       s_segment_safety_coarse_route_mask_cache.clear();
       s_segment_safety_segment_cache.clear();
       s_segment_safety_pinned_grid_keys.clear();
@@ -2713,6 +2727,7 @@ void SegmentSafetyRefreshPersistentChartIdentity() {
         s_segment_safety_point_cache.clear();
         s_segment_safety_route_mask_cache.clear();
         s_segment_safety_route_mask_regions.clear();
+        s_segment_safety_open_water_regions.clear();
         s_segment_safety_coarse_route_mask_cache.clear();
         s_segment_safety_segment_cache.clear();
         s_segment_safety_pinned_route_mask_keys.clear();
@@ -5683,9 +5698,9 @@ struct Cm93SafetyTileRule {
   double soundings_min_depth = 0;
 };
 
-std::vector<Cm93SafetyTileRule> CollectCm93SafetyTileRules(cm93chart* chart,
-                                                           double min_lat,
-                                                           double min_lon) {
+std::vector<Cm93SafetyTileRule> CollectSafetyBoxRules(
+    s57chart* chart, double min_lat, double min_lon, double degrees,
+    double query_padding) {
   std::vector<ObjRazRules*> candidates;
   std::vector<Cm93SafetyTileRule> rules;
   if (!chart->CollectSafetyTileRules(candidates)) {
@@ -5693,20 +5708,20 @@ std::vector<Cm93SafetyTileRule> CollectCm93SafetyTileRules(cm93chart* chart,
                      false, false, -1});
     return rules;
   }
-  const double radius = kSegmentSafetyGridResolutionDegrees;
+  const double radius = query_padding;
   for (auto* rule : candidates) {
     // Reject disjoint authoritative line/area bounds before copying and
     // indexing tessellation. Point and unresolved bounds retain exact checks.
     if (!s57chart::SafetyObjectMayIntersectBox(
             rule->obj, min_lat - radius,
-            min_lat + kSegmentSafetyGridTileDegrees + radius, min_lon - radius,
-            min_lon + kSegmentSafetyGridTileDegrees + radius))
+            min_lat + degrees + radius, min_lon - radius,
+            min_lon + degrees + radius))
       continue;
     const auto geometry = chart->PrepareSafetyObjectGeometry(rule->obj);
     const int relation = s57chart::PreparedSafetyBoxRelation(
         *geometry, min_lat - radius,
-        min_lat + kSegmentSafetyGridTileDegrees + radius, min_lon - radius,
-        min_lon + kSegmentSafetyGridTileDegrees + radius);
+        min_lat + degrees + radius, min_lon - radius,
+        min_lon + degrees + radius);
     if (!relation) continue;
     if (relation < 0) {
       rules.push_back({nullptr, false, false, false, 0, "unresolved geometry",
@@ -5730,9 +5745,9 @@ std::vector<Cm93SafetyTileRule> CollectCm93SafetyTileRules(cm93chart* chart,
     bool sounding_unknown = false;
     double sounding_minimum = 0;
     const bool sounding_known = ocpn::chart_safety::SoundingMinDepth(
-        *geometry, min_lat + kSegmentSafetyGridTileDegrees / 2,
-        min_lon + kSegmentSafetyGridTileDegrees / 2,
-        kSegmentSafetyGridTileDegrees / 2 + radius, &sounding_minimum,
+        *geometry, min_lat + degrees / 2,
+        min_lon + degrees / 2,
+        degrees / 2 + radius, &sounding_minimum,
         &sounding_unknown);
     if (land || drying || depth_area || danger || unknown ||
         geometry->soundings)
@@ -5742,6 +5757,13 @@ std::vector<Cm93SafetyTileRule> CollectCm93SafetyTileRules(cm93chart* chart,
                        sounding_known && !sounding_unknown, sounding_minimum});
   }
   return rules;
+}
+
+std::vector<Cm93SafetyTileRule> CollectCm93SafetyTileRules(
+    cm93chart* chart, double min_lat, double min_lon) {
+  return CollectSafetyBoxRules(chart, min_lat, min_lon,
+                               kSegmentSafetyGridTileDegrees,
+                               kSegmentSafetyGridResolutionDegrees);
 }
 
 bool Cm93UniformDepthProof(const std::vector<Cm93SafetyTileRule>& rules,
@@ -5770,6 +5792,253 @@ bool Cm93UniformDepthProof(const std::vector<Cm93SafetyTileRule>& rules,
         (!rule.soundings_known || rule.soundings_min_depth < depth))
       return false;
   *minimum_depth = depth;
+  return true;
+}
+
+enum class OpenWaterGeometryMode { Use, Shadow, Off };
+constexpr int kOpenWaterRegionTiles = 20;  // 1 degree
+constexpr int kOpenWaterSubregionTiles = 4;  // 0.2 degrees
+constexpr double kOpenWaterMaximumMarginNm = 2.0;
+constexpr double kOpenWaterMinimumChartDepthM = 30.0;
+constexpr size_t kMaximumOpenWaterRegions = 12000;
+
+OpenWaterGeometryMode SegmentSafetyOpenWaterMode() {
+  static const auto mode = [] {
+    wxString setting;
+    wxGetEnv("OCPN_CHART_SAFETY_OPEN_WATER", &setting);
+    if (setting == "0") return OpenWaterGeometryMode::Off;
+    if (setting == "shadow") return OpenWaterGeometryMode::Shadow;
+    return OpenWaterGeometryMode::Use;
+  }();
+  return mode;
+}
+
+bool OpenWaterOptionsSupported(double margin, bool check_depth, double depth) {
+  return std::isfinite(margin) && margin >= 0.0 &&
+         margin <= kOpenWaterMaximumMarginNm &&
+         (!check_depth || (std::isfinite(depth) && depth >= 0));
+}
+
+using OpenWaterRegionKey = std::tuple<int, int, long, long>;
+
+OpenWaterRegionKey SegmentSafetyOpenWaterKey(int size, long lat_tile,
+                                              long lon_tile) {
+  return {SegmentSafetyCurrentGroupIndex(), size,
+          ocpn::chart_safety::RouteMaskRegionStart(lat_tile, size),
+          ocpn::chart_safety::RouteMaskRegionStart(
+              ocpn::chart_safety::CanonicalLongitudeIndex(lon_tile, 3600),
+              size)};
+}
+
+bool OpenWaterProofApplies(const SegmentSafetyOpenWaterRegion& proof,
+                           bool check_depth, double threshold) {
+  return proof.source != PI_SEGMENT_SAFETY_SOURCE_NONE &&
+         (!check_depth || proof.minimum_depth_m >= threshold + 0.01);
+}
+
+// Called with the safety-cache mutex. The full halo of each region was
+// certified at build time, including grid quantisation and geometry guards.
+const SegmentSafetyOpenWaterRegion* FindSegmentSafetyOpenWaterRegion(
+    long lat_tile, long lon_tile, bool check_depth, double depth) {
+  if (!s_segment_safety_open_water_requested) return nullptr;
+  for (int size : {kOpenWaterRegionTiles, kOpenWaterSubregionTiles}) {
+    const auto it = s_segment_safety_open_water_regions.find(
+        SegmentSafetyOpenWaterKey(size, lat_tile, lon_tile));
+    if (it != s_segment_safety_open_water_regions.end() &&
+        OpenWaterProofApplies(it->second, check_depth, depth))
+      return &it->second;
+  }
+  return nullptr;
+}
+
+double OpenWaterDepthLowerBound(const std::vector<Cm93SafetyTileRule>& rules) {
+  bool covered = false;
+  double minimum = std::numeric_limits<double>::infinity();
+  for (const auto& rule : rules) {
+    if (!rule.rule || rule.land || rule.drying || rule.unknown_depth ||
+        rule.isolated_danger)
+      return 0.0;
+    if (rule.geometry && rule.geometry->soundings) {
+      if (!rule.soundings_known) return 0.0;
+      minimum = std::min(minimum, rule.soundings_min_depth);
+      continue;
+    }
+    if (!rule.depth_area || !rule.has_depth || !std::isfinite(rule.min_depth_m))
+      return 0.0;
+    covered = covered || rule.tile_relation == 2;
+    minimum = std::min(minimum, rule.min_depth_m);
+  }
+  return covered && std::isfinite(minimum) ? minimum : 0.0;
+}
+
+SegmentSafetyOpenWaterRegion BuildSegmentSafetyOpenWaterRegion(
+    long lat_tile, long lon_tile, int tile_count) {
+  const double degrees = tile_count * kSegmentSafetyGridTileDegrees;
+  const double south = lat_tile * kSegmentSafetyGridTileDegrees;
+  const double west = lon_tile * kSegmentSafetyGridTileDegrees;
+  const double north = south + degrees;
+  const double east = west + degrees;
+  const double maximum_latitude = std::max(std::abs(south), std::abs(north));
+  if (maximum_latitude >= 70.0) return {};
+
+  // Require a chart-proven clear region at least 3 NM from charted land.
+  // Use a square in degrees enlarged at its poleward edge. It contains the
+  // existing square fine-grid halo for all supported margins, including grid
+  // rounding and chart feature sampling at floor/ceiling cells.
+  const double padding = 3.0 /
+      (60.0 * std::cos(SegmentSafetyDegToRad(maximum_latitude + 0.25))) +
+      2.0 * kSegmentSafetyGridResolutionDegrees;
+  const SegmentSafetyBBox box{south - padding, north + padding,
+                              west - padding, east + padding};
+  if (box.min_lon <= -180.0 || box.max_lon >= 180.0) return {};
+  // A shoreline crossing is an inexpensive reason to defer to detailed
+  // coastal checks. Success still needs full authoritative chart evidence.
+  if (PlugIn_GSHHS_CrossesLand(box.min_lat, box.min_lon, box.max_lat, box.max_lon) ||
+      PlugIn_GSHHS_CrossesLand(box.min_lat, box.max_lon, box.max_lat, box.min_lon) ||
+      PlugIn_GSHHS_CrossesLand(box.min_lat, box.min_lon, box.min_lat, box.max_lon) ||
+      PlugIn_GSHHS_CrossesLand(box.max_lat, box.min_lon, box.max_lat, box.max_lon) ||
+      PlugIn_GSHHS_CrossesLand(box.min_lat, box.min_lon, box.max_lat, box.min_lon) ||
+      PlugIn_GSHHS_CrossesLand(box.min_lat, box.max_lon, box.max_lat, box.max_lon))
+    return {};
+  const auto candidates = SegmentSafetyTileChartCandidates(
+      box.min_lat, box.min_lon, box.max_lat, box.max_lon);
+  // Competing chart extents, including provider/plugin coverage, go to the
+  // normal point-by-point precedence rules. Absence of coverage is unknown.
+  if (candidates.size() != 1 || candidates.front().plugin_vector) return {};
+
+  auto* chart = ChartData->OpenChartFromDB(candidates.front().db_index,
+                                          FULL_INIT);
+  s57chart* geometry = nullptr;
+  auto source = PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART;
+  if (auto* composite = dynamic_cast<cm93compchart*>(chart)) {
+    const double centre_lat = (south + north) / 2.0;
+    const double centre_lon = (west + east) / 2.0;
+    auto vp = SegmentSafetyHighestDetailViewPortAt(centre_lat, centre_lon);
+    vp.SetProjectionType(PROJECTION_MERCATOR);
+    vp.SetRotationAngle(0.0);
+    vp.skew = 0.0;
+    vp.b_quilt = false;
+    vp.b_FullScreenQuilt = false;
+    // A Mercator viewport that contains the complete expanded rectangle.
+    // The margin also retains every native cell intersecting its boundary.
+    vp.pix_width = vp.pix_height = 1024;
+    vp.view_scale_ppm = 1024.0 * std::cos(SegmentSafetyDegToRad(
+        maximum_latitude + padding)) /
+        (120000.0 * (degrees + 2.0 * padding));
+    vp.SetBoxes();
+    const auto viewport_box = vp.GetBBox();
+    if (viewport_box.GetMinLat() > box.min_lat ||
+        viewport_box.GetMaxLat() < box.max_lat ||
+        viewport_box.GetMinLon() > box.min_lon ||
+        viewport_box.GetMaxLon() < box.max_lon)
+      return {};
+    composite->PrepareSafetyTile(vp);
+    geometry = composite->GetUniformSafetyChartForBox(
+        box.min_lat, box.max_lat, box.min_lon, box.max_lon);
+    source = PI_SEGMENT_SAFETY_SOURCE_CM93;
+  } else {
+    geometry = dynamic_cast<s57chart*>(chart);
+    if (!geometry) return {};
+    const auto& entry =
+        ChartData->GetChartTableEntry(candidates.front().db_index);
+    SegmentSafetySnapshotChart coverage;
+    coverage.bbox = {entry.GetLatMin(), entry.GetLatMax(),
+                     entry.GetLonMin(), entry.GetLonMax()};
+    for (int i = 0; i < entry.GetnAuxPlyEntries(); ++i)
+      coverage.coverage.push_back(SegmentSafetyRingFromFloatTable(
+          entry.GetpAuxPlyTableEntry(i), entry.GetAuxCntTableEntry(i)));
+    if (coverage.coverage.empty())
+      coverage.coverage.push_back(SegmentSafetyRingFromFloatTable(
+          entry.GetpPlyTable(), entry.GetnPlyEntries()));
+    for (int i = 0; i < entry.GetnNoCovrPlyEntries(); ++i)
+      coverage.no_coverage.push_back(SegmentSafetyRingFromFloatTable(
+          entry.GetpNoCovrPlyTableEntry(i), entry.GetNoCovrCntTableEntry(i)));
+    if (!SegmentSafetyChartFullyCoversBBox(coverage, box)) return {};
+  }
+  if (!geometry) return {};
+  const double depth = OpenWaterDepthLowerBound(
+      CollectSafetyBoxRules(geometry, south, west, degrees, padding));
+  if (depth < kOpenWaterMinimumChartDepthM) return {};
+  wxLogMessage("WR_OPEN_WATER_REGION size_deg=%.2f tile=(%ld,%ld) "
+               "source=%d min_depth_m=%.2f chart=%s",
+               degrees, lat_tile, lon_tile, source, depth,
+               candidates.front().path);
+  return {source, depth};
+}
+
+bool PrepareSegmentSafetyOpenWaterRegion(long lat_tile, long lon_tile,
+                                           double margin, bool check_depth,
+                                           double depth) {
+  if (!wxThread::IsMain() || !OpenWaterOptionsSupported(margin, check_depth, depth))
+    return false;
+  const auto mode = SegmentSafetyOpenWaterMode();
+  if (mode == OpenWaterGeometryMode::Off) return false;
+  for (int size : {kOpenWaterRegionTiles, kOpenWaterSubregionTiles}) {
+    const auto key = SegmentSafetyOpenWaterKey(size, lat_tile, lon_tile);
+    {
+      wxMutexLocker lock(s_segment_safety_cache_mutex);
+      if (!s_segment_safety_open_water_requested) return false;
+      const auto it = s_segment_safety_open_water_regions.find(key);
+      if (it != s_segment_safety_open_water_regions.end()) {
+        if (OpenWaterProofApplies(it->second, check_depth, depth))
+          return mode == OpenWaterGeometryMode::Use;
+        continue;
+      }
+      if (s_segment_safety_open_water_regions.size() >= kMaximumOpenWaterRegions)
+        return false;
+    }
+    const auto proof = BuildSegmentSafetyOpenWaterRegion(
+        std::get<2>(key), std::get<3>(key), size);
+    {
+      wxMutexLocker lock(s_segment_safety_cache_mutex);
+      s_segment_safety_open_water_regions.emplace(key, proof);
+    }
+    if (OpenWaterProofApplies(proof, check_depth, depth))
+      return mode == OpenWaterGeometryMode::Use;
+  }
+  return false;
+}
+
+bool SegmentSafetyOpenWaterForChord(
+    double lat1, double lon1, double lat2, double lon2, double margin,
+    bool check_depth, double depth, SegmentSafetyOpenWaterRegion* result) {
+  if (!OpenWaterOptionsSupported(margin, check_depth, depth)) return false;
+  // Split chart segments are already in a common longitude frame. A halo
+  // covers all cells touched by the fine traversal, including shared edges.
+  const double guard = kSegmentSafetyGridResolutionDegrees;
+  const auto tile_min = [](double a, double b) {
+    return static_cast<long>(std::floor((std::min(a, b) -
+        kSegmentSafetyGridResolutionDegrees) / kSegmentSafetyGridTileDegrees));
+  };
+  const auto tile_max = [guard](double a, double b) {
+    return static_cast<long>(std::floor((std::max(a, b) + guard) /
+                                       kSegmentSafetyGridTileDegrees));
+  };
+  if (!std::isfinite(lat1) || !std::isfinite(lat2) ||
+      !std::isfinite(lon1) || !std::isfinite(lon2) ||
+      std::abs(lat1) >= 70.0 || std::abs(lat2) >= 70.0 ||
+      lon1 <= -180.0 || lon1 >= 180.0 || lon2 <= -180.0 || lon2 >= 180.0 ||
+      std::abs(lon2 - lon1) > 2.0 || std::abs(lat2 - lat1) > 2.0)
+    return false;
+  const long min_lat = tile_min(lat1, lat2), max_lat = tile_max(lat1, lat2);
+  const long min_lon = tile_min(lon1, lon2), max_lon = tile_max(lon1, lon2);
+  const int step = kOpenWaterSubregionTiles;
+  wxMutexLocker lock(s_segment_safety_cache_mutex);
+  if (!s_segment_safety_open_water_requested) return false;
+  auto minimum = std::numeric_limits<double>::infinity();
+  auto source = PI_SEGMENT_SAFETY_SOURCE_NONE;
+  for (long lat = ocpn::chart_safety::RouteMaskRegionStart(min_lat, step);
+       lat <= max_lat; lat += step) {
+    for (long lon = ocpn::chart_safety::RouteMaskRegionStart(min_lon, step);
+         lon <= max_lon; lon += step) {
+      const auto* proof = FindSegmentSafetyOpenWaterRegion(
+          lat, lon, check_depth, depth);
+      if (!proof) return false;
+      minimum = std::min(minimum, proof->minimum_depth_m);
+      source = proof->source;
+    }
+  }
+  *result = {source, minimum};
   return true;
 }
 
@@ -7486,6 +7755,18 @@ bool SegmentSafetyRouteMaskCellAt(
   long lat_tile = 0;
   long lon_tile = 0;
   SegmentSafetyGridTileKey(lat, lon, &lat_tile, &lon_tile);
+  if (!force_authoritative_fine &&
+      SegmentSafetyOpenWaterMode() == OpenWaterGeometryMode::Use &&
+      OpenWaterOptionsSupported(safety_margin_nm, check_depth, minimum_depth_m)) {
+    wxMutexLocker lock(s_segment_safety_cache_mutex);
+    if (const auto* proof = FindSegmentSafetyOpenWaterRegion(
+            lat_tile, lon_tile, check_depth, minimum_depth_m)) {
+      if (block_flags) *block_flags = SEGMENT_SAFETY_ROUTE_CLEAR;
+      if (source) *source = proof->source;
+      if (stats) ++stats->grid_lookups;
+      return true;
+    }
+  }
   std::string key = SegmentSafetyRouteMaskKey(
       lat_tile, lon_tile, safety_margin_nm, check_depth, minimum_depth_m);
   CachedSegmentSafetyRouteMaskTile mask;
@@ -8731,11 +9012,16 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
     if (!have_request) break;
 
     bool built = false;
-    bool ok = request.group_index == SegmentSafetyCurrentGroupIndex() &&
-              EnsureSegmentSafetyRouteMaskTile(
+    const bool same_group = request.group_index == SegmentSafetyCurrentGroupIndex();
+    const bool open_water = same_group && !request.force_authoritative_fine &&
+        PrepareSegmentSafetyOpenWaterRegion(
+            request.lat_tile, request.lon_tile, request.safety_margin_nm,
+            request.check_depth, request.minimum_depth_m);
+    bool ok = open_water ||
+              (same_group && EnsureSegmentSafetyRouteMaskTile(
                   request.lat_tile, request.lon_tile, request.safety_margin_nm,
                   request.check_depth, request.minimum_depth_m, NULL, &built,
-                  request.force_authoritative_fine, true);
+                  request.force_authoritative_fine, true));
     // A worker stops at the first absent mask and can otherwise incur one GUI
     // timer wake-up per 0.05-degree tile. Populate a bounded lookahead set of
     // exact masks while the chart is already active on the main thread. This
@@ -8746,7 +9032,8 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
     // force-fine validation demand-only to avoid speculative validation work.
     CachedSegmentSafetyRouteMaskTile centre_mask;
     const bool useful_to_prefetch_neighbours =
-        ok && LookupSegmentSafetyRouteMaskTile(request.key, &centre_mask) &&
+        ok && !open_water &&
+        LookupSegmentSafetyRouteMaskTile(request.key, &centre_mask) &&
         centre_mask.clear_count > 0;
     if (useful_to_prefetch_neighbours && !request.force_authoritative_fine) {
       std::vector<std::pair<long, long> > lookahead =
@@ -8864,6 +9151,24 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
         static_cast<unsigned long long>(protected_evictions));
   }
   return failed == 0;
+}
+
+bool PlugIn_PrewarmSegmentSafetyOpenWater(
+    long lat_tile, long lon_tile, const PlugInSegmentSafetyOptions* options) {
+  if (!wxThread::IsMain() || !ChartData ||
+      SegmentSafetyOpenWaterMode() == OpenWaterGeometryMode::Off ||
+      !SegmentSafetyOptionCheckLand(options) ||
+      SegmentSafetyOptionForceAuthoritativeFineValidation(options) ||
+      lat_tile < -1800 || lat_tile >= 1800)
+    return false;
+  {
+    wxMutexLocker lock(s_segment_safety_cache_mutex);
+    s_segment_safety_open_water_requested = true;
+  }
+  return PrepareSegmentSafetyOpenWaterRegion(
+      lat_tile, lon_tile, SegmentSafetyOptionMargin(options),
+      SegmentSafetyOptionCheckDepth(options),
+      SegmentSafetyOptionMinimumDepthM(options));
 }
 
 bool PlugIn_PrewarmSegmentSafetyRawTiles(
@@ -9182,6 +9487,19 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
 
   bool chart_data_available = false;
   SegmentSafetyCoreStats stats;
+  const auto open_water_mode = SegmentSafetyOpenWaterMode();
+  SegmentSafetyOpenWaterRegion open_water;
+  const bool open_water_proven = check_land && !force_authoritative_fine &&
+      open_water_mode != OpenWaterGeometryMode::Off &&
+      SegmentSafetyOpenWaterForChord(lat1, lon1, lat2, lon2, safety_margin_nm,
+                                     check_depth, minimum_depth_m, &open_water);
+  if (open_water_proven && open_water_mode == OpenWaterGeometryMode::Use) {
+    SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_SAFE);
+    SetSegmentSafetySource(result, open_water.source);
+    SetSegmentSafetyDiagnosticReason(result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR);
+    SetSegmentSafetyMessage(result, "segment clear in chart-geometry open-water regions");
+    return true;
+  }
   SegmentSafetySnapshotDecision snapshot_decision =
       SEGMENT_SAFETY_SNAPSHOT_UNKNOWN;
   bool snapshot_fast_path = false;
@@ -9207,6 +9525,17 @@ bool PlugIn_CheckSegmentSafety(double lat1, double lon1, double lat2,
   }
   auto log_query = [&](const char* phase) {
     if (!result) return;
+    if (open_water_proven && open_water_mode == OpenWaterGeometryMode::Shadow &&
+        result->status != PI_SEGMENT_SAFETY_PENDING_DATA) {
+      static std::atomic<unsigned> comparisons{0};
+      const auto count = ++comparisons;
+      if (result->status != PI_SEGMENT_SAFETY_SAFE)
+        wxLogMessage("WR_OPEN_WATER_SHADOW_MISMATCH status=%d "
+                     "segment=(%.8f,%.8f)->(%.8f,%.8f) margin=%.3f phase=%s",
+                     result->status, lat1, lon1, lat2, lon2, safety_margin_nm, phase);
+      if (count == 1 || count % 1000 == 0)
+        wxLogMessage("WR_OPEN_WATER_SHADOW_COMPARED count=%u", count);
+    }
     if (snapshot_shadow_compare &&
         snapshot_decision == SEGMENT_SAFETY_SNAPSHOT_SAFE &&
         (result->status == PI_SEGMENT_SAFETY_CROSSES_LAND ||
