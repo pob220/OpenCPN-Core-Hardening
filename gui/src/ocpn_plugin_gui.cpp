@@ -54,6 +54,7 @@
 #include <wx/jsonval.h>
 #include <wx/jsonwriter.h>
 #include <wx/wfstream.h>
+#include <wx/dir.h>
 
 #include "o_sound/o_sound.h"
 
@@ -1776,11 +1777,13 @@ struct SegmentSafetyOpenWaterRegion {
   double minimum_depth_m{0.0};
 };
 
-// Memory-only. The chart identity and catalogue refresh discard the whole
-// set, including failed proofs, before the next chart preparation.
-std::map<std::tuple<int, int, long, long>, SegmentSafetyOpenWaterRegion>
-    s_segment_safety_open_water_regions;
+using OpenWaterRegionKey = std::tuple<int, int, long, long>;
+using OpenWaterRegions =
+    std::map<OpenWaterRegionKey, SegmentSafetyOpenWaterRegion>;
+OpenWaterRegions s_segment_safety_open_water_regions;
 bool s_segment_safety_open_water_requested = false;
+bool s_segment_safety_open_water_importing = false;
+void LoadInstalledSegmentSafetyOpenWaterLayer(const wxString& identity);
 
 
 std::map<std::string, CachedSegmentSafetyCoarseRouteMaskCell>
@@ -2641,10 +2644,11 @@ wxString SegmentSafetyChartIdentity() {
       (unsigned long long)hash);
 }
 
-wxString SegmentSafetyChartCatalogIdentity() {
+wxString SegmentSafetyChartCatalogIdentity(bool include_database_path = true) {
   if (!ChartData) return wxEmptyString;
   uint64_t hash = 1469598103934665603ULL;
-  SegmentSafetyHashAdd(&hash, ChartData->GetDBFileName());
+  if (include_database_path)
+    SegmentSafetyHashAdd(&hash, ChartData->GetDBFileName());
   SegmentSafetyHashAdd(&hash,
                        wxString::Format("dbv=%d", ChartData->GetVersion()));
   const int entries = ChartData->GetChartTableEntries();
@@ -2678,9 +2682,11 @@ void SegmentSafetyRefreshPersistentChartIdentity() {
       nullptr;
   void* identity_context = nullptr;
   void* dependencies_context = nullptr;
+  bool reload_open_water = false;
   {
     wxMutexLocker lock(s_segment_safety_cache_mutex);
     if (identity != s_segment_safety_chart_identity) {
+      reload_open_water = true;
       wxLogMessage("WR_CERT_SAFE_CACHE chart_identity old=\"%s\" new=\"%s\"",
                    s_segment_safety_chart_identity, identity);
       s_segment_safety_chart_identity = identity;
@@ -2711,6 +2717,7 @@ void SegmentSafetyRefreshPersistentChartIdentity() {
       identity_context = s_segment_safety_external_tile_cache.context;
     }
     if (catalog_identity != s_segment_safety_chart_catalog_identity) {
+      reload_open_water = true;
       const bool initial_catalog =
           s_segment_safety_chart_catalog_identity.IsEmpty();
       wxLogMessage(
@@ -2748,6 +2755,7 @@ void SegmentSafetyRefreshPersistentChartIdentity() {
   }
   if (dependencies_callback)
     dependencies_callback(dependencies_context);
+  if (reload_open_water) LoadInstalledSegmentSafetyOpenWaterLayer(identity);
 }
 
 wxString SegmentSafetyPersistentCachePath() {
@@ -5819,8 +5827,6 @@ bool OpenWaterOptionsSupported(double margin, bool check_depth, double depth) {
          (!check_depth || (std::isfinite(depth) && depth >= 0));
 }
 
-using OpenWaterRegionKey = std::tuple<int, int, long, long>;
-
 OpenWaterRegionKey SegmentSafetyOpenWaterKey(int size, long lat_tile,
                                               long lon_tile) {
   return {SegmentSafetyCurrentGroupIndex(), size,
@@ -5964,6 +5970,139 @@ SegmentSafetyOpenWaterRegion BuildSegmentSafetyOpenWaterRegion(
                degrees, lat_tile, lon_tile, source, depth,
                candidates.front().path);
   return {source, depth};
+}
+
+constexpr int kOpenWaterLayerVersion = 1;
+constexpr size_t kMaximumOpenWaterLayerBytes = 1024 * 1024;
+
+wxString OpenWaterLayerCatalogueIdentity() {
+  if (!ChartData) return {};
+  uint64_t hash = 1469598103934665603ULL;
+  SegmentSafetyHashAdd(&hash, SegmentSafetyChartCatalogIdentity(false));
+  wxArrayString files;
+  std::set<wxString> composite_roots;
+  const int group = SegmentSafetyCurrentGroupIndex();
+  for (int i = 0; i < ChartData->GetChartTableEntries(); ++i) {
+    const auto& entry = ChartData->GetChartTableEntry(i);
+    if (entry.GetChartFamily() != CHART_FAMILY_VECTOR ||
+        !ChartData->IsChartInGroup(i, group))
+      continue;
+    const wxString path = wxString::FromUTF8(entry.GetFullPath().c_str());
+    if (entry.GetChartType() == CHART_TYPE_CM93COMP) {
+      // The chart catalogue contains one representative cell for the entire
+      // composite. Include the files it can actually use in the fingerprint.
+      wxString root = path;
+      if (!wxDir::Exists(root)) {
+        wxFileName directory(wxFileName(path).GetPathWithSep());
+        if (directory.GetDirCount() < 2) return {};
+        directory.RemoveLastDir();
+        directory.RemoveLastDir();
+        root = directory.GetPath();
+      }
+      if (composite_roots.insert(root).second) {
+        if (!wxDir::Exists(root)) return {};
+        wxDir::GetAllFiles(root, &files);
+      }
+    } else {
+      files.Add(path);
+    }
+  }
+  files.Sort();
+  for (const auto& path : files) {
+    const wxFileName file(path);
+    const auto size = file.GetSize();
+    const auto modified = file.GetModificationTime();
+    if (size == wxInvalidSize || !modified.IsValid()) return {};
+    SegmentSafetyHashAdd(&hash, path);
+    SegmentSafetyHashAdd(&hash, size.ToString());
+    SegmentSafetyHashAdd(&hash, wxString::Format("%lld",
+                          static_cast<long long>(modified.GetTicks())));
+  }
+  return wxString::Format("open-water-chart-files-v1-%016llx",
+                          static_cast<unsigned long long>(hash));
+}
+
+wxString InstalledOpenWaterLayerPath() {
+  return wxFileName(SegmentSafetyPersistentCachePath()).GetPathWithSep() +
+         "chart_open_water_layer.json";
+}
+
+bool ReadOpenWaterLayer(const wxString& path, wxJSONValue* document) {
+  const auto bytes = wxFileName(path).GetSize();
+  if (bytes == wxInvalidSize || bytes.GetValue() > kMaximumOpenWaterLayerBytes)
+    return false;
+  wxFileInputStream input(path);
+  wxJSONReader reader;
+  return input.IsOk() && reader.Parse(input, document) == 0 &&
+         document->IsObject() && document->Get("version", 0).IsInt() &&
+         document->Get("version", 0).AsInt() == kOpenWaterLayerVersion &&
+         (*document)["regions"].IsArray() &&
+         (*document)["regions"].Size() > 0 &&
+         (*document)["regions"].Size() <=
+             static_cast<int>(kMaximumOpenWaterRegions);
+}
+
+bool ReadOpenWaterRegionKey(const wxJSONValue& row, int fields, int group,
+                            OpenWaterRegionKey* key) {
+  if (!row.IsArray() || row.Size() != fields || !row.ItemAt(0).IsInt() ||
+      !row.ItemAt(1).IsInt() || !row.ItemAt(2).IsInt())
+    return false;
+  const int size = row.ItemAt(0).AsInt();
+  const long lat = row.ItemAt(1).AsInt(), lon = row.ItemAt(2).AsInt();
+  if ((size != kOpenWaterRegionTiles && size != kOpenWaterSubregionTiles) ||
+      lat < -1400 || lat >= 1400 || lon < -3600 || lon >= 3600 ||
+      lat % size || lon % size)
+    return false;
+  *key = {group, size, lat, lon};
+  return true;
+}
+
+void LoadInstalledSegmentSafetyOpenWaterLayer(const wxString& identity) {
+  if (identity.empty() || SegmentSafetyOpenWaterMode() == OpenWaterGeometryMode::Off)
+    return;
+  const wxString path = InstalledOpenWaterLayerPath();
+  if (!wxFileExists(path)) return;
+  wxJSONValue document;
+  if (!ReadOpenWaterLayer(path, &document) ||
+      !document["chart_identity"].IsString() ||
+      !document["catalogue_identity"].IsString() ||
+      document["chart_identity"].AsString() != identity ||
+      document["catalogue_identity"].AsString().empty() ||
+      document["catalogue_identity"].AsString() != OpenWaterLayerCatalogueIdentity()) {
+    wxLogMessage("WR_OPEN_WATER_LAYER load=ignored reason=invalid_or_chart_changed");
+    return;
+  }
+
+  const int group = SegmentSafetyCurrentGroupIndex();
+  const wxJSONValue rows = document["regions"];
+  OpenWaterRegions verified;
+  int proven = 0;
+  for (int i = 0; i < rows.Size(); ++i) {
+    const auto row = rows.ItemAt(i);
+    OpenWaterRegionKey key;
+    if (!ReadOpenWaterRegionKey(row, 5, group, &key) || !row.ItemAt(3).IsInt())
+      return;
+    const auto value = row.ItemAt(4);
+    if (!value.IsDouble() && !value.IsInt()) return;
+    const int source = row.ItemAt(3).AsInt();
+    const double depth = value.IsDouble() ? value.AsDouble() : value.AsInt();
+    const bool clear = source == PI_SEGMENT_SAFETY_SOURCE_CM93 ||
+                       source == PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART;
+    if (clear ? (!std::isfinite(depth) || depth < kOpenWaterMinimumChartDepthM)
+              : (source != PI_SEGMENT_SAFETY_SOURCE_NONE || depth != 0.0))
+      return;
+    if (!verified.emplace(key, SegmentSafetyOpenWaterRegion{
+                                   static_cast<PlugInSegmentSafetySource>(source), depth})
+             .second)
+      return;
+    proven += clear ? 1 : 0;
+  }
+  {
+    wxMutexLocker lock(s_segment_safety_cache_mutex);
+    s_segment_safety_open_water_regions.swap(verified);
+  }
+  wxLogMessage("WR_OPEN_WATER_LAYER load=accepted proven=%d detailed=%d",
+               proven, rows.Size() - proven);
 }
 
 bool PrepareSegmentSafetyOpenWaterRegion(long lat_tile, long lon_tile,
@@ -9175,6 +9314,102 @@ bool PlugIn_PrewarmSegmentSafetyOpenWater(
       SegmentSafetyOptionMinimumDepthM(options));
 }
 
+bool PlugIn_ImportSegmentSafetyOpenWaterLayer(
+    const char* path_utf8, PlugInOpenWaterLayerProgressFn progress,
+    void* context, char* message_utf8, int message_size) {
+  const auto report = [&](const wxString& message, bool success = false) {
+    if (message_utf8 && message_size > 0) {
+      const auto utf8 = message.ToUTF8();
+      snprintf(message_utf8, message_size, "%s", utf8.data() ? utf8.data() : "");
+    }
+    return success;
+  };
+  if (!wxThread::IsMain() || s_segment_safety_open_water_importing)
+    return report(_("A chart layer cannot be installed right now."));
+  if (!ChartData || !ChartData->GetChartTableEntries())
+    return report(_("Load charts for the starting layer first."));
+
+  wxJSONValue input;
+  if (!path_utf8 || !ReadOpenWaterLayer(wxString::FromUTF8(path_utf8), &input))
+    return report(_("Invalid or unsupported open-water starting layer."));
+  SegmentSafetyRefreshPersistentChartIdentity();
+  const wxString chart_identity = SegmentSafetyChartIdentity();
+  const wxString catalogue = OpenWaterLayerCatalogueIdentity();
+  if (chart_identity.empty() || catalogue.empty())
+    return report(_("Cannot identify all loaded chart files for verification."));
+  const int group = SegmentSafetyCurrentGroupIndex();
+  const wxJSONValue proposals = input["regions"];
+  std::set<OpenWaterRegionKey> keys;
+  for (int i = 0; i < proposals.Size(); ++i) {
+    OpenWaterRegionKey key;
+    if (!ReadOpenWaterRegionKey(proposals.ItemAt(i), 3, group, &key) ||
+        !keys.insert(key).second)
+      return report(_("The starting layer contains an invalid or duplicate region."));
+  }
+
+  struct ImportGuard {
+    ImportGuard() { s_segment_safety_open_water_importing = true; }
+    ~ImportGuard() { s_segment_safety_open_water_importing = false; }
+  } guard;
+  OpenWaterRegions verified;
+  wxJSONValue rows(wxJSONTYPE_ARRAY);
+  int done = 0, proven = 0;
+  const int total = static_cast<int>(keys.size());
+  for (const auto& key : keys) {
+    if (progress && !progress(context, done, total))
+      return report(_("Open-water starting layer import cancelled."));
+    if (SegmentSafetyCurrentGroupIndex() != group)
+      return report(_("The active chart group changed during verification."));
+    const auto [key_group, size, lat, lon] = key;
+    const auto proof = BuildSegmentSafetyOpenWaterRegion(lat, lon, size);
+    verified.emplace(key, proof);
+    wxJSONValue row(wxJSONTYPE_ARRAY);
+    row.Append(size);
+    row.Append(static_cast<int>(lat));
+    row.Append(static_cast<int>(lon));
+    row.Append(static_cast<int>(proof.source));
+    row.Append(proof.minimum_depth_m);
+    rows.Append(row);
+    proven += proof.source != PI_SEGMENT_SAFETY_SOURCE_NONE ? 1 : 0;
+    ++done;
+  }
+  if (SegmentSafetyChartIdentity() != chart_identity ||
+      OpenWaterLayerCatalogueIdentity() != catalogue)
+    return report(_("The charts changed during verification. Try importing again."));
+  if (!proven)
+    return report(_("The loaded charts could not prove any regions in this layer."));
+
+  wxJSONValue document;
+  document["version"] = kOpenWaterLayerVersion;
+  document["chart_identity"] = chart_identity;
+  document["catalogue_identity"] = catalogue;
+  document["regions"] = rows;
+  wxTempFileOutputStream out(InstalledOpenWaterLayerPath());
+  if (!out.IsOk()) return report(_("Cannot save the verified starting layer."));
+  wxJSONWriter writer(wxJSONWRITER_NONE);
+  writer.Write(document, out);
+  if (!out.IsOk() || !out.Commit())
+    return report(_("Cannot save the verified starting layer."));
+  {
+    wxMutexLocker lock(s_segment_safety_cache_mutex);
+    s_segment_safety_open_water_regions.swap(verified);
+  }
+  wxLogMessage("WR_OPEN_WATER_LAYER install=complete proven=%d detailed=%d",
+               proven, total - proven);
+  return report(wxString::Format(_("Verified %d open-water regions. %d regions "
+                                    "will use detailed checks."),
+                                 proven, total - proven), true);
+}
+
+bool PlugIn_RemoveSegmentSafetyOpenWaterLayer() {
+  if (!wxThread::IsMain() || s_segment_safety_open_water_importing) return false;
+  const wxString path = InstalledOpenWaterLayerPath();
+  if (wxFileExists(path) && !wxRemoveFile(path)) return false;
+  wxMutexLocker lock(s_segment_safety_cache_mutex);
+  s_segment_safety_open_water_regions.clear();
+  return true;
+}
+
 bool PlugIn_PrewarmSegmentSafetyRawTiles(
     const long* lat_tiles, const long* lon_tiles, int tile_count,
     int require_depth, PlugInSegmentSafetyResult* result) {
@@ -10659,7 +10894,10 @@ bool PlugIn_RegisterSegmentSafetyTileCache(
 
 bool PlugIn_GetSegmentSafetyChartIdentity(char* identity, int identity_size) {
   if (!identity || identity_size <= 0 || !wxThread::IsMain()) return false;
-  wxString value = SegmentSafetyChartIdentity();
+  // The plugin confirms identity before each prewarm batch. Refresh the
+  // catalogue here as well, including batches satisfied entirely by proofs.
+  SegmentSafetyRefreshPersistentChartIdentity();
+  const wxString& value = s_segment_safety_chart_identity;
   wxCharBuffer utf8 = value.ToUTF8();
   const char* source = utf8.data() ? utf8.data() : "";
   strncpy(identity, source, static_cast<size_t>(identity_size) - 1);

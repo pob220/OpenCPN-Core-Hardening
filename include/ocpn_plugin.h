@@ -3757,6 +3757,22 @@ extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyOpenWater(
     long lat_tile, long lon_tile, const PlugInSegmentSafetyOptions *options);
 
 /**
+ * Validate a portable list of candidate regions against the installed charts
+ * and install the resulting local layer. Only the host proves chart coverage
+ * and depth. The JSON object has version 1 and a regions array of
+ * [size, latitude_index, longitude_index] integer triples. Indices denote
+ * the southwest corner in 0.05-degree units. Size is either 4 or 20, and
+ * both indices must be multiples of it. Returning false from progress
+ * cancels the import.
+ * Both operations run on the main thread while routing is idle.
+ */
+typedef bool (*PlugInOpenWaterLayerProgressFn)(void *, int, int);
+extern "C" DECL_EXP bool PlugIn_ImportSegmentSafetyOpenWaterLayer(
+    const char *path_utf8, PlugInOpenWaterLayerProgressFn progress,
+    void *context, char *message_utf8, int message_size);
+extern "C" DECL_EXP bool PlugIn_RemoveSegmentSafetyOpenWaterLayer();
+
+/**
  * Builds an immutable, best-available-chart hazard snapshot for an area.
  *
  * Snapshot construction is main-thread only.  Worker segment checks may use
