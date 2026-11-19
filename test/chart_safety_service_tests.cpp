@@ -6,12 +6,44 @@ namespace {
 
 using ocpn::chart_safety::MayPrefetchNeighbour;
 using ocpn::chart_safety::PlanAdaptiveLookaheadTiles;
+using ocpn::chart_safety::RouteMaskEvictionVictim;
+using ocpn::chart_safety::RouteMaskRegionIsClear;
+using ocpn::chart_safety::RouteMaskRegionStart;
 using ocpn::chart_safety::PlanTileBatchBlocks;
 using ocpn::chart_safety::ExpandCandidateDiscoveryBounds;
 using ocpn::chart_safety::GeographicBounds;
 using ocpn::chart_safety::GlobalGridCoordinate;
 using ocpn::chart_safety::AddCoverageTiles;
 using ocpn::chart_safety::CoverageRing;
+
+struct TestRouteMask {
+  unsigned last_use;
+  bool awaiting_worker;
+};
+
+TEST(ChartSafetyService, EvictionProtectsUnreadDemandAndPinnedMasks) {
+  std::map<std::string, TestRouteMask> masks = {
+      {"0:1067:-317", {4, true}},
+      {"0:1600:-300", {1, false}},
+      {"0:1601:-300", {3, false}},
+      {"0:1602:-300", {2, false}}};
+  const std::set<std::string> pinned = {"0:1600:-300"};
+  EXPECT_EQ(RouteMaskEvictionVictim(masks, pinned)->first, "0:1602:-300");
+  masks.erase("0:1602:-300");
+  masks.erase("0:1601:-300");
+  EXPECT_EQ(RouteMaskEvictionVictim(masks, pinned)->first, "0:1067:-317");
+}
+
+TEST(ChartSafetyService, RegionalProofRequiresEveryChild) {
+  const auto is_incomplete = [](long lat, long lon) {
+    return lat != 266 || lon != -80;
+  };
+  EXPECT_EQ(RouteMaskRegionStart(-76, 5), -80);
+  EXPECT_EQ(RouteMaskRegionStart(269, 5), 265);
+  EXPECT_FALSE(RouteMaskRegionIsClear(265, -80, 5, is_incomplete));
+  EXPECT_TRUE(RouteMaskRegionIsClear(265, -80, 5,
+                                     [](long, long) { return true; }));
+}
 
 TEST(ChartSafetyService, PermitsPrefetchBeforePositiveBudgetExpires) {
   EXPECT_TRUE(MayPrefetchNeighbour(49, 50));

@@ -30,6 +30,39 @@ inline bool MayPrefetchNeighbour(long elapsed_ms, int max_milliseconds) {
   return max_milliseconds <= 0 || elapsed_ms < max_milliseconds;
 }
 
+/** Prefer an unpinned, consumed mask and evict the least recently used one.
+ * Unread demand is protected while any ordinary victim remains available.
+ * If all unpinned masks are unread, evict the oldest to keep storage bounded.
+ */
+template <class MaskMap, class Pins>
+auto RouteMaskEvictionVictim(MaskMap& masks, const Pins& pinned) {
+  auto ordinary = masks.end();
+  auto unread = masks.end();
+  for (auto it = masks.begin(); it != masks.end(); ++it) {
+    if (pinned.count(it->first)) continue;
+    auto& victim = it->second.awaiting_worker ? unread : ordinary;
+    if (victim == masks.end() || it->second.last_use < victim->second.last_use)
+      victim = it;
+  }
+  return ordinary == masks.end() ? unread : ordinary;
+}
+
+/** Align a signed cell index to a region of child cells. */
+inline long RouteMaskRegionStart(long cell, long children) {
+  const long offset = cell % children;
+  return cell - offset - (offset < 0 ? children : 0);
+}
+
+/** A regional proof requires a positive proof for every child. */
+template <class IsClear>
+bool RouteMaskRegionIsClear(long first_lat, long first_lon, long children,
+                           IsClear is_clear) {
+  for (long lat = first_lat; lat < first_lat + children; ++lat)
+    for (long lon = first_lon; lon < first_lon + children; ++lon)
+      if (!is_clear(lat, lon)) return false;
+  return true;
+}
+
 /**
  * Plan one aligned 0.2-degree lookahead block around a live 0.05-degree tile.
  *

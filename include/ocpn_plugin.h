@@ -3768,6 +3768,9 @@ extern "C" DECL_EXP bool PlugIn_PrewarmSegmentSafetyHazardSnapshot(
 /** Return the number of deduplicated chart-safety worker requests pending. */
 extern "C" DECL_EXP int PlugIn_GetPendingSegmentSafetyRequestCount();
 
+/** Whether requested chart masks are protected from speculative eviction. */
+extern "C" DECL_EXP bool PlugIn_SegmentSafetyProtectsRequestedMasks();
+
 /**
  * Build pending chart-safety worker requests.  This is main-thread only.
  * max_requests <= 0 means no count limit; max_milliseconds <= 0 means no

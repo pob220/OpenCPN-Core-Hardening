@@ -1525,6 +1525,7 @@ const size_t kMaxSegmentSafetyPointCacheEntries = 250000;
 const double kSegmentSafetyGridTileDegrees = 0.05;
 const double kSegmentSafetyGridResolutionDegrees = 0.00125;
 const int kSegmentSafetyCoarseRouteMaskFactor = 4;
+const int kSegmentSafetyRegionCoarseCells = 5;  // 1 degree per side.
 const int kSegmentSafetyPersistentCacheVersion = 3;
 const int kSegmentSafetyPersistentBaseTileVersion = 4;
 const int kSegmentSafetyRouteMaskAlgorithmVersion = 5;
@@ -1646,6 +1647,13 @@ struct CachedSegmentSafetyRouteMaskTile {
   bool persistent_certified_safe;
   bool uses_plugin_vector;
   bool persistent_cache_allowed;
+  uint64_t last_use{0};
+  bool awaiting_worker{false};
+
+  bool IsUniformClear() const {
+    return built && rows > 0 && cols > 0 && clear_count == rows * cols &&
+           block_summary_flags == SEGMENT_SAFETY_ROUTE_CLEAR;
+  }
 
   CachedSegmentSafetyRouteMaskTile()
       : group_index(0),
@@ -1682,7 +1690,10 @@ struct CachedSegmentSafetyRouteMaskTile {
 
 std::map<std::string, CachedSegmentSafetyRouteMaskTile>
     s_segment_safety_route_mask_cache;
+uint64_t s_segment_safety_route_mask_clock = 0;
 std::set<std::string> s_segment_safety_pinned_route_mask_keys;
+std::map<std::string, PlugInSegmentSafetySource>
+    s_segment_safety_route_mask_regions;
 
 struct SegmentSafetyRouteMaskRequest {
   std::string key;
@@ -2667,6 +2678,7 @@ void SegmentSafetyRefreshPersistentChartIdentity() {
       s_segment_safety_point_cache.clear();
       s_segment_safety_grid_cache.clear();
       s_segment_safety_route_mask_cache.clear();
+      s_segment_safety_route_mask_regions.clear();
       s_segment_safety_coarse_route_mask_cache.clear();
       s_segment_safety_segment_cache.clear();
       s_segment_safety_pinned_grid_keys.clear();
@@ -2698,6 +2710,7 @@ void SegmentSafetyRefreshPersistentChartIdentity() {
         s_segment_safety_hazard_snapshot.reset();
         s_segment_safety_point_cache.clear();
         s_segment_safety_route_mask_cache.clear();
+        s_segment_safety_route_mask_regions.clear();
         s_segment_safety_coarse_route_mask_cache.clear();
         s_segment_safety_segment_cache.clear();
         s_segment_safety_pinned_route_mask_keys.clear();
@@ -3918,36 +3931,41 @@ bool EnsureSegmentSafetyGridTile(long lat_tile, long lon_tile,
 }
 
 void StoreSegmentSafetyRouteMaskTile(
-    const std::string& key, const CachedSegmentSafetyRouteMaskTile& tile) {
+    const std::string& key, const CachedSegmentSafetyRouteMaskTile& tile,
+    bool deliver_to_worker = false) {
   wxMutexLocker lock(s_segment_safety_cache_mutex);
   if (s_segment_safety_route_mask_cache.find(key) ==
       s_segment_safety_route_mask_cache.end()) {
     while (s_segment_safety_route_mask_cache.size() >=
            kMaxSegmentSafetyGridTiles) {
-      std::map<std::string, CachedSegmentSafetyRouteMaskTile>::iterator victim =
-          s_segment_safety_route_mask_cache.end();
-      for (std::map<std::string, CachedSegmentSafetyRouteMaskTile>::iterator
-               it = s_segment_safety_route_mask_cache.begin();
-           it != s_segment_safety_route_mask_cache.end(); ++it) {
-        if (s_segment_safety_pinned_route_mask_keys.find(it->first) ==
-            s_segment_safety_pinned_route_mask_keys.end()) {
-          victim = it;
-          break;
-        }
-      }
+      const auto victim = ocpn::chart_safety::RouteMaskEvictionVictim(
+          s_segment_safety_route_mask_cache,
+          s_segment_safety_pinned_route_mask_keys);
       if (victim == s_segment_safety_route_mask_cache.end()) break;
       s_segment_safety_route_mask_cache.erase(victim);
     }
   }
-  s_segment_safety_route_mask_cache[key] = tile;
+  auto& stored = s_segment_safety_route_mask_cache[key];
+  deliver_to_worker = deliver_to_worker || stored.awaiting_worker;
+  stored = tile;
+  stored.last_use = ++s_segment_safety_route_mask_clock;
+  stored.awaiting_worker = deliver_to_worker;
 }
 
-bool LookupSegmentSafetyRouteMaskTile(const std::string& key,
-                                      CachedSegmentSafetyRouteMaskTile* tile) {
+enum class RouteMaskAccess { Lookup, Deliver, Consume };
+
+bool LookupSegmentSafetyRouteMaskTile(
+    const std::string& key, CachedSegmentSafetyRouteMaskTile* tile,
+    bool require_authoritative_fine = false,
+    RouteMaskAccess access = RouteMaskAccess::Lookup) {
   wxMutexLocker lock(s_segment_safety_cache_mutex);
-  std::map<std::string, CachedSegmentSafetyRouteMaskTile>::const_iterator it =
-      s_segment_safety_route_mask_cache.find(key);
-  if (it == s_segment_safety_route_mask_cache.end()) return false;
+  const auto it = s_segment_safety_route_mask_cache.find(key);
+  if (it == s_segment_safety_route_mask_cache.end() ||
+      (require_authoritative_fine && !it->second.authoritative_fine))
+    return false;
+  it->second.last_use = ++s_segment_safety_route_mask_clock;
+  if (access != RouteMaskAccess::Lookup)
+    it->second.awaiting_worker = access == RouteMaskAccess::Deliver;
   if (tile) *tile = it->second;
   return true;
 }
@@ -3960,6 +3978,34 @@ void StoreSegmentSafetyCoarseRouteMaskCell(
       kMaxSegmentSafetyGridTiles)
     s_segment_safety_coarse_route_mask_cache.clear();
   s_segment_safety_coarse_route_mask_cache[key] = cell;
+  // The margin halo and depth policy were checked for every child. Promote
+  // only complete regions, without asking providers for any new tiles.
+  const long first_lat = ocpn::chart_safety::RouteMaskRegionStart(
+      cell.lat_cell, kSegmentSafetyRegionCoarseCells);
+  const long first_lon = ocpn::chart_safety::RouteMaskRegionStart(
+      cell.lon_cell, kSegmentSafetyRegionCoarseCells);
+  const auto region_key = SegmentSafetyCoarseRouteMaskKey(
+      first_lat, first_lon, cell.safety_margin_nm, cell.check_depth,
+      cell.minimum_depth_m);
+  if (cell.state != SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE) {
+    s_segment_safety_route_mask_regions.erase(region_key);
+    return;
+  }
+  if (s_segment_safety_route_mask_regions.count(region_key)) return;
+  if (!ocpn::chart_safety::RouteMaskRegionIsClear(
+          first_lat, first_lon, kSegmentSafetyRegionCoarseCells,
+          [&](long lat, long lon) {
+            const auto child = s_segment_safety_coarse_route_mask_cache.find(
+                SegmentSafetyCoarseRouteMaskKey(lat, lon, cell.safety_margin_nm,
+                                                cell.check_depth,
+                                                cell.minimum_depth_m));
+            return child != s_segment_safety_coarse_route_mask_cache.end() &&
+                   child->second.state == SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE;
+          }))
+    return;
+  if (s_segment_safety_route_mask_regions.size() >= kMaxSegmentSafetyGridTiles)
+    s_segment_safety_route_mask_regions.clear();
+  s_segment_safety_route_mask_regions.emplace(region_key, cell.source);
 }
 
 bool LookupSegmentSafetyCoarseRouteMaskCell(
@@ -4005,7 +4051,7 @@ bool BuildSegmentSafetyCoarseRouteMaskCellFromFine(
           minimum_depth_m);
       CachedSegmentSafetyRouteMaskTile mask;
       if (!LookupSegmentSafetyRouteMaskTile(mask_key, &mask) || !mask.built ||
-          mask.block_flags.empty()) {
+          (!mask.IsUniformClear() && mask.block_flags.empty())) {
         missing = true;
         continue;
       }
@@ -4140,7 +4186,6 @@ CachedSegmentSafetyRouteMaskTile BuildPersistentCertifiedSafeRouteMaskTile(
   mask.chart_scale = -1;
   snprintf(mask.chart_path, sizeof(mask.chart_path),
            "persistent certified safe coarse cell");
-  mask.block_flags.assign(mask.rows * mask.cols, SEGMENT_SAFETY_ROUTE_CLEAR);
   mask.block_summary_flags = SEGMENT_SAFETY_ROUTE_CLEAR;
   mask.clear_count = mask.rows * mask.cols;
   mask.authoritative_fine = false;
@@ -4269,7 +4314,7 @@ bool BuildSegmentSafetyCoarseRouteMaskCellFromBase(
     long coarse_lat_cell, long coarse_lon_cell, double safety_margin_nm,
     bool check_depth, double minimum_depth_m, bool allow_chart_builds,
     CachedSegmentSafetyCoarseRouteMaskCell* cell, SegmentSafetyCoreStats* stats,
-    long* base_tiles_built) {
+    long* base_tiles_built, bool resident_only = false) {
   if (!cell || !wxThread::IsMain()) return false;
 
   wxStopWatch timer;
@@ -4304,8 +4349,13 @@ bool BuildSegmentSafetyCoarseRouteMaskCellFromBase(
       const long lat_tile = start_lat_tile + dlat;
       const long lon_tile = start_lon_tile + dlon;
       CachedPointSafetyGridTile base;
-      bool available =
-          LoadSegmentSafetyGridTileWithoutBuilding(lat_tile, lon_tile, &base);
+      bool available = resident_only
+                           ? LookupSegmentSafetyGridTile(
+                                 SegmentSafetyGridTileKeyForIndices(lat_tile,
+                                                                    lon_tile),
+                                 &base)
+                           : LoadSegmentSafetyGridTileWithoutBuilding(
+                                 lat_tile, lon_tile, &base);
       if (!available && allow_chart_builds) {
         bool built = false;
         available =
@@ -4522,9 +4572,6 @@ CachedSegmentSafetyRouteMaskTile BuildSegmentSafetyRouteMaskTile(
   mask.chart_scale = base_tile.chart_scale;
   snprintf(mask.chart_path, sizeof(mask.chart_path), "%s",
            base_tile.chart_path);
-  mask.block_flags.assign(mask.rows * mask.cols,
-                          SEGMENT_SAFETY_ROUTE_NEEDS_TILE);
-
   double mid_lat = mask.min_lat + kSegmentSafetyGridTileDegrees / 2.0;
   double cell_nm =
       wxMin(mask.resolution * 60.0,
@@ -4596,12 +4643,12 @@ CachedSegmentSafetyRouteMaskTile BuildSegmentSafetyRouteMaskTile(
 
   if (can_mark_tile_clear) {
     used_clear_tile_shortcut = true;
-    std::fill(mask.block_flags.begin(), mask.block_flags.end(),
-              SEGMENT_SAFETY_ROUTE_CLEAR);
     mask.clear_count = mask.rows * mask.cols;
   }
 
   if (!used_clear_tile_shortcut) {
+    mask.block_flags.assign(mask.rows * mask.cols,
+                            SEGMENT_SAFETY_ROUTE_NEEDS_TILE);
     if (mask.margin_cells == 0) {
       for (int r = 0; r < mask.rows; ++r) {
         for (int c = 0; c < mask.cols; ++c) {
@@ -4837,8 +4884,12 @@ void QueueSegmentSafetyRouteMaskRequest(long lat_tile, long lon_tile,
   request.force_authoritative_fine = force_authoritative_fine;
 
   wxMutexLocker lock(s_segment_safety_cache_mutex);
-  if (s_segment_safety_inflight_route_mask_requests.count(request.key) == 0)
-    s_segment_safety_pending_route_mask_requests[request.key] = request;
+  if (s_segment_safety_inflight_route_mask_requests.count(request.key) != 0)
+    return;
+  const auto inserted =
+      s_segment_safety_pending_route_mask_requests.emplace(request.key,
+                                                           request);
+  inserted.first->second.force_authoritative_fine |= force_authoritative_fine;
 }
 
 bool EnsureSegmentSafetyRouteMaskTile(long lat_tile, long lon_tile,
@@ -4846,14 +4897,16 @@ bool EnsureSegmentSafetyRouteMaskTile(long lat_tile, long lon_tile,
                                       double minimum_depth_m,
                                       SegmentSafetyCoreStats* stats,
                                       bool* built = NULL,
-                                      bool force_authoritative_fine = false) {
+                                      bool force_authoritative_fine = false,
+                                      bool deliver_to_worker = false) {
   lon_tile = ocpn::chart_safety::CanonicalLongitudeIndex(lon_tile, 3600);
   if (built) *built = false;
   std::string key = SegmentSafetyRouteMaskKey(
       lat_tile, lon_tile, safety_margin_nm, check_depth, minimum_depth_m);
-  CachedSegmentSafetyRouteMaskTile existing;
-  if (LookupSegmentSafetyRouteMaskTile(key, &existing) &&
-      (!force_authoritative_fine || existing.authoritative_fine)) {
+  if (LookupSegmentSafetyRouteMaskTile(
+          key, NULL, force_authoritative_fine,
+          deliver_to_worker ? RouteMaskAccess::Deliver
+                            : RouteMaskAccess::Lookup)) {
     if (stats) ++stats->grid_cache_hits;
     return true;
   }
@@ -4867,11 +4920,38 @@ bool EnsureSegmentSafetyRouteMaskTile(long lat_tile, long lon_tile,
     return false;
   }
 
+  if (deliver_to_worker && !force_authoritative_fine) {
+    const long coarse_lat = ocpn::chart_safety::RouteMaskRegionStart(
+        lat_tile, kSegmentSafetyCoarseRouteMaskFactor) /
+        kSegmentSafetyCoarseRouteMaskFactor;
+    const long coarse_lon = ocpn::chart_safety::RouteMaskRegionStart(
+        lon_tile, kSegmentSafetyCoarseRouteMaskFactor) /
+        kSegmentSafetyCoarseRouteMaskFactor;
+    const auto coarse_key = SegmentSafetyCoarseRouteMaskKey(
+        coarse_lat, coarse_lon, safety_margin_nm, check_depth, minimum_depth_m);
+    CachedSegmentSafetyCoarseRouteMaskCell coarse;
+    bool available = LookupSegmentSafetyCoarseRouteMaskCell(coarse_key, &coarse);
+    if (!available && BuildSegmentSafetyCoarseRouteMaskCellFromBase(
+                          coarse_lat, coarse_lon, safety_margin_nm, check_depth,
+                          minimum_depth_m, false, &coarse, stats, NULL, true)) {
+      StoreSegmentSafetyCoarseRouteMaskCell(coarse_key, coarse);
+      available = true;
+    }
+    if (available && coarse.state == SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE) {
+      StoreSegmentSafetyRouteMaskTile(
+          key, BuildPersistentCertifiedSafeRouteMaskTile(
+                   lat_tile, lon_tile, safety_margin_nm, check_depth,
+                   minimum_depth_m, coarse),
+          true);
+      return true;
+    }
+  }
+
   CachedSegmentSafetyRouteMaskTile mask =
       BuildSegmentSafetyRouteMaskTile(lat_tile, lon_tile, safety_margin_nm,
                                       check_depth, minimum_depth_m, stats);
   if (!mask.built) return false;
-  StoreSegmentSafetyRouteMaskTile(key, mask);
+  StoreSegmentSafetyRouteMaskTile(key, mask, deliver_to_worker);
   if (built) *built = true;
   return true;
 }
@@ -7400,8 +7480,10 @@ bool SegmentSafetyRouteMaskCellAt(
   std::string key = SegmentSafetyRouteMaskKey(
       lat_tile, lon_tile, safety_margin_nm, check_depth, minimum_depth_m);
   CachedSegmentSafetyRouteMaskTile mask;
-  if (!LookupSegmentSafetyRouteMaskTile(key, &mask) ||
-      (force_authoritative_fine && !mask.authoritative_fine)) {
+  const RouteMaskAccess access = wxThread::IsMain() ? RouteMaskAccess::Lookup
+                                                  : RouteMaskAccess::Consume;
+  if (!LookupSegmentSafetyRouteMaskTile(key, &mask, force_authoritative_fine,
+                                        access)) {
     bool built = false;
     if (!EnsureSegmentSafetyRouteMaskTile(lat_tile, lon_tile, safety_margin_nm,
                                           check_depth, minimum_depth_m, stats,
@@ -7409,21 +7491,26 @@ bool SegmentSafetyRouteMaskCellAt(
       return false;
     if (built)
       RecordUnexpectedSegmentSafetyTileBuild(stats, lat_tile, lon_tile);
-    if (!LookupSegmentSafetyRouteMaskTile(key, &mask)) return false;
-    if (force_authoritative_fine && !mask.authoritative_fine) return false;
+    if (!LookupSegmentSafetyRouteMaskTile(key, &mask, force_authoritative_fine,
+                                          access))
+      return false;
   } else if (stats) {
     ++stats->grid_cache_hits;
   }
 
-  if (mask.block_flags.empty()) return false;
+  const bool uniform_clear = mask.IsUniformClear();
+  if (!uniform_clear && mask.block_flags.empty()) return false;
   int row = (int)lround((lat - mask.min_lat) / mask.resolution);
   int col = (int)lround((lon - mask.min_lon) / mask.resolution);
   if (row < 0 || row >= mask.rows || col < 0 || col >= mask.cols) return false;
 
   int cell_index = row * mask.cols + col;
-  uint16_t flags = cell_index >= 0 && cell_index < (int)mask.block_flags.size()
-                       ? mask.block_flags[cell_index]
-                       : (uint16_t)SEGMENT_SAFETY_ROUTE_NEEDS_TILE;
+  uint16_t flags = SEGMENT_SAFETY_ROUTE_CLEAR;
+  if (!uniform_clear) {
+    flags = cell_index >= 0 && cell_index < (int)mask.block_flags.size()
+                ? mask.block_flags[cell_index]
+                : (uint16_t)SEGMENT_SAFETY_ROUTE_NEEDS_TILE;
+  }
   if (block_flags) *block_flags = flags;
   if (source) *source = mask.source;
   if (stats) ++stats->grid_lookups;
@@ -7523,6 +7610,38 @@ bool SegmentSafetyCoarseRouteMaskCertifiedSafeCheck(
     return false;
   }
 
+  auto answer = [&](PlugInSegmentSafetySource source, const char* message) {
+    if (answered) *answered = true;
+    if (stats) {
+      ++stats->coarse_certified_safe_hits;
+      stats->fine_tiles_avoided +=
+          (int)(coarse_count * kSegmentSafetyCoarseRouteMaskFactor *
+                kSegmentSafetyCoarseRouteMaskFactor);
+    }
+    SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_SAFE);
+    SetSegmentSafetySource(result, source != PI_SEGMENT_SAFETY_SOURCE_NONE
+                                       ? source
+                                       : PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART);
+    SetSegmentSafetyDiagnosticReason(
+        result, PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR);
+    SetSegmentSafetyMessage(result, message);
+    return true;
+  };
+
+  const long region_lat = ocpn::chart_safety::RouteMaskRegionStart(
+      min_lat_cell, kSegmentSafetyRegionCoarseCells);
+  const long region_lon = ocpn::chart_safety::RouteMaskRegionStart(
+      min_lon_cell, kSegmentSafetyRegionCoarseCells);
+  if (max_lat_cell < region_lat + kSegmentSafetyRegionCoarseCells &&
+      max_lon_cell < region_lon + kSegmentSafetyRegionCoarseCells) {
+    wxMutexLocker lock(s_segment_safety_cache_mutex);
+    const auto region = s_segment_safety_route_mask_regions.find(
+        SegmentSafetyCoarseRouteMaskKey(region_lat, region_lon, safety_margin_nm,
+                                        check_depth, minimum_depth_m));
+    if (region != s_segment_safety_route_mask_regions.end())
+      return answer(region->second, "regional route mask certified clear");
+  }
+
   PlugInSegmentSafetySource first_source = PI_SEGMENT_SAFETY_SOURCE_NONE;
   for (long lat_cell = min_lat_cell; lat_cell <= max_lat_cell; ++lat_cell) {
     for (long lon_cell = min_lon_cell; lon_cell <= max_lon_cell; ++lon_cell) {
@@ -7553,21 +7672,7 @@ bool SegmentSafetyCoarseRouteMaskCertifiedSafeCheck(
     }
   }
 
-  if (answered) *answered = true;
-  if (stats) {
-    ++stats->coarse_certified_safe_hits;
-    stats->fine_tiles_avoided +=
-        (int)(coarse_count * kSegmentSafetyCoarseRouteMaskFactor *
-              kSegmentSafetyCoarseRouteMaskFactor);
-  }
-  SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_SAFE);
-  SetSegmentSafetySource(result, first_source != PI_SEGMENT_SAFETY_SOURCE_NONE
-                                     ? first_source
-                                     : PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART);
-  SetSegmentSafetyDiagnosticReason(result,
-                                   PI_SEGMENT_SAFETY_DIAG_CHART_GEOMETRY_CLEAR);
-  SetSegmentSafetyMessage(result, "coarse route mask certified clear");
-  return true;
+  return answer(first_source, "coarse route mask certified clear");
 }
 
 bool SegmentSafetyRouteMaskTraversalCheck(
@@ -8580,6 +8685,8 @@ int PlugIn_GetPendingSegmentSafetyRequestCount() {
                           s_segment_safety_inflight_route_mask_requests.size());
 }
 
+bool PlugIn_SegmentSafetyProtectsRequestedMasks() { return true; }
+
 bool PlugIn_ServicePendingSegmentSafetyRequests(
     int max_requests, int max_milliseconds,
     PlugInSegmentSafetyRequestServiceResult* result) {
@@ -8623,7 +8730,7 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
               EnsureSegmentSafetyRouteMaskTile(
                   request.lat_tile, request.lon_tile, request.safety_margin_nm,
                   request.check_depth, request.minimum_depth_m, NULL, &built,
-                  request.force_authoritative_fine);
+                  request.force_authoritative_fine, true);
     // A worker stops at the first absent mask and can otherwise incur one GUI
     // timer wake-up per 0.05-degree tile. Populate a bounded lookahead set of
     // exact masks while the chart is already active on the main thread. This
@@ -8660,6 +8767,12 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
           if (!ocpn::chart_safety::MayPrefetchNeighbour(timer.Time(),
                                                         max_milliseconds)) {
             break;
+          }
+          {
+            wxMutexLocker lock(s_segment_safety_cache_mutex);
+            if (s_segment_safety_route_mask_cache.size() >=
+                kMaxSegmentSafetyGridTiles)
+              break;
           }
           const long neighbour_lat_tile = tile->first;
           const long neighbour_lon_tile =
@@ -10129,6 +10242,8 @@ void PlugIn_ReleaseSegmentSafetyRouteMaskPins() {
     pinned_masks = s_segment_safety_pinned_route_mask_keys.size();
     s_segment_safety_pinned_grid_keys.clear();
     s_segment_safety_pinned_route_mask_keys.clear();
+    for (auto& entry : s_segment_safety_route_mask_cache)
+      entry.second.awaiting_worker = false;
 
     while (s_segment_safety_grid_cache.size() > kMaxSegmentSafetyGridTiles) {
       s_segment_safety_grid_cache.erase(s_segment_safety_grid_cache.begin());
@@ -10137,7 +10252,9 @@ void PlugIn_ReleaseSegmentSafetyRouteMaskPins() {
     while (s_segment_safety_route_mask_cache.size() >
            kMaxSegmentSafetyGridTiles) {
       s_segment_safety_route_mask_cache.erase(
-          s_segment_safety_route_mask_cache.begin());
+          ocpn::chart_safety::RouteMaskEvictionVictim(
+              s_segment_safety_route_mask_cache,
+              s_segment_safety_pinned_route_mask_keys));
     }
     base_after = s_segment_safety_grid_cache.size();
     masks_after = s_segment_safety_route_mask_cache.size();
