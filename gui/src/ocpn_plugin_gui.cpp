@@ -9119,8 +9119,12 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
   }
 
   int pending_after = PlugIn_GetPendingSegmentSafetyRequestCount();
-  if (serviced > 0 && s_segment_safety_persistent_tiles_since_checkpoint >=
-                          kSegmentSafetyPersistentCheckpointTiles)
+  // A registered plugin cache checkpoints these tiles incrementally. Keep
+  // the host's compatibility snapshot for explicit saves, and avoid writing
+  // it in full on the GUI thread as each batch of requests is delivered.
+  if (serviced > 0 && !s_segment_safety_external_tile_cache.store &&
+      s_segment_safety_persistent_tiles_since_checkpoint >=
+          kSegmentSafetyPersistentCheckpointTiles)
     SegmentSafetyPersistentCacheSave();
   if (result && result_size >= static_cast<int>(sizeof(
                                    PlugInSegmentSafetyRequestServiceResult))) {
