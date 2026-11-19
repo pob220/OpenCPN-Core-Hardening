@@ -1781,6 +1781,8 @@ using OpenWaterRegionKey = std::tuple<int, int, long, long>;
 using OpenWaterRegions =
     std::map<OpenWaterRegionKey, SegmentSafetyOpenWaterRegion>;
 OpenWaterRegions s_segment_safety_open_water_regions;
+// Explicit prewarm authorises building new regions. A verified installed
+// region is already usable, even if every fine tile was cached at prewarm.
 bool s_segment_safety_open_water_requested = false;
 bool s_segment_safety_open_water_importing = false;
 void LoadInstalledSegmentSafetyOpenWaterLayer(const wxString& identity);
@@ -5846,7 +5848,7 @@ bool OpenWaterProofApplies(const SegmentSafetyOpenWaterRegion& proof,
 // certified at build time, including grid quantisation and geometry guards.
 const SegmentSafetyOpenWaterRegion* FindSegmentSafetyOpenWaterRegion(
     long lat_tile, long lon_tile, bool check_depth, double depth) {
-  if (!s_segment_safety_open_water_requested) return nullptr;
+  if (s_segment_safety_open_water_regions.empty()) return nullptr;
   for (int size : {kOpenWaterRegionTiles, kOpenWaterSubregionTiles}) {
     const auto it = s_segment_safety_open_water_regions.find(
         SegmentSafetyOpenWaterKey(size, lat_tile, lon_tile));
@@ -6116,13 +6118,13 @@ bool PrepareSegmentSafetyOpenWaterRegion(long lat_tile, long lon_tile,
     const auto key = SegmentSafetyOpenWaterKey(size, lat_tile, lon_tile);
     {
       wxMutexLocker lock(s_segment_safety_cache_mutex);
-      if (!s_segment_safety_open_water_requested) return false;
       const auto it = s_segment_safety_open_water_regions.find(key);
       if (it != s_segment_safety_open_water_regions.end()) {
         if (OpenWaterProofApplies(it->second, check_depth, depth))
           return mode == OpenWaterGeometryMode::Use;
         continue;
       }
+      if (!s_segment_safety_open_water_requested) continue;
       if (s_segment_safety_open_water_regions.size() >= kMaximumOpenWaterRegions)
         return false;
     }
@@ -6163,7 +6165,7 @@ bool SegmentSafetyOpenWaterForChord(
   const long min_lon = tile_min(lon1, lon2), max_lon = tile_max(lon1, lon2);
   const int step = kOpenWaterSubregionTiles;
   wxMutexLocker lock(s_segment_safety_cache_mutex);
-  if (!s_segment_safety_open_water_requested) return false;
+  if (s_segment_safety_open_water_regions.empty()) return false;
   auto minimum = std::numeric_limits<double>::infinity();
   auto source = PI_SEGMENT_SAFETY_SOURCE_NONE;
   for (long lat = ocpn::chart_safety::RouteMaskRegionStart(min_lat, step);

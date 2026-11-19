@@ -555,6 +555,28 @@ TEST(ChartSafetyNative, OpenWaterRegionRejectsAnIsolatedDangerInItsHalo) {
       0.0);
 }
 
+TEST(ChartSafetyNative, InstalledOpenWaterProofIsAvailableWithoutPrewarm) {
+  OpenWaterRegions previous;
+  previous.swap(s_segment_safety_open_water_regions);
+  const bool previous_requested = s_segment_safety_open_water_requested;
+  s_segment_safety_open_water_requested = false;
+  s_segment_safety_open_water_regions.emplace(
+      SegmentSafetyOpenWaterKey(kOpenWaterSubregionTiles, 4, 4),
+      SegmentSafetyOpenWaterRegion{PI_SEGMENT_SAFETY_SOURCE_CM93, 100.0});
+
+  SegmentSafetyOpenWaterRegion proof;
+  EXPECT_TRUE(SegmentSafetyOpenWaterForChord(.23, .23, .35, .35, .4, true,
+                                             5.0, &proof));
+  EXPECT_EQ(proof.source, PI_SEGMENT_SAFETY_SOURCE_CM93);
+  EXPECT_TRUE(PrepareSegmentSafetyOpenWaterRegion(5, 5, .4, true, 5.0));
+  EXPECT_FALSE(PrepareSegmentSafetyOpenWaterRegion(5, 5, .4, true, 100.0));
+  EXPECT_FALSE(PrepareSegmentSafetyOpenWaterRegion(5, 9, .4, true, 5.0));
+  EXPECT_EQ(s_segment_safety_open_water_regions.size(), 1u);
+
+  s_segment_safety_open_water_regions.swap(previous);
+  s_segment_safety_open_water_requested = previous_requested;
+}
+
 TEST(ChartSafetyNative, OpenWaterCrossingsNeedEvidenceForEveryTouchedRegion) {
   s_segment_safety_open_water_regions.clear();
   s_segment_safety_open_water_requested = true;
