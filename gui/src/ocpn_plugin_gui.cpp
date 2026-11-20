@@ -3868,6 +3868,8 @@ void RecordUnexpectedSegmentSafetyTileBuild(SegmentSafetyCoreStats* stats,
 bool SegmentSafetyCachedTileProviderIsCurrent(
     const CachedPointSafetyGridTile& tile);
 
+void RecordTileHelperBuildCost(long lat, long lon, bool depth, int milliseconds);
+
 bool EnsureSegmentSafetyGridTile(long lat_tile, long lon_tile,
                                  SegmentSafetyCoreStats* stats,
                                  bool* built = NULL,
@@ -7656,6 +7658,7 @@ CachedPointSafetyGridTile BuildSegmentSafetyGridTile(
     if (!tile.has_depth[index]) tile.min_depth_m[index] = 0;
 
   int build_ms = timer.Time();
+  RecordTileHelperBuildCost(lat_tile, lon_tile, require_depth, build_ms);
   tile.land_count = land;
   tile.water_count = water;
   tile.drying_count = drying;

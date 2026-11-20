@@ -716,3 +716,26 @@ TEST(ChartTileHelpers, MissingRequiredDepthFallsBackInsteadOfRequeueingForever) 
   StopSegmentSafetyTileHelpers();
 }
 #endif
+
+TEST(ChartTileHelpers, AdmissionRequiresRepeatedExpensiveLocalBuilds) {
+  TileHelperCostSamples costs;
+  EXPECT_FALSE(costs.WorthOffloading());
+  costs.Add(600); costs.Add(1); costs.Add(2); costs.Add(1);
+  EXPECT_FALSE(costs.WorthOffloading());
+  for (int n=0; n<8; ++n) costs.Add(30);
+  EXPECT_TRUE(costs.WorthOffloading());
+  for (int n=0; n<8; ++n) costs.Add(2);
+  EXPECT_FALSE(costs.WorthOffloading());
+}
+TEST(ChartTileHelpers, AdmissionSeparatesDepthRegionsAndCatalogue) {
+  s_tile_helper_costs.clear();
+  for (int n=0; n<4; ++n) RecordTileHelperBuildCost(-1,-1,true,30);
+  EXPECT_TRUE(TileHelperCostAllows(-2,-2,true));
+  EXPECT_FALSE(TileHelperCostAllows(0,-2,true));
+  EXPECT_FALSE(TileHelperCostAllows(-2,-2,false));
+  const auto original = s_segment_safety_chart_catalog_identity;
+  s_segment_safety_chart_catalog_identity += "-changed";
+  EXPECT_FALSE(TileHelperCostAllows(-2,-2,true));
+  s_segment_safety_chart_catalog_identity = original;
+  RefreshTileHelperCostIdentity();
+}

@@ -4,6 +4,57 @@
 namespace {
 using HelperTileKey = std::pair<long, long>;
 bool s_tile_helpers_enabled = false;
+// Process round trips cost tens of milliseconds even for a one-millisecond
+// offshore proof. Learn local extraction costs before deciding to offload.
+// Keep depth and non-depth observations separate; a cold chart load alone must
+// not make an otherwise cheap region look expensive.
+struct TileHelperCostSamples {
+  std::vector<int> values;
+  size_t next{};
+  void Add(int milliseconds) {
+    if (values.size() < 8) values.push_back(std::max(0, milliseconds));
+    else { values[next] = std::max(0, milliseconds); next = (next+1)%8; }
+  }
+  bool WorthOffloading() const {
+    if (values.size() < 4) return false;
+    auto ordered = values;
+    std::sort(ordered.begin(), ordered.end());
+    return ordered[(ordered.size()-1)/2] >= 18;
+  }
+};
+using TileHelperCostKey = std::tuple<int, long, long, bool>;
+std::map<TileHelperCostKey, TileHelperCostSamples> s_tile_helper_costs;
+wxString s_tile_helper_cost_identity;
+TileHelperCostKey TileHelperCostKeyFor(long lat, long lon, bool depth) {
+  // Raw tiles cover 0.05 degrees: twenty tiles make a one-degree region.
+  return {SegmentSafetyCurrentGroupIndex(), static_cast<long>(std::floor(lat/20.0)),
+      static_cast<long>(std::floor(lon/20.0)), depth};
+}
+void RefreshTileHelperCostIdentity() {
+  if (s_tile_helper_cost_identity == s_segment_safety_chart_catalog_identity) return;
+  s_tile_helper_costs.clear();
+  s_tile_helper_cost_identity = s_segment_safety_chart_catalog_identity;
+}
+void RecordTileHelperBuildCost(long lat, long lon, bool depth, int milliseconds) {
+  if (!wxThread::IsMain()) return;
+  RefreshTileHelperCostIdentity();
+  const auto key = TileHelperCostKeyFor(lat, lon, depth);
+  if (s_tile_helper_costs.size() >= 1024 && !s_tile_helper_costs.count(key))
+    s_tile_helper_costs.erase(s_tile_helper_costs.begin());
+  s_tile_helper_costs[key].Add(milliseconds);
+}
+bool TileHelperCostAllows(long lat, long lon, bool depth) {
+  wxString flag;
+  // Explicit override is useful for provider qualification and on/off controls.
+  if (wxGetEnv("OCPN_CHART_TILE_HELPERS", &flag)) {
+    if (flag == "0") return false;
+    if (flag == "1") return true;
+  }
+  RefreshTileHelperCostIdentity();
+  const auto found = s_tile_helper_costs.find(TileHelperCostKeyFor(lat, lon, depth));
+  return found != s_tile_helper_costs.end() && found->second.WorthOffloading();
+}
+
 bool TransferableHelperTile(const CachedPointSafetyGridTile& t) {
   return t.built && (t.source == PI_SEGMENT_SAFETY_SOURCE_CM93 ||
       t.source == PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART ||
@@ -278,13 +329,14 @@ bool TileHelperPending(long lat, long lon) {
 
 int QueueRawTileHelpers(const long* lat, const long* lon, int count, bool depth) {
   if (!wxThread::IsMain() || !lat || !lon || count < 1 || count > 64 ||
-      !StartSegmentSafetyTileHelpers()) return 0;
+      !s_tile_helpers_enabled) return 0;
   PollSegmentSafetyTileHelpers();
   std::set<HelperTileKey> needed;
   for (int n = 0; n < count; ++n) {
     HelperTileKey key{lat[n], ocpn::chart_safety::CanonicalLongitudeIndex(lon[n], 3600)};
     if (key.first < -1800 || key.first >= 1800 || s_tile_helpers.unsupported.count(key) ||
         TileHelperPending(key.first, key.second)) continue;
+    if (!TileHelperCostAllows(key.first, key.second, depth)) continue;
     CachedPointSafetyGridTile tile;
     const auto cache_key = SegmentSafetyGridTileKeyForIndices(key.first,key.second);
     if (LookupSegmentSafetyGridTile(cache_key,&tile) && (!depth || tile.depth_complete)) continue;
@@ -297,14 +349,20 @@ int QueueRawTileHelpers(const long* lat, const long* lon, int count, bool depth)
         (key.second+1)*kSegmentSafetyGridTileDegrees).empty()) continue;
     needed.insert(key);
   }
-  ScheduleTileHelperBatch(std::move(needed), depth);
+  for (auto it = needed.begin(); it != needed.end();)
+    if (!TileHelperCostAllows(it->first, it->second, depth)) it = needed.erase(it);
+    else ++it;
+  // Do not start private chart processes for a lone speculative request.
+  if (!needed.empty() && (!s_tile_helpers.lanes.empty() || needed.size() >= 8) &&
+      StartSegmentSafetyTileHelpers())
+    ScheduleTileHelperBatch(std::move(needed), depth);
   int pending = 0;
   for (int n = 0; n < count; ++n) pending += TileHelperPending(lat[n],lon[n]) ? 1 : 0;
   return pending;
 }
 
 bool DeferSegmentSafetyTileRequest(const SegmentSafetyRouteMaskRequest& request) {
-  if (!StartSegmentSafetyTileHelpers()) return false;
+  if (!s_tile_helpers_enabled) return false;
   std::vector<SegmentSafetyRouteMaskRequest> requests{request};
   { wxMutexLocker lock(s_segment_safety_cache_mutex);
     for (const auto& entry : s_segment_safety_pending_route_mask_requests) {
@@ -314,14 +372,15 @@ bool DeferSegmentSafetyTileRequest(const SegmentSafetyRouteMaskRequest& request)
   }
   std::set<HelperTileKey> needed;
   bool require_depth = request.check_depth;
+  for (const auto& r : requests) require_depth |= r.check_depth;
   for (const auto& r : requests) {
-    require_depth |= r.check_depth;
     // Larger configured margins retain the ordinary host path.
     if (r.safety_margin_nm > 1.0) continue;
     for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) {
       HelperTileKey key{r.lat_tile + dy,
           ocpn::chart_safety::CanonicalLongitudeIndex(r.lon_tile + dx, 3600)};
       if (key.first < -1800 || key.first >= 1800 || s_tile_helpers.unsupported.count(key)) continue;
+      if (!TileHelperCostAllows(key.first, key.second, require_depth)) continue;
       CachedPointSafetyGridTile existing;
       const auto cache_key = SegmentSafetyGridTileKeyForIndices(key.first, key.second);
       if (LookupSegmentSafetyGridTile(cache_key, &existing) &&
@@ -341,7 +400,12 @@ bool DeferSegmentSafetyTileRequest(const SegmentSafetyRouteMaskRequest& request)
       if (!in_flight) needed.insert(key);
     }
   }
-  ScheduleTileHelperBatch(std::move(needed), require_depth);
+  for (auto it = needed.begin(); it != needed.end();)
+    if (!TileHelperCostAllows(it->first, it->second, require_depth)) it = needed.erase(it);
+    else ++it;
+  if (!needed.empty() && (!s_tile_helpers.lanes.empty() || needed.size() >= 8) &&
+      StartSegmentSafetyTileHelpers())
+    ScheduleTileHelperBatch(std::move(needed), require_depth);
   if (request.safety_margin_nm > 1.0) return false;
   for (const auto& lane : s_tile_helpers.lanes)
     for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx)
