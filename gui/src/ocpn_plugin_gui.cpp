@@ -32,6 +32,7 @@
 #include <map>
 #include <tuple>
 #include <memory>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
@@ -50,6 +51,8 @@
 #include <wx/window.h>
 #include <wx/filefn.h>
 #include <wx/filename.h>
+#include <wx/process.h>
+#include <wx/stdpaths.h>
 #include <wx/jsonreader.h>
 #include <wx/jsonval.h>
 #include <wx/jsonwriter.h>
@@ -5884,6 +5887,7 @@ double OpenWaterDepthLowerBound(const std::vector<Cm93SafetyTileRule>& rules) {
 
 SegmentSafetyOpenWaterRegion BuildSegmentSafetyOpenWaterRegion(
     long lat_tile, long lon_tile, int tile_count) {
+  Cm93SafetyQueryScope cm93_query_scope;
   const double degrees = tile_count * kSegmentSafetyGridTileDegrees;
   const double south = lat_tile * kSegmentSafetyGridTileDegrees;
   const double west = lon_tile * kSegmentSafetyGridTileDegrees;
@@ -6062,54 +6066,166 @@ bool ReadOpenWaterRegionKey(const wxJSONValue& row, int fields, int group,
   return true;
 }
 
-void LoadInstalledSegmentSafetyOpenWaterLayer(const wxString& identity) {
-  if (identity.empty() || SegmentSafetyOpenWaterMode() == OpenWaterGeometryMode::Off)
-    return;
-  const wxString path = InstalledOpenWaterLayerPath();
-  if (!wxFileExists(path)) return;
+bool ReadVerifiedOpenWaterRegions(const wxString& path,
+                                 const wxString& identity,
+                                 const wxString& catalogue,
+                                 OpenWaterRegions* verified) {
   wxJSONValue document;
-  if (!ReadOpenWaterLayer(path, &document) ||
+  if (identity.empty() || catalogue.empty() ||
+      !ReadOpenWaterLayer(path, &document) ||
       !document["chart_identity"].IsString() ||
-      !document["catalogue_identity"].IsString() ||
       document["chart_identity"].AsString() != identity ||
-      document["catalogue_identity"].AsString().empty() ||
-      document["catalogue_identity"].AsString() != OpenWaterLayerCatalogueIdentity()) {
-    wxLogMessage("WR_OPEN_WATER_LAYER load=ignored reason=invalid_or_chart_changed");
-    return;
-  }
+      !document["catalogue_identity"].IsString() ||
+      document["catalogue_identity"].AsString() != catalogue)
+    return false;
 
   const int group = SegmentSafetyCurrentGroupIndex();
   const wxJSONValue rows = document["regions"];
-  OpenWaterRegions verified;
-  int proven = 0;
+  OpenWaterRegions parsed;
   for (int i = 0; i < rows.Size(); ++i) {
     const auto row = rows.ItemAt(i);
     OpenWaterRegionKey key;
     if (!ReadOpenWaterRegionKey(row, 5, group, &key) || !row.ItemAt(3).IsInt())
-      return;
+      return false;
     const auto value = row.ItemAt(4);
-    if (!value.IsDouble() && !value.IsInt()) return;
+    if (!value.IsDouble() && !value.IsInt()) return false;
     const int source = row.ItemAt(3).AsInt();
     const double depth = value.IsDouble() ? value.AsDouble() : value.AsInt();
     const bool clear = source == PI_SEGMENT_SAFETY_SOURCE_CM93 ||
                        source == PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART;
     if (clear ? (!std::isfinite(depth) || depth < kOpenWaterMinimumChartDepthM)
               : (source != PI_SEGMENT_SAFETY_SOURCE_NONE || depth != 0.0))
-      return;
-    if (!verified.emplace(key, SegmentSafetyOpenWaterRegion{
+      return false;
+    if (!parsed.emplace(key, SegmentSafetyOpenWaterRegion{
                                    static_cast<PlugInSegmentSafetySource>(source), depth})
              .second)
-      return;
-    proven += clear ? 1 : 0;
+      return false;
   }
+  verified->swap(parsed);
+  return true;
+}
+
+void LoadInstalledSegmentSafetyOpenWaterLayer(const wxString& identity) {
+  if (identity.empty() || SegmentSafetyOpenWaterMode() == OpenWaterGeometryMode::Off)
+    return;
+  const wxString path = InstalledOpenWaterLayerPath();
+  if (!wxFileExists(path)) return;
+  OpenWaterRegions verified;
+  if (!ReadVerifiedOpenWaterRegions(path, identity,
+                                  OpenWaterLayerCatalogueIdentity(),
+                                  &verified)) {
+    wxLogMessage("WR_OPEN_WATER_LAYER load=ignored reason=invalid_or_chart_changed");
+    return;
+  }
+  const int total = static_cast<int>(verified.size());
+  const int proven = static_cast<int>(std::count_if(
+      verified.begin(), verified.end(), [](const auto& entry) {
+        return entry.second.source != PI_SEGMENT_SAFETY_SOURCE_NONE;
+      }));
   {
     wxMutexLocker lock(s_segment_safety_cache_mutex);
     s_segment_safety_open_water_regions.swap(verified);
-    s_segment_safety_installed_open_water_regions = rows.Size();
+    s_segment_safety_installed_open_water_regions = total;
   }
   wxLogMessage("WR_OPEN_WATER_LAYER load=accepted proven=%d detailed=%d",
-               proven, rows.Size() - proven);
+               proven, total - proven);
 }
+
+#if defined(__linux__) && !defined(__ANDROID__)
+class OpenWaterVerificationProcess : public wxProcess {
+ public:
+  void OnTerminate(int, int status) override {
+    exit_status = status;
+    if (delete_on_exit) delete this;
+  }
+  std::optional<int> exit_status;
+  bool delete_on_exit = false;
+};
+
+bool VerifyOpenWaterLayerInHelper(
+    const wxString& source, const std::set<OpenWaterRegionKey>& keys,
+    const wxString& identity, const wxString& catalogue, int group,
+    PlugInOpenWaterLayerProgressFn progress, void* context,
+    OpenWaterRegions* verified, bool* cancelled) {
+  wxString worker;
+  if (keys.size() < 512 || !g_Platform ||
+      wxGetEnv("OCPN_OPEN_WATER_VERIFIER_CHILD", &worker))
+    return false;
+  const auto executable = wxStandardPaths::Get().GetExecutablePath();
+  const auto helper =
+      wxFileName(executable).GetPathWithSep() + "opencpn-open-water-verifier";
+  if (!wxIsExecutable(helper)) return false;
+
+  const auto result = wxFileName::CreateTempFileName("ocpn-open-water-");
+  if (result.empty()) return false;
+  const auto status_path = result + ".progress";
+  // wx scoped character buffers may borrow their backing string. Keep
+  // owned UTF-8 arguments for the whole call, including temporary values.
+  const auto helper_arg = helper.ToStdString(wxConvUTF8);
+  const auto executable_arg = executable.ToStdString(wxConvUTF8);
+  const auto private_arg = g_Platform->GetPrivateDataDir().ToStdString(wxConvUTF8);
+  const auto basemap_arg = gWorldMapLocation.ToStdString(wxConvUTF8);
+  const auto group_arg = std::to_string(group);
+  const auto source_arg = source.ToStdString(wxConvUTF8);
+  const auto result_arg = result.ToStdString(wxConvUTF8);
+  const char* argv[] = {helper_arg.c_str(), executable_arg.c_str(),
+                        private_arg.c_str(), basemap_arg.c_str(), group_arg.c_str(),
+                        source_arg.c_str(), result_arg.c_str(), nullptr};
+  auto process = std::make_unique<OpenWaterVerificationProcess>();
+  process->Redirect();
+  const auto pid = wxExecute(argv, wxEXEC_ASYNC | wxEXEC_MAKE_GROUP_LEADER,
+                             process.get());
+  const auto total = static_cast<int>(keys.size());
+  int reported = 0;
+  const auto read_diagnostics = [&] {
+    for (auto* stream : {process->GetInputStream(), process->GetErrorStream()}) {
+      if (!stream || !stream->CanRead()) continue;
+      char buffer[1024];
+      const auto count = stream->Read(buffer, sizeof(buffer) - 1).LastRead();
+      buffer[count] = '\0';
+      if (count) wxLogMessage("WR_OPEN_WATER_VERIFIER %s", wxString::FromUTF8(buffer));
+    }
+  };
+  while (pid > 0 && !process->exit_status) {
+    wxYieldIfNeeded();
+    read_diagnostics();
+    if (process->exit_status) break;
+    std::ifstream status(status_path.ToStdString());
+    int done = 0;
+    if (status >> done && done >= reported && done < total) reported = done;
+    if (progress && !progress(context, reported, total)) {
+      *cancelled = true;
+      wxKill(pid, wxSIGTERM, nullptr, wxKILL_CHILDREN);
+      break;
+    }
+    wxMilliSleep(100);
+  }
+  read_diagnostics();
+  const int exit_status = process->exit_status.value_or(-1);
+  if (pid > 0 && !process->exit_status) {
+    // A cancelled child can report its exit after the import has unwound.
+    process->delete_on_exit = true;
+    process.release();
+  }
+  bool accepted = exit_status == 0 && !*cancelled &&
+                  ReadVerifiedOpenWaterRegions(result, identity, catalogue,
+                                               verified) &&
+                  verified->size() == keys.size();
+  if (accepted) {
+    auto expected = keys.begin();
+    accepted = std::all_of(verified->begin(), verified->end(),
+                           [&](const auto& entry) {
+                             return entry.first == *expected++;
+                           });
+  }
+  if (!accepted) verified->clear();
+  wxRemoveFile(result);
+  if (wxFileExists(status_path)) wxRemoveFile(status_path);
+  wxLogMessage("WR_OPEN_WATER_VERIFIER pid=%ld exit=%d accepted=%d regions=%zu",
+               pid, exit_status, accepted ? 1 : 0, verified->size());
+  return accepted;
+}
+#endif
 
 bool PrepareSegmentSafetyOpenWaterRegion(long lat_tile, long lon_tile,
                                            double margin, bool check_depth,
@@ -9363,13 +9479,24 @@ bool PlugIn_ImportSegmentSafetyOpenWaterLayer(
   wxJSONValue rows(wxJSONTYPE_ARRAY);
   int done = 0, proven = 0;
   const int total = static_cast<int>(keys.size());
+  OpenWaterRegions worker_results;
+#if defined(__linux__) && !defined(__ANDROID__)
+  bool cancelled = false;
+  VerifyOpenWaterLayerInHelper(wxString::FromUTF8(path_utf8), keys,
+                               chart_identity, catalogue, group, progress,
+                               context, &worker_results, &cancelled);
+  if (cancelled)
+    return report(_("Open-water starting layer import cancelled."));
+#endif
   for (const auto& key : keys) {
-    if (progress && !progress(context, done, total))
+    if (worker_results.empty() && progress && !progress(context, done, total))
       return report(_("Open-water starting layer import cancelled."));
     if (SegmentSafetyCurrentGroupIndex() != group)
       return report(_("The active chart group changed during verification."));
     const auto [key_group, size, lat, lon] = key;
-    const auto proof = BuildSegmentSafetyOpenWaterRegion(lat, lon, size);
+    const auto proof = worker_results.empty()
+                           ? BuildSegmentSafetyOpenWaterRegion(lat, lon, size)
+                           : worker_results.at(key);
     verified.emplace(key, proof);
     wxJSONValue row(wxJSONTYPE_ARRAY);
     row.Append(size);

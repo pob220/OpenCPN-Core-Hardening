@@ -1955,6 +1955,17 @@ bool cm93chart::AdjustVP(ViewPort &vp_last, ViewPort &vp_proposed) {
 //-----------------------------------------------------------------------
 
 void cm93chart::SetVPParms(const ViewPort &vpt) {
+  LoadViewportCells(vpt, true);
+}
+
+void cm93chart::PrepareSafetyViewport(const ViewPort &vpt) {
+  LoadViewportCells(vpt, false);
+}
+
+void cm93chart::LoadViewportCells(const ViewPort &vpt, bool prepare_display) {
+  // Safety queries need the original objects and coverage, which are loaded
+  // below. The drawing buffers can wait until this chart is used for display.
+  if (prepare_display && m_display_geometry_pending) UpdateDisplayGeometry();
   if (m_vp_current == vpt) {
     return;
   }
@@ -2050,39 +2061,39 @@ void cm93chart::SetVPParms(const ViewPort &vpt) {
         if (!cm93_safety_query_depth) AbstractPlatform::HideBusySpinner();
         continue;
       }
-      AssembleLineGeometry();
-
-      ClearDepthContourArray();
-      BuildDepthContourArray();
-
-      //  Set up the chart context
-      m_this_chart_context->m_pvc_hash = &Get_vc_hash();
-      m_this_chart_context->m_pve_hash = &Get_ve_hash();
-
-      m_this_chart_context->pFloatingATONArray = pFloatingATONArray;
-      m_this_chart_context->pRigidATONArray = pRigidATONArray;
-      m_this_chart_context->chart = this;
-      m_this_chart_context->chart_type = GetChartType();
-
-      m_this_chart_context->safety_contour = m_next_safe_cnt;
-      m_this_chart_context->vertex_buffer = GetLineVertexBuffer();
-      m_this_chart_context->pt2GetAssociatedObjects =
-          &s57chart::GetAssociatedObjects;
-
-      //  Loop and populate all the objects
-      for (int i = 0; i < PI_PRIO_NUM; ++i) {
-        for (int j = 0; j < PI_LUPNAME_NUM; j++) {
-          ObjRazRules *top = razRules[i][j];
-          while (top) {
-            if (top->obj) top->obj->m_chart_context = m_this_chart_context;
-            top = top->next;
-          }
-        }
-      }
+      m_display_geometry_pending = true;
+      if (prepare_display) UpdateDisplayGeometry();
 
       if (!cm93_safety_query_depth) AbstractPlatform::HideBusySpinner();
     }
   }
+}
+
+void cm93chart::UpdateDisplayGeometry() {
+  AssembleLineGeometry();
+
+  ClearDepthContourArray();
+  BuildDepthContourArray();
+
+  m_this_chart_context->m_pvc_hash = &Get_vc_hash();
+  m_this_chart_context->m_pve_hash = &Get_ve_hash();
+
+  m_this_chart_context->pFloatingATONArray = pFloatingATONArray;
+  m_this_chart_context->pRigidATONArray = pRigidATONArray;
+  m_this_chart_context->chart = this;
+  m_this_chart_context->chart_type = GetChartType();
+
+  m_this_chart_context->safety_contour = m_next_safe_cnt;
+  m_this_chart_context->vertex_buffer = GetLineVertexBuffer();
+  m_this_chart_context->pt2GetAssociatedObjects =
+      &s57chart::GetAssociatedObjects;
+
+  for (int i = 0; i < PI_PRIO_NUM; ++i)
+    for (int j = 0; j < PI_LUPNAME_NUM; j++)
+      for (auto* rule = razRules[i][j]; rule; rule = rule->next)
+        if (rule->obj) rule->obj->m_chart_context = m_this_chart_context;
+
+  m_display_geometry_pending = false;
 }
 
 std::vector<int> cm93chart::GetVPCellArray(const ViewPort &vpt) {
@@ -5030,7 +5041,7 @@ void cm93compchart::PrepareSafetyTile(const ViewPort &vpt) {
       m_pcm93chart_array[cmscale]->SetColorScheme(m_global_color_scheme);
       m_pcm93chart_array[cmscale]->Init(file_dummy, FULL_INIT);
     }
-    m_pcm93chart_array[cmscale]->SetVPParms(vpt);
+    m_pcm93chart_array[cmscale]->PrepareSafetyViewport(vpt);
   }
 }
 
