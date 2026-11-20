@@ -9396,6 +9396,8 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
       ++failed;
   }
 
+  if (serviced > 0) PrefetchPendingSegmentSafetyTiles();
+
   int pending_after = PlugIn_GetPendingSegmentSafetyRequestCount();
   // A registered plugin cache checkpoints these tiles incrementally. Keep
   // the host's compatibility snapshot for explicit saves, and avoid writing

@@ -746,6 +746,7 @@ TEST(ChartTileHelpers, CachedLiveMaskDoesNotProbeUnrelatedPendingRequests) {
   auto saved_pending = std::move(s_segment_safety_pending_route_mask_requests);
   const auto saved_callbacks = s_segment_safety_external_tile_cache;
   const bool saved_enabled = s_tile_helpers_enabled;
+  const auto saved_prepared = s_tile_helper_prepared;
   wxString saved_flag;
   const bool had_flag = wxGetEnv("OCPN_CHART_TILE_HELPERS", &saved_flag);
   wxSetEnv("OCPN_CHART_TILE_HELPERS", "1");
@@ -775,6 +776,22 @@ TEST(ChartTileHelpers, CachedLiveMaskDoesNotProbeUnrelatedPendingRequests) {
   s_tile_helpers.lanes.push_back({"",0,{{700,2000}},std::chrono::steady_clock::now()});
   EXPECT_TRUE(DeferSegmentSafetyTileRequest(request));
   EXPECT_EQ(lookups, 0);
+  wxSetEnv("OCPN_CHART_TILE_HELPERS", "auto");
+  EXPECT_FALSE(DeferSegmentSafetyTileRequest(request));
+  EXPECT_EQ(lookups, 0);
+  wxSetEnv("OCPN_CHART_TILE_HELPERS", "1");
+  bool depth = true;
+  const auto keys = BackgroundTileHelperKeys(&depth);
+  EXPECT_FALSE(depth);
+  EXPECT_FALSE(keys.empty());
+  EXPECT_LE(keys.size(),18u);
+  EXPECT_EQ(lookups,0);
+  if (!keys.empty()) {
+    const auto first = *keys.begin();
+    s_tile_helper_prepared.emplace(SegmentSafetyCurrentGroupIndex(),first.first,first.second);
+    EXPECT_EQ(BackgroundTileHelperKeys(&depth).count(first),0u);
+  }
+  s_tile_helper_prepared = saved_prepared;
   s_tile_helpers.lanes.clear();
   s_segment_safety_grid_cache = std::move(saved_grid);
   s_segment_safety_pending_route_mask_requests = std::move(saved_pending);

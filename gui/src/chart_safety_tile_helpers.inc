@@ -25,6 +25,7 @@ struct TileHelperCostSamples {
 using TileHelperCostKey = std::tuple<int, long, long, bool>;
 std::map<TileHelperCostKey, TileHelperCostSamples> s_tile_helper_costs;
 wxString s_tile_helper_cost_identity;
+std::set<std::tuple<int,long,long>> s_tile_helper_prepared;
 TileHelperCostKey TileHelperCostKeyFor(long lat, long lon, bool depth) {
   // Raw tiles cover 0.05 degrees: twenty tiles make a one-degree region.
   return {SegmentSafetyCurrentGroupIndex(), static_cast<long>(std::floor(lat/20.0)),
@@ -33,11 +34,14 @@ TileHelperCostKey TileHelperCostKeyFor(long lat, long lon, bool depth) {
 void RefreshTileHelperCostIdentity() {
   if (s_tile_helper_cost_identity == s_segment_safety_chart_catalog_identity) return;
   s_tile_helper_costs.clear();
+  s_tile_helper_prepared.clear();
   s_tile_helper_cost_identity = s_segment_safety_chart_catalog_identity;
 }
 void RecordTileHelperBuildCost(long lat, long lon, bool depth, int milliseconds) {
   if (!wxThread::IsMain()) return;
   RefreshTileHelperCostIdentity();
+  if (s_tile_helper_prepared.size() >= 65536) s_tile_helper_prepared.erase(s_tile_helper_prepared.begin());
+  s_tile_helper_prepared.emplace(SegmentSafetyCurrentGroupIndex(), lat, lon);
   const auto key = TileHelperCostKeyFor(lat, lon, depth);
   if (s_tile_helper_costs.size() >= 1024 && !s_tile_helper_costs.count(key))
     s_tile_helper_costs.erase(s_tile_helper_costs.begin());
@@ -241,6 +245,8 @@ void PollSegmentSafetyTileHelpers() {
           !SegmentSafetyCachedTileProviderIsCurrent(t)) continue;
       StoreSegmentSafetyGridTile(SegmentSafetyGridTileKeyForIndices(t.lat_tile, t.lon_tile), t);
       SegmentSafetyExternalTileCacheStore(t);
+      if (s_tile_helper_prepared.size() >= 65536) s_tile_helper_prepared.erase(s_tile_helper_prepared.begin());
+      s_tile_helper_prepared.emplace(t.group_index, t.lat_tile, t.lon_tile);
       lane.requested.erase({t.lat_tile, t.lon_tile}); ++imported;
     }
     s_tile_helpers.imported += imported;
@@ -362,6 +368,10 @@ int QueueRawTileHelpers(const long* lat, const long* lon, int count, bool depth)
 }
 
 bool DeferSegmentSafetyTileRequest(const SegmentSafetyRouteMaskRequest& request) {
+  // Diagnostic forced mode retains blocking delivery for transfer controls.
+  // Normal live search keeps the parent moving while helpers prefetch.
+  wxString force;
+  if (!wxGetEnv("OCPN_CHART_TILE_HELPERS", &force) || force != "1") return false;
   if (request.safety_margin_nm > 1.0) return false;
   if (!s_tile_helpers_enabled || s_tile_helpers.disabled) return false;
   // Bulk raw preparation already supplies a bounded lookahead. Live mask
@@ -412,9 +422,54 @@ bool DeferSegmentSafetyTileRequest(const SegmentSafetyRouteMaskRequest& request)
           ocpn::chart_safety::CanonicalLongitudeIndex(request.lon_tile + dx, 3600)})) return true;
   return false;
 }
+// Examine only metadata for a bounded set of real queued demand. In particular,
+// do not call the external tile cache or chart catalogue here: those probes can
+// cost more than an already-cached mask. The parent validates every imported
+// payload as usual and retains all authoritative work for its current request.
+std::set<HelperTileKey> BackgroundTileHelperKeys(bool* require_depth) {
+  std::vector<SegmentSafetyRouteMaskRequest> requests;
+  { wxMutexLocker lock(s_segment_safety_cache_mutex);
+    for (const auto& entry : s_segment_safety_pending_route_mask_requests) {
+      if (requests.size() == 2) break;
+      if (entry.second.group_index == SegmentSafetyCurrentGroupIndex() &&
+          !entry.second.force_authoritative_fine && entry.second.safety_margin_nm <= 1.0)
+        requests.push_back(entry.second);
+    }
+  }
+  *require_depth = false;
+  for (const auto& request : requests) *require_depth |= request.check_depth;
+  RefreshTileHelperCostIdentity();
+  std::set<HelperTileKey> needed;
+  for (const auto& request : requests)
+    for (int dy=-1; dy<=1; ++dy) for (int dx=-1; dx<=1; ++dx) {
+      const HelperTileKey key{request.lat_tile+dy,
+          ocpn::chart_safety::CanonicalLongitudeIndex(request.lon_tile+dx,3600)};
+      if (key.first < -1800 || key.first >= 1800 ||
+          s_tile_helpers.unsupported.count(key) || TileHelperPending(key.first,key.second) ||
+          s_tile_helper_prepared.count({SegmentSafetyCurrentGroupIndex(),key.first,key.second}) ||
+          !TileHelperCostAllows(key.first,key.second,*require_depth) ||
+          LookupSegmentSafetyGridTile(SegmentSafetyGridTileKeyForIndices(key.first,key.second),nullptr)) continue;
+      needed.insert(key);
+    }
+  return needed;
+}
+void PrefetchPendingSegmentSafetyTiles() {
+  wxString flag;
+  if (!s_tile_helpers_enabled || s_tile_helpers.disabled ||
+      (wxGetEnv("OCPN_CHART_TILE_HELPERS", &flag) && (flag == "0" || flag == "1"))) return;
+  if (!s_tile_helpers.lanes.empty() && std::none_of(s_tile_helpers.lanes.begin(),
+      s_tile_helpers.lanes.end(), [](const auto& lane) { return lane.requested.empty(); })) return;
+  bool require_depth = false;
+  auto needed = BackgroundTileHelperKeys(&require_depth);
+  if (needed.empty() || (s_tile_helpers.lanes.empty() && needed.size() < 8) ||
+      !StartSegmentSafetyTileHelpers()) return;
+  ScheduleTileHelperBatch(std::move(needed),require_depth);
+}
+
 #else
 void StopSegmentSafetyTileHelpers() {}
 void PollSegmentSafetyTileHelpers() {}
+void PrefetchPendingSegmentSafetyTiles() {}
 bool DeferSegmentSafetyTileRequest(const SegmentSafetyRouteMaskRequest&) { return false; }
 bool TileHelperPending(long, long) { return false; }
 int QueueRawTileHelpers(const long*, const long*, int, bool) { return 0; }
