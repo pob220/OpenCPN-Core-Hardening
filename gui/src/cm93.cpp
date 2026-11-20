@@ -22,6 +22,7 @@
  */
 
 #include <algorithm>
+#include <limits>
 #include <unordered_map>
 #include <stdio.h>
 
@@ -4191,15 +4192,34 @@ int cm93chart::SafetyCoverageBoxRelation(double min_lat, double max_lat,
     if (!coverage || coverage->m_nvertices < 3 || !coverage->pvertices ||
         coverage->user_xoff != 0 || coverage->user_yoff != 0)
       return -1;
-    std::vector<std::vector<Point>> rings(1);
-    auto &ring = rings.front();
+    std::vector<Point> ring;
+    ring.reserve(coverage->m_nvertices);
+    double west = std::numeric_limits<double>::infinity();
+    double east = -west;
+    double south = west, north = east;
     for (int v = 0; v < coverage->m_nvertices; ++v) {
       const auto p = coverage->pvertices[v];
       if (!std::isfinite(p.x) || !std::isfinite(p.y)) return -1;
-      ring.push_back({centre + std::remainder(p.x - centre, 360.0), p.y});
+      // Unwrap the ring continuously. Phasing every vertex to the query
+      // centre can split unrelated coverage on the opposite side of Earth.
+      const double previous = ring.empty() ? centre : ring.back().x;
+      const double step = std::remainder(p.x - previous, 360.0);
+      if (!ring.empty() && std::abs(step) >= 180) return -1;
+      const double lon = previous + step;
+      ring.push_back({lon, p.y});
+      west = std::min(west, lon);
+      east = std::max(east, lon);
+      south = std::min(south, static_cast<double>(p.y));
+      north = std::max(north, static_cast<double>(p.y));
     }
-    for (size_t v = 0; v < ring.size(); ++v)
-      if (std::abs(ring[v].x - ring[(v + 1) % ring.size()].x) >= 180) return -1;
+    if (east - west >= 180) return -1;
+    const double shift = 360.0 * std::round((centre - (west + east) / 2) / 360.0);
+    if (south > max_lat || north < min_lat || west + shift > max_lon ||
+        east + shift < min_lon)
+      continue;
+    for (auto &point : ring) point.x += shift;
+    std::vector<std::vector<Point>> rings;
+    rings.push_back(std::move(ring));
     if (BoundaryMayIntersectCell(rings, box))
       partial = true;
     else if (PointInsideRings(rings, {centre, (min_lat + max_lat) / 2}))

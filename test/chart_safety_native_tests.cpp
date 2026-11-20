@@ -130,6 +130,15 @@ TEST(ChartSafetyNative, CoverageProofUsesCompleteOriginalPolygons) {
   chart.coverage[0]->user_xoff = 1;
   EXPECT_EQ(chart.SafetyCoverageBoxRelation(.024, .026, .024, .026), -1);
 }
+TEST(ChartSafetyNative, DistantCoverageAcrossAntimeridianDoesNotHideLocalProof) {
+  FixtureChart chart;
+  chart.Coverage(-1, -1, 1, 1);
+  chart.Coverage(-1, 179, 1, 181);
+  EXPECT_EQ(chart.SafetyCoverageBoxRelation(.024, .026, .024, .026), 2);
+  EXPECT_EQ(chart.SafetyCoverageBoxRelation(.024, .026, 179.4, 179.5), 2);
+  EXPECT_EQ(chart.SafetyCoverageBoxRelation(.024, .026, -179.5, -179.4), 2);
+  EXPECT_EQ(chart.SafetyCoverageBoxRelation(.024, .026, 178.9, 179.1), 1);
+}
 TEST(ChartSafetyNative,
      ExtractedHazardGeometrySurvivesChartMutationAndDestruction) {
   std::shared_ptr<const ocpn::chart_safety::PreparedGeometry> geometry;
