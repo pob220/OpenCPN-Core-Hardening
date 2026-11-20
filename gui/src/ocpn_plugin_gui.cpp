@@ -87,6 +87,7 @@
 #include "chart_safety_depth.h"
 #include "chart_safety_geometry.h"
 #include "chart_safety_service.h"
+#include "chart_safety_cache_eviction.h"
 #include "gui_lib.h"
 #include "navutil.h"
 #include "ocpn_aui_manager.h"
@@ -1602,6 +1603,8 @@ struct CachedPointSafetyGridTile {
 
 std::map<std::string, CachedPointSafetyGridTile> s_segment_safety_grid_cache;
 std::set<std::string> s_segment_safety_pinned_grid_keys;
+ocpn::chart_safety::PinnedCacheEvictionIndex<std::string>
+    s_segment_safety_grid_eviction;
 std::map<std::string, CachedPointSafetyGridTile>
     s_segment_safety_persistent_base_tile_cache;
 PlugInSegmentSafetyTileCacheCallbacks
@@ -1934,9 +1937,10 @@ void PinSegmentSafetyRouteMaskTiles(
          ++lat_offset) {
       for (int lon_offset = -margin_radius; lon_offset <= margin_radius;
            ++lon_offset) {
-        s_segment_safety_pinned_grid_keys.insert(
-            SegmentSafetyGridTileKeyForIndices(it->first + lat_offset,
-                                               it->second + lon_offset));
+        const auto key = SegmentSafetyGridTileKeyForIndices(
+            it->first + lat_offset, it->second + lon_offset);
+        if (s_segment_safety_pinned_grid_keys.insert(key).second)
+          s_segment_safety_grid_eviction.Pinned(key);
       }
     }
   }
@@ -2704,6 +2708,7 @@ void SegmentSafetyRefreshPersistentChartIdentity() {
       s_segment_safety_hazard_snapshot.reset();
       s_segment_safety_point_cache.clear();
       s_segment_safety_grid_cache.clear();
+      s_segment_safety_grid_eviction.Reset();
       s_segment_safety_route_mask_cache.clear();
       s_segment_safety_route_mask_regions.clear();
       s_segment_safety_open_water_regions.clear();
@@ -3813,23 +3818,18 @@ void StoreSegmentSafetyGridTile(const std::string& key,
         s_segment_safety_grid_cache.end()) {
       while (s_segment_safety_grid_cache.size() >=
              kMaxSegmentSafetyGridTiles) {
-        std::map<std::string, CachedPointSafetyGridTile>::iterator victim =
-            s_segment_safety_grid_cache.end();
-        for (std::map<std::string, CachedPointSafetyGridTile>::iterator it =
-                 s_segment_safety_grid_cache.begin();
-             it != s_segment_safety_grid_cache.end(); ++it) {
-          if (s_segment_safety_pinned_grid_keys.find(it->first) ==
-              s_segment_safety_pinned_grid_keys.end()) {
-            victim = it;
-            break;
-          }
-        }
+        const auto victim = s_segment_safety_grid_eviction.First(
+            s_segment_safety_grid_cache, s_segment_safety_pinned_grid_keys);
         if (victim == s_segment_safety_grid_cache.end()) break;
+        s_segment_safety_grid_eviction.Erased(victim->first);
         s_segment_safety_grid_cache.erase(victim);
         ++s_segment_safety_grid_cache_evictions;
       }
     }
-    s_segment_safety_grid_cache[key] = stored;
+    try { s_segment_safety_grid_cache[key] = stored; }
+    catch (...) { s_segment_safety_grid_eviction.Reset(); throw; }
+    s_segment_safety_grid_eviction.Stored(
+        key, s_segment_safety_pinned_grid_keys);
     if (s_segment_safety_persistent_cache_enabled && stored.built &&
         !stored.persistent_loaded &&
         stored.source != PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR) {
@@ -3896,6 +3896,7 @@ bool EnsureSegmentSafetyGridTile(long lat_tile, long lon_tile,
       (!active_current ||
        (require_depth && active_tile.built && !active_tile.depth_complete))) {
     wxMutexLocker lock(s_segment_safety_cache_mutex);
+    s_segment_safety_grid_eviction.Erased(key);
     s_segment_safety_grid_cache.erase(key);
     s_segment_safety_persistent_base_tile_cache.erase(key);
     s_segment_safety_persistent_base_tiles_dirty = true;
@@ -9615,9 +9616,11 @@ bool PlugIn_PrewarmSegmentSafetyRawTiles(
   {
     wxMutexLocker lock(s_segment_safety_cache_mutex);
     for (std::set<std::pair<long, long> >::const_iterator it = tiles.begin();
-         it != tiles.end(); ++it)
-      s_segment_safety_pinned_grid_keys.insert(
-          SegmentSafetyGridTileKeyForIndices(it->first, it->second));
+         it != tiles.end(); ++it) {
+      const auto key = SegmentSafetyGridTileKeyForIndices(it->first, it->second);
+      if (s_segment_safety_pinned_grid_keys.insert(key).second)
+        s_segment_safety_grid_eviction.Pinned(key);
+    }
   }
 
   SegmentSafetyCoreStats stats;
@@ -10999,6 +11002,7 @@ void PlugIn_ReleaseSegmentSafetyRouteMaskPins() {
     pinned_base = s_segment_safety_pinned_grid_keys.size();
     pinned_masks = s_segment_safety_pinned_route_mask_keys.size();
     s_segment_safety_pinned_grid_keys.clear();
+    s_segment_safety_grid_eviction.Reset();
     s_segment_safety_pinned_route_mask_keys.clear();
     for (auto& entry : s_segment_safety_route_mask_cache)
       entry.second.protected_until = {};

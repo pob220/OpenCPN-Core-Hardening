@@ -806,3 +806,64 @@ TEST(ChartTileHelpers, CachedLiveMaskDoesNotProbeUnrelatedPendingRequests) {
   else wxUnsetEnv("OCPN_CHART_TILE_HELPERS");
 }
 #endif
+
+namespace {
+struct GridEvictionFixture {
+  decltype(s_segment_safety_grid_cache) grid=std::move(s_segment_safety_grid_cache);
+  decltype(s_segment_safety_pinned_grid_keys) pins=std::move(s_segment_safety_pinned_grid_keys);
+  decltype(s_segment_safety_pinned_route_mask_keys) masks=std::move(s_segment_safety_pinned_route_mask_keys);
+  decltype(s_segment_safety_grid_eviction) index=std::move(s_segment_safety_grid_eviction);
+  decltype(s_segment_safety_external_tile_cache) callbacks=s_segment_safety_external_tile_cache;
+  bool persistent=s_segment_safety_persistent_cache_enabled;
+  decltype(s_segment_safety_grid_cache_evictions) evictions=s_segment_safety_grid_cache_evictions;
+  GridEvictionFixture(){s_segment_safety_grid_cache.clear();s_segment_safety_pinned_grid_keys.clear();s_segment_safety_pinned_route_mask_keys.clear();s_segment_safety_grid_eviction.Reset();s_segment_safety_external_tile_cache={};s_segment_safety_persistent_cache_enabled=false;}
+  ~GridEvictionFixture(){s_segment_safety_grid_cache=std::move(grid);s_segment_safety_pinned_grid_keys=std::move(pins);s_segment_safety_pinned_route_mask_keys=std::move(masks);s_segment_safety_grid_eviction=std::move(index);s_segment_safety_external_tile_cache=callbacks;s_segment_safety_persistent_cache_enabled=persistent;s_segment_safety_grid_cache_evictions=evictions;}
+};
+CachedPointSafetyGridTile CacheFixtureTile(long lat,long lon){
+  CachedPointSafetyGridTile tile;tile.built=true;tile.lat_tile=lat;tile.lon_tile=lon;
+  tile.group_index=SegmentSafetyCurrentGroupIndex();tile.rows=tile.cols=1;
+  tile.classes={SEGMENT_SAFETY_POINT_WATER};tile.hazard_flags={SEGMENT_SAFETY_HAZARD_NONE};
+  tile.has_depth={1};tile.min_depth_m={200.0f};tile.has_drying={0};tile.water_count=1;
+  tile.depth_complete=true;tile.source=PI_SEGMENT_SAFETY_SOURCE_CM93;
+  return tile;
+}
+}
+TEST(ChartGridEviction, OverflowPinsKeepPayloadsAndEvictionOrder){
+  GridEvictionFixture fixture;
+  std::set<std::pair<long,long>> coords;
+  for(int i=0;i<4200;++i)coords.emplace(900+i/64,-1400+i%64);
+  PinSegmentSafetyRouteMaskTiles(coords,0,false,0);
+  for(auto xy:coords){auto tile=CacheFixtureTile(xy.first,xy.second);StoreSegmentSafetyGridTile(SegmentSafetyGridTileKeyForIndices(xy.first,xy.second),tile);}
+  EXPECT_EQ(s_segment_safety_grid_cache.size(),coords.size());
+  for(int i=0;i<40;++i){
+    auto key=SegmentSafetyGridTileKeyForIndices(1200,-1000+i);
+    StoreSegmentSafetyGridTile(key,CacheFixtureTile(1200,-1000+i));
+    ASSERT_EQ(s_segment_safety_grid_cache.size(),coords.size()+1);
+    if(i) {
+      EXPECT_FALSE(s_segment_safety_grid_cache.count(SegmentSafetyGridTileKeyForIndices(1200,-1001+i)));
+    }
+  }
+  for(auto xy:coords){
+    CachedPointSafetyGridTile tile;
+    ASSERT_TRUE(LookupSegmentSafetyGridTile(SegmentSafetyGridTileKeyForIndices(xy.first,xy.second),&tile));
+    EXPECT_EQ(tile.classes,std::vector<unsigned char>{SEGMENT_SAFETY_POINT_WATER});
+    EXPECT_EQ(tile.min_depth_m,std::vector<float>{200.0f});
+  }
+  PlugIn_ReleaseSegmentSafetyRouteMaskPins();
+  ASSERT_EQ(s_segment_safety_grid_cache.size(),kMaxSegmentSafetyGridTiles);
+  const auto victim=s_segment_safety_grid_cache.begin()->first;
+  StoreSegmentSafetyGridTile(SegmentSafetyGridTileKeyForIndices(1300,-1200),CacheFixtureTile(1300,-1200));
+  EXPECT_FALSE(s_segment_safety_grid_cache.count(victim));
+}
+TEST(ChartGridEviction, LatePinRemovesTheSameFirstEligibleKey){
+  GridEvictionFixture fixture;
+  for(size_t i=0;i<=kMaxSegmentSafetyGridTiles;++i){long lat=900+i/64,lon=-1400+i%64;StoreSegmentSafetyGridTile(SegmentSafetyGridTileKeyForIndices(lat,lon),CacheFixtureTile(lat,lon));}
+  ASSERT_EQ(s_segment_safety_grid_cache.size(),kMaxSegmentSafetyGridTiles);
+  const auto protected_key=s_segment_safety_grid_cache.begin()->first;
+  const auto protected_tile=s_segment_safety_grid_cache.begin()->second;
+  const auto victim=std::next(s_segment_safety_grid_cache.begin())->first;
+  PinSegmentSafetyRouteMaskTiles({{protected_tile.lat_tile,protected_tile.lon_tile}},0,false,0);
+  StoreSegmentSafetyGridTile(SegmentSafetyGridTileKeyForIndices(1300,-1100),CacheFixtureTile(1300,-1100));
+  EXPECT_TRUE(s_segment_safety_grid_cache.count(protected_key));
+  EXPECT_FALSE(s_segment_safety_grid_cache.count(victim));
+}

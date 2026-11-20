@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <random>
+#include "gui/chart_safety_cache_eviction.h"
 
 #include "gui/chart_safety_service.h"
 
@@ -246,4 +248,51 @@ TEST(ChartSafetyLongitude, ExactSeamAndDegenerateSegmentsRemainLocal) {
     ocpn::chart_safety::UnwrapSafetySegment(start, end);
     EXPECT_DOUBLE_EQ(start, end);
   }
+}
+
+TEST(ChartSafetyService, PinnedEvictionIndexMatchesOriginalThroughKeyChanges) {
+  std::map<std::string,std::vector<int>> actual, expected;
+  std::set<std::string> pins;
+  ocpn::chart_safety::PinnedCacheEvictionIndex<std::string> index;
+  std::mt19937 random(9001);
+  size_t compared_evictions=0;
+  for (int step=0;step<12000;++step) {
+    const auto key=std::to_string(random()%91);
+    switch(random()%64) {
+      case 0: pins.insert(key);index.Pinned(key);break;
+      case 1: pins.clear();index.Reset();break;
+      case 2: actual.erase(key);expected.erase(key);index.Erased(key);break;
+      case 3: actual.clear();expected.clear();index.Reset();break;
+      default:
+        if (!expected.count(key)) while(expected.size()>=17) {
+          auto victim=expected.begin();
+          while(victim!=expected.end()&&pins.count(victim->first))++victim;
+          if(victim==expected.end())break;
+          auto chosen=index.First(actual,pins);
+          ASSERT_NE(chosen,actual.end());
+          ASSERT_EQ(chosen->first,victim->first);
+          ++compared_evictions;
+          index.Erased(chosen->first);actual.erase(chosen);expected.erase(victim);
+        }
+        if (!expected.count(key)&&expected.size()>=17)
+          ASSERT_EQ(index.First(actual,pins),actual.end());
+        actual[key]=expected[key]={step,step^127};index.Stored(key,pins);
+    }
+    ASSERT_EQ(actual,expected)<<step;
+  }
+  EXPECT_GT(compared_evictions,1000u);
+}
+TEST(ChartSafetyService, PinnedEvictionIndexPreservesAllPinnedOverflow) {
+  std::map<std::string,int> cache;std::set<std::string> pins;
+  ocpn::chart_safety::PinnedCacheEvictionIndex<std::string> index;
+  for(int i=0;i<9000;++i){auto key=std::to_string(i);cache[key]=i;pins.insert(key);}
+  EXPECT_EQ(index.First(cache,pins),cache.end());
+  for(int i=0;i<100;++i){
+    auto victim=index.First(cache,pins);
+    if(i){ASSERT_NE(victim,cache.end());EXPECT_EQ(victim->first,"outside-"+std::to_string(i-1));index.Erased(victim->first);cache.erase(victim);}
+    EXPECT_EQ(index.First(cache,pins),cache.end());
+    auto key="outside-"+std::to_string(i);cache[key]=i;index.Stored(key,pins);
+  }
+  EXPECT_EQ(cache.size(),9001u);
+  for(const auto& key:pins)EXPECT_TRUE(cache.count(key));
 }
