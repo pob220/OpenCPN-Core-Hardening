@@ -9236,6 +9236,10 @@ int PlugIn_GetPendingSegmentSafetyRequestCount() {
 
 bool PlugIn_SegmentSafetyProtectsRequestedMasks() { return true; }
 
+// Out-of-process native chart classification; included here to reuse the
+// authoritative tile codec and chart dependency validation.
+#include "chart_safety_tile_helpers.inc"
+
 bool PlugIn_ServicePendingSegmentSafetyRequests(
     int max_requests, int max_milliseconds,
     PlugInSegmentSafetyRequestServiceResult* result) {
@@ -9249,6 +9253,7 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
   if (!wxThread::IsMain()) return false;
 
   wxStopWatch timer;
+  PollSegmentSafetyTileHelpers();
   int pending_before = PlugIn_GetPendingSegmentSafetyRequestCount();
   int serviced = 0;
   int built_count = 0;
@@ -9280,6 +9285,13 @@ bool PlugIn_ServicePendingSegmentSafetyRequests(
         PrepareSegmentSafetyOpenWaterRegion(
             request.lat_tile, request.lon_tile, request.safety_margin_nm,
             request.check_depth, request.minimum_depth_m);
+    if (!open_water && same_group && DeferSegmentSafetyTileRequest(request)) {
+      wxMutexLocker lock(s_segment_safety_cache_mutex);
+      s_segment_safety_inflight_route_mask_requests.erase(request.key);
+      const auto inserted = s_segment_safety_pending_route_mask_requests.emplace(request.key, request);
+      inserted.first->second.force_authoritative_fine |= request.force_authoritative_fine;
+      break;
+    }
     bool ok = open_water ||
               (same_group && EnsureSegmentSafetyRouteMaskTile(
                   request.lat_tile, request.lon_tile, request.safety_margin_nm,
@@ -9574,6 +9586,14 @@ bool PlugIn_PrewarmSegmentSafetyRawTiles(
     tiles.insert(std::make_pair(
         lat_tiles[index],
         ocpn::chart_safety::CanonicalLongitudeIndex(lon_tiles[index], 3600)));
+
+  PollSegmentSafetyTileHelpers();
+  for (const auto& tile : tiles) {
+    if (!TileHelperPending(tile.first,tile.second)) continue;
+    SetSegmentSafetyStatus(result, PI_SEGMENT_SAFETY_NO_DATA);
+    SetSegmentSafetyMessage(result, "chart classification is being prepared in a helper");
+    return false;
+  }
 
   {
     wxMutexLocker lock(s_segment_safety_cache_mutex);
@@ -10948,6 +10968,7 @@ bool PlugIn_PrewarmSegmentSafetyRouteMaskForPolylinesWithTileHalo(
 }
 
 void PlugIn_ReleaseSegmentSafetyRouteMaskPins() {
+  StopSegmentSafetyTileHelpers();
   size_t base_before = 0;
   size_t masks_before = 0;
   size_t base_after = 0;

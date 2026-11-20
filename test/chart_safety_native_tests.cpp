@@ -613,3 +613,106 @@ TEST(ChartSafetyNative, OpenWaterCrossingsNeedEvidenceForEveryTouchedRegion) {
   s_segment_safety_open_water_regions.clear();
   s_segment_safety_open_water_requested = false;
 }
+
+TEST(ChartTileHelperCodec, RoundTripRetainsHazardsDepthAndDatelineIdentity) {
+  CachedPointSafetyGridTile tile;
+  tile.group_index = SegmentSafetyCurrentGroupIndex();
+  tile.lat_tile = -400; tile.lon_tile = -3600;
+  tile.rows = tile.cols = 41;
+  tile.source = PI_SEGMENT_SAFETY_SOURCE_CM93;
+  snprintf(tile.chart_path, sizeof(tile.chart_path), "CM93.A");
+  snprintf(tile.dependency_identity, sizeof(tile.dependency_identity), "fixture-dependency");
+  tile.hazard_flags.assign(1681, SEGMENT_SAFETY_HAZARD_NONE);
+  tile.has_depth.assign(1681, 1); tile.min_depth_m.assign(1681, 40.f);
+  tile.hazard_flags[7] = SEGMENT_SAFETY_HAZARD_LAND;
+  tile.hazard_flags[8] = SEGMENT_SAFETY_HAZARD_DRYING;
+  std::stringstream stream;
+  ASSERT_TRUE(WriteHelperTile(stream, tile));
+  CachedPointSafetyGridTile decoded;
+  ASSERT_TRUE(ReadHelperTile(stream, &decoded));
+  EXPECT_EQ(decoded.lon_tile, -3600);
+  EXPECT_EQ(decoded.land_count, 1);
+  EXPECT_EQ(decoded.drying_count, 1);
+  EXPECT_EQ(decoded.min_depth_m, tile.min_depth_m);
+  EXPECT_EQ(decoded.hazard_flags, tile.hazard_flags);
+  EXPECT_STREQ(decoded.dependency_identity, "fixture-dependency");
+  tile.hazard_flags[10] = 0x8000;
+  std::stringstream invalid;
+  ASSERT_TRUE(WriteHelperTile(invalid, tile));
+  EXPECT_FALSE(ReadHelperTile(invalid, &decoded));
+  tile.hazard_flags[10] = 0;
+  tile.source = PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR;
+  std::stringstream unsupported;
+  ASSERT_TRUE(WriteHelperTile(unsupported, tile));
+  EXPECT_FALSE(ReadHelperTile(unsupported, &decoded));
+  tile.persistent_cache_allowed = true;
+  std::stringstream permitted;
+  ASSERT_TRUE(WriteHelperTile(permitted, tile));
+  EXPECT_TRUE(ReadHelperTile(permitted, &decoded));
+  EXPECT_TRUE(decoded.persistent_cache_allowed);
+  std::stringstream truncated(stream.str().substr(0, 200));
+  EXPECT_FALSE(ReadHelperTile(truncated, &decoded));
+}
+
+#if defined(__linux__) && !defined(__ANDROID__)
+TEST(ChartTileHelpers, RejectsStaleCatalogueWithoutPublishingClearWater) {
+  StopSegmentSafetyTileHelpers();
+  const auto root = wxFileName::CreateTempFileName("chart-helper-reject-");
+  wxRemoveFile(root); ASSERT_TRUE(wxFileName::Mkdir(root));
+  s_tile_helpers.root = root;
+  s_tile_helpers.identity = s_segment_safety_chart_identity;
+  s_tile_helpers.local_catalogue = s_segment_safety_chart_catalog_identity;
+  s_tile_helpers.catalogue = "expected-catalogue";
+  s_tile_helpers.group = SegmentSafetyCurrentGroupIndex();
+  s_tile_helpers.memory_checked = std::chrono::steady_clock::now();
+  s_tile_helpers.lanes.push_back({root,0,{{-600,-2600}},std::chrono::steady_clock::now()});
+  const auto before = s_segment_safety_grid_cache.size();
+  {
+    std::ofstream out((root+"/response.bin").ToStdString(),std::ios::binary);
+    ASSERT_TRUE(SegmentSafetyWriteBinary(out,uint32_t{0x54494c31u}));
+    ASSERT_TRUE(SegmentSafetyWriteBinaryString(out,s_tile_helpers.identity.ToStdString()));
+    ASSERT_TRUE(SegmentSafetyWriteBinaryString(out,"stale-catalogue"));
+    ASSERT_TRUE(SegmentSafetyWriteBinary(out,uint32_t{0}));
+  }
+  PollSegmentSafetyTileHelpers();
+  EXPECT_TRUE(s_tile_helpers.disabled);
+  EXPECT_EQ(s_tile_helpers.unsupported.count({-600,-2600}),1u);
+  EXPECT_EQ(s_segment_safety_grid_cache.size(),before);
+  StopSegmentSafetyTileHelpers();
+}
+
+TEST(ChartTileHelpers, MissingRequiredDepthFallsBackInsteadOfRequeueingForever) {
+  StopSegmentSafetyTileHelpers();
+  const auto root = wxFileName::CreateTempFileName("chart-helper-depth-");
+  wxRemoveFile(root); ASSERT_TRUE(wxFileName::Mkdir(root));
+  s_tile_helpers.root = root;
+  s_tile_helpers.identity = s_segment_safety_chart_identity;
+  s_tile_helpers.local_catalogue = s_segment_safety_chart_catalog_identity;
+  s_tile_helpers.catalogue = "same-catalogue";
+  s_tile_helpers.group = SegmentSafetyCurrentGroupIndex();
+  s_tile_helpers.memory_checked = std::chrono::steady_clock::now();
+  s_tile_helpers.lanes.push_back({root,0,{{-600,-2600}},std::chrono::steady_clock::now(),true});
+  CachedPointSafetyGridTile tile;
+  tile.group_index = SegmentSafetyCurrentGroupIndex();
+  tile.lat_tile=-600;tile.lon_tile=-2600;tile.rows=tile.cols=41;
+  tile.source=PI_SEGMENT_SAFETY_SOURCE_CM93;tile.depth_complete=false;
+  snprintf(tile.chart_path,sizeof(tile.chart_path),"CM93.A");
+  snprintf(tile.dependency_identity,sizeof(tile.dependency_identity),"depth-unproven");
+  tile.hazard_flags.assign(1681,0);tile.has_depth.assign(1681,0);tile.min_depth_m.assign(1681,0);
+  const auto before=s_segment_safety_grid_cache.size();
+  {
+    std::ofstream out((root+"/response.bin").ToStdString(),std::ios::binary);
+    ASSERT_TRUE(SegmentSafetyWriteBinary(out,uint32_t{0x54494c31u}));
+    ASSERT_TRUE(SegmentSafetyWriteBinaryString(out,s_tile_helpers.identity.ToStdString()));
+    ASSERT_TRUE(SegmentSafetyWriteBinaryString(out,"same-catalogue"));
+    ASSERT_TRUE(SegmentSafetyWriteBinary(out,uint32_t{1}));
+    ASSERT_TRUE(WriteHelperTile(out,tile));
+  }
+  PollSegmentSafetyTileHelpers();
+  EXPECT_EQ(s_tile_helpers.imported,0u);
+  EXPECT_EQ(s_tile_helpers.unsupported.count({-600,-2600}),1u);
+  EXPECT_FALSE(TileHelperPending(-600,-2600));
+  EXPECT_EQ(s_segment_safety_grid_cache.size(),before);
+  StopSegmentSafetyTileHelpers();
+}
+#endif
