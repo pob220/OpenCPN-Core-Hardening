@@ -491,7 +491,7 @@ extern "C" DECL_EXP bool PlugIn_SegmentSafetyRawTileHelperPending(long lat, long
 extern "C" DECL_EXP void PlugIn_SetSegmentSafetyHelperProcessLimit(int limit) {
   if (!wxThread::IsMain()) return;
   const auto next = static_cast<unsigned>(std::clamp(limit,0,6));
-  if (next != s_tile_helper_process_limit && !s_tile_helpers.lanes.empty())
+  if (next != s_tile_helper_process_limit)
     StopSegmentSafetyTileHelpers();
   s_tile_helper_process_limit = next;
 }
