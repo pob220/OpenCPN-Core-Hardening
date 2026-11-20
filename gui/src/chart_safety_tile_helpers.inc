@@ -4,6 +4,7 @@
 namespace {
 using HelperTileKey = std::pair<long, long>;
 bool s_tile_helpers_enabled = false;
+unsigned s_tile_helper_process_limit = 0;
 // Process round trips cost tens of milliseconds even for a one-millisecond
 // offshore proof. Learn local extraction costs before deciding to offload.
 // Keep depth and non-depth observations separate; a cold chart load alone must
@@ -260,7 +261,7 @@ void PollSegmentSafetyTileHelpers() {
   }
 }
 bool StartSegmentSafetyTileHelpers() {
-  if (!s_tile_helpers_enabled || s_tile_helpers.disabled) return false;
+  if (!s_tile_helpers_enabled || !s_tile_helper_process_limit || s_tile_helpers.disabled) return false;
   if (!s_tile_helpers.lanes.empty()) return true;
   wxString flag;
   if (wxGetEnv("OCPN_CHART_TILE_WORKER_DIR", &flag) ||
@@ -274,7 +275,8 @@ bool StartSegmentSafetyTileHelpers() {
       !wxIsExecutable(wxFileName(host).GetPathWithSep()+"opencpn-verifier-xvfb")) return false;
   const auto available = AvailableTileHelperMemoryKiB();
   if (available < 1536*1024) return false;
-  const unsigned lanes = available >= 3072*1024 && wxThread::GetCPUCount() >= 4 ? 2 : 1;
+  const unsigned lanes = std::min(s_tile_helper_process_limit,
+      available >= 3072*1024 && wxThread::GetCPUCount() >= 4 ? 2u : 1u);
   auto root = wxFileName::CreateTempFileName("ocpn-chart-tiles-");
   if (root.empty()) return false;
   wxRemoveFile(root);
@@ -335,7 +337,7 @@ bool TileHelperPending(long lat, long lon) {
 
 int QueueRawTileHelpers(const long* lat, const long* lon, int count, bool depth) {
   if (!wxThread::IsMain() || !lat || !lon || count < 1 || count > 64 ||
-      !s_tile_helpers_enabled) return 0;
+      (!s_tile_helpers_enabled || !s_tile_helper_process_limit)) return 0;
   PollSegmentSafetyTileHelpers();
   std::set<HelperTileKey> needed;
   for (int n = 0; n < count; ++n) {
@@ -373,7 +375,7 @@ bool DeferSegmentSafetyTileRequest(const SegmentSafetyRouteMaskRequest& request)
   wxString force;
   if (!wxGetEnv("OCPN_CHART_TILE_HELPERS", &force) || force != "1") return false;
   if (request.safety_margin_nm > 1.0) return false;
-  if (!s_tile_helpers_enabled || s_tile_helpers.disabled) return false;
+  if (!s_tile_helpers_enabled || !s_tile_helper_process_limit || s_tile_helpers.disabled) return false;
   // Bulk raw preparation already supplies a bounded lookahead. Live mask
   // delivery must inspect only its own nine source tiles: repeatedly probing
   // the whole pending queue makes catalogue/cache checks dominate the GUI
@@ -455,7 +457,7 @@ std::set<HelperTileKey> BackgroundTileHelperKeys(bool* require_depth) {
 }
 void PrefetchPendingSegmentSafetyTiles() {
   wxString flag;
-  if (!s_tile_helpers_enabled || s_tile_helpers.disabled ||
+  if (!s_tile_helpers_enabled || !s_tile_helper_process_limit || s_tile_helpers.disabled ||
       (wxGetEnv("OCPN_CHART_TILE_HELPERS", &flag) && (flag == "0" || flag == "1"))) return;
   if (!s_tile_helpers.lanes.empty() && std::none_of(s_tile_helpers.lanes.begin(),
       s_tile_helpers.lanes.end(), [](const auto& lane) { return lane.requested.empty(); })) return;
@@ -484,6 +486,14 @@ extern "C" DECL_EXP bool PlugIn_SegmentSafetyRawTileHelperPending(long lat, long
   if (!wxThread::IsMain()) return false;
   PollSegmentSafetyTileHelpers();
   return TileHelperPending(lat,lon);
+}
+
+extern "C" DECL_EXP void PlugIn_SetSegmentSafetyHelperProcessLimit(int limit) {
+  if (!wxThread::IsMain()) return;
+  const auto next = static_cast<unsigned>(std::clamp(limit,0,6));
+  if (next != s_tile_helper_process_limit && !s_tile_helpers.lanes.empty())
+    StopSegmentSafetyTileHelpers();
+  s_tile_helper_process_limit = next;
 }
 
 extern "C" DECL_EXP void PlugIn_EnableSegmentSafetyTileHelpers(int enabled) {

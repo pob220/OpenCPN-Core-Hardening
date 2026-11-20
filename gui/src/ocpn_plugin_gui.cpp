@@ -3869,6 +3869,11 @@ bool SegmentSafetyCachedTileProviderIsCurrent(
     const CachedPointSafetyGridTile& tile);
 
 void RecordTileHelperBuildCost(long lat, long lon, bool depth, int milliseconds);
+extern bool s_tile_helpers_enabled;
+extern unsigned s_tile_helper_process_limit;
+#if defined(__linux__) && !defined(__ANDROID__)
+std::uint64_t AvailableTileHelperMemoryKiB();
+#endif
 
 bool EnsureSegmentSafetyGridTile(long lat_tile, long lon_tile,
                                  SegmentSafetyCoreStats* stats,
@@ -6150,9 +6155,15 @@ bool VerifyOpenWaterLayerInHelper(
     PlugInOpenWaterLayerProgressFn progress, void* context,
     OpenWaterRegions* verified, bool* cancelled) {
   wxString worker;
-  if (keys.size() < 512 || !g_Platform ||
+  if (!s_tile_helpers_enabled || !s_tile_helper_process_limit ||
+      keys.size() < 512 || !g_Platform ||
       wxGetEnv("OCPN_OPEN_WATER_VERIFIER_CHILD", &worker))
     return false;
+  const unsigned verification_workers = std::min({s_tile_helper_process_limit,
+      6u, static_cast<unsigned>(std::min<std::uint64_t>(6,
+          AvailableTileHelperMemoryKiB() / (2048ULL*1024))),
+      static_cast<unsigned>(std::max(1,wxThread::GetCPUCount()/2))});
+  if (!verification_workers) return false;
   const auto executable = wxStandardPaths::Get().GetExecutablePath();
   const auto helper =
       wxFileName(executable).GetPathWithSep() + "opencpn-open-water-verifier";
@@ -6170,9 +6181,10 @@ bool VerifyOpenWaterLayerInHelper(
   const auto group_arg = std::to_string(group);
   const auto source_arg = source.ToStdString(wxConvUTF8);
   const auto result_arg = result.ToStdString(wxConvUTF8);
+  const auto process_limit = std::to_string(verification_workers);
   const char* argv[] = {helper_arg.c_str(), executable_arg.c_str(),
                         private_arg.c_str(), basemap_arg.c_str(), group_arg.c_str(),
-                        source_arg.c_str(), result_arg.c_str(), nullptr};
+                        source_arg.c_str(), result_arg.c_str(), process_limit.c_str(), nullptr};
   auto process = std::make_unique<OpenWaterVerificationProcess>();
   process->Redirect();
   const auto pid = wxExecute(argv, wxEXEC_ASYNC | wxEXEC_MAKE_GROUP_LEADER,
