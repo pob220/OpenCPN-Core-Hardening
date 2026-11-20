@@ -739,3 +739,43 @@ TEST(ChartTileHelpers, AdmissionSeparatesDepthRegionsAndCatalogue) {
   s_segment_safety_chart_catalog_identity = original;
   RefreshTileHelperCostIdentity();
 }
+#if defined(__linux__) && !defined(__ANDROID__)
+TEST(ChartTileHelpers, CachedLiveMaskDoesNotProbeUnrelatedPendingRequests) {
+  StopSegmentSafetyTileHelpers();
+  auto saved_grid = std::move(s_segment_safety_grid_cache);
+  auto saved_pending = std::move(s_segment_safety_pending_route_mask_requests);
+  const auto saved_callbacks = s_segment_safety_external_tile_cache;
+  const bool saved_enabled = s_tile_helpers_enabled;
+  wxString saved_flag;
+  const bool had_flag = wxGetEnv("OCPN_CHART_TILE_HELPERS", &saved_flag);
+  wxSetEnv("OCPN_CHART_TILE_HELPERS", "1");
+  s_tile_helpers_enabled = true;
+  int lookups = 0;
+  s_segment_safety_external_tile_cache = {};
+  s_segment_safety_external_tile_cache.context = &lookups;
+  s_segment_safety_external_tile_cache.lookup =
+      [](void* context, long, long, int, PlugInSegmentSafetyTile*) {
+        ++*static_cast<int*>(context); return 0;
+      };
+  SegmentSafetyRouteMaskRequest request;
+  request.lat_tile = 700; request.lon_tile = 2000;
+  request.safety_margin_nm = 0.4; request.check_depth = false;
+  for (int dy=-1; dy<=1; ++dy) for (int dx=-1; dx<=1; ++dx) {
+    CachedPointSafetyGridTile tile; tile.built = true;
+    s_segment_safety_grid_cache[SegmentSafetyGridTileKeyForIndices(700+dy,2000+dx)] = tile;
+  }
+  for (int n=0; n<32; ++n) {
+    auto other = request; other.lat_tile = -600+n; other.lon_tile = -2000;
+    s_segment_safety_pending_route_mask_requests[std::to_string(n)] = other;
+  }
+  EXPECT_FALSE(DeferSegmentSafetyTileRequest(request));
+  EXPECT_EQ(lookups, 0);
+  EXPECT_TRUE(s_tile_helpers.lanes.empty());
+  s_segment_safety_grid_cache = std::move(saved_grid);
+  s_segment_safety_pending_route_mask_requests = std::move(saved_pending);
+  s_segment_safety_external_tile_cache = saved_callbacks;
+  s_tile_helpers_enabled = saved_enabled;
+  if (had_flag) wxSetEnv("OCPN_CHART_TILE_HELPERS", saved_flag);
+  else wxUnsetEnv("OCPN_CHART_TILE_HELPERS");
+}
+#endif

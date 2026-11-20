@@ -362,20 +362,16 @@ int QueueRawTileHelpers(const long* lat, const long* lon, int count, bool depth)
 }
 
 bool DeferSegmentSafetyTileRequest(const SegmentSafetyRouteMaskRequest& request) {
+  if (request.safety_margin_nm > 1.0) return false;
   if (!s_tile_helpers_enabled) return false;
-  std::vector<SegmentSafetyRouteMaskRequest> requests{request};
-  { wxMutexLocker lock(s_segment_safety_cache_mutex);
-    for (const auto& entry : s_segment_safety_pending_route_mask_requests) {
-      if (requests.size() >= 32) break;
-      requests.push_back(entry.second);
-    }
-  }
+  // Bulk raw preparation already supplies a bounded lookahead. Live mask
+  // delivery must inspect only its own nine source tiles: repeatedly probing
+  // the whole pending queue makes catalogue/cache checks dominate the GUI
+  // service budget, even when the requested mask itself is cheap.
   std::set<HelperTileKey> needed;
   bool require_depth = request.check_depth;
-  for (const auto& r : requests) require_depth |= r.check_depth;
-  for (const auto& r : requests) {
-    // Larger configured margins retain the ordinary host path.
-    if (r.safety_margin_nm > 1.0) continue;
+  {
+    const auto& r = request;
     for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) {
       HelperTileKey key{r.lat_tile + dy,
           ocpn::chart_safety::CanonicalLongitudeIndex(r.lon_tile + dx, 3600)};
