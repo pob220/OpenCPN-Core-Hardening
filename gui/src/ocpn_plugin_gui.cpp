@@ -1781,6 +1781,7 @@ using OpenWaterRegionKey = std::tuple<int, int, long, long>;
 using OpenWaterRegions =
     std::map<OpenWaterRegionKey, SegmentSafetyOpenWaterRegion>;
 OpenWaterRegions s_segment_safety_open_water_regions;
+size_t s_segment_safety_installed_open_water_regions = 0;
 // Explicit prewarm authorises building new regions. A verified installed
 // region is already usable, even if every fine tile was cached at prewarm.
 bool s_segment_safety_open_water_requested = false;
@@ -2703,6 +2704,7 @@ void SegmentSafetyRefreshPersistentChartIdentity() {
       s_segment_safety_route_mask_cache.clear();
       s_segment_safety_route_mask_regions.clear();
       s_segment_safety_open_water_regions.clear();
+      s_segment_safety_installed_open_water_regions = 0;
       s_segment_safety_coarse_route_mask_cache.clear();
       s_segment_safety_segment_cache.clear();
       s_segment_safety_pinned_grid_keys.clear();
@@ -2737,6 +2739,7 @@ void SegmentSafetyRefreshPersistentChartIdentity() {
         s_segment_safety_route_mask_cache.clear();
         s_segment_safety_route_mask_regions.clear();
         s_segment_safety_open_water_regions.clear();
+        s_segment_safety_installed_open_water_regions = 0;
         s_segment_safety_coarse_route_mask_cache.clear();
         s_segment_safety_segment_cache.clear();
         s_segment_safety_pinned_route_mask_keys.clear();
@@ -5810,7 +5813,7 @@ constexpr int kOpenWaterRegionTiles = 20;  // 1 degree
 constexpr int kOpenWaterSubregionTiles = 4;  // 0.2 degrees
 constexpr double kOpenWaterMaximumMarginNm = 2.0;
 constexpr double kOpenWaterMinimumChartDepthM = 30.0;
-constexpr size_t kMaximumOpenWaterRegions = 12000;
+constexpr size_t kMaximumOnDemandOpenWaterRegions = 12000;
 
 OpenWaterGeometryMode SegmentSafetyOpenWaterMode() {
   static const auto mode = [] {
@@ -5975,7 +5978,8 @@ SegmentSafetyOpenWaterRegion BuildSegmentSafetyOpenWaterRegion(
 }
 
 constexpr int kOpenWaterLayerVersion = 1;
-constexpr size_t kMaximumOpenWaterLayerBytes = 1024 * 1024;
+constexpr int kMaximumOpenWaterLayerRegions = 65536;
+constexpr size_t kMaximumOpenWaterLayerBytes = 4 * 1024 * 1024;
 
 wxString OpenWaterLayerCatalogueIdentity() {
   if (!ChartData) return {};
@@ -6040,8 +6044,7 @@ bool ReadOpenWaterLayer(const wxString& path, wxJSONValue* document) {
          document->Get("version", 0).AsInt() == kOpenWaterLayerVersion &&
          (*document)["regions"].IsArray() &&
          (*document)["regions"].Size() > 0 &&
-         (*document)["regions"].Size() <=
-             static_cast<int>(kMaximumOpenWaterRegions);
+         (*document)["regions"].Size() <= kMaximumOpenWaterLayerRegions;
 }
 
 bool ReadOpenWaterRegionKey(const wxJSONValue& row, int fields, int group,
@@ -6102,6 +6105,7 @@ void LoadInstalledSegmentSafetyOpenWaterLayer(const wxString& identity) {
   {
     wxMutexLocker lock(s_segment_safety_cache_mutex);
     s_segment_safety_open_water_regions.swap(verified);
+    s_segment_safety_installed_open_water_regions = rows.Size();
   }
   wxLogMessage("WR_OPEN_WATER_LAYER load=accepted proven=%d detailed=%d",
                proven, rows.Size() - proven);
@@ -6125,8 +6129,10 @@ bool PrepareSegmentSafetyOpenWaterRegion(long lat_tile, long lon_tile,
         continue;
       }
       if (!s_segment_safety_open_water_requested) continue;
-      if (s_segment_safety_open_water_regions.size() >= kMaximumOpenWaterRegions)
-        return false;
+      if (s_segment_safety_open_water_regions.size() >=
+          s_segment_safety_installed_open_water_regions +
+              kMaximumOnDemandOpenWaterRegions)
+        continue;
     }
     const auto proof = BuildSegmentSafetyOpenWaterRegion(
         std::get<2>(key), std::get<3>(key), size);
@@ -9395,6 +9401,7 @@ bool PlugIn_ImportSegmentSafetyOpenWaterLayer(
   {
     wxMutexLocker lock(s_segment_safety_cache_mutex);
     s_segment_safety_open_water_regions.swap(verified);
+    s_segment_safety_installed_open_water_regions = keys.size();
   }
   wxLogMessage("WR_OPEN_WATER_LAYER install=complete proven=%d detailed=%d",
                proven, total - proven);
@@ -9409,6 +9416,7 @@ bool PlugIn_RemoveSegmentSafetyOpenWaterLayer() {
   if (wxFileExists(path) && !wxRemoveFile(path)) return false;
   wxMutexLocker lock(s_segment_safety_cache_mutex);
   s_segment_safety_open_water_regions.clear();
+  s_segment_safety_installed_open_water_regions = 0;
   return true;
 }
 
