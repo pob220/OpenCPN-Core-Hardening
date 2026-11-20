@@ -771,6 +771,11 @@ TEST(ChartTileHelpers, CachedLiveMaskDoesNotProbeUnrelatedPendingRequests) {
   EXPECT_FALSE(DeferSegmentSafetyTileRequest(request));
   EXPECT_EQ(lookups, 0);
   EXPECT_TRUE(s_tile_helpers.lanes.empty());
+  s_segment_safety_grid_cache.erase(SegmentSafetyGridTileKeyForIndices(700,2000));
+  s_tile_helpers.lanes.push_back({"",0,{{700,2000}},std::chrono::steady_clock::now()});
+  EXPECT_TRUE(DeferSegmentSafetyTileRequest(request));
+  EXPECT_EQ(lookups, 0);
+  s_tile_helpers.lanes.clear();
   s_segment_safety_grid_cache = std::move(saved_grid);
   s_segment_safety_pending_route_mask_requests = std::move(saved_pending);
   s_segment_safety_external_tile_cache = saved_callbacks;

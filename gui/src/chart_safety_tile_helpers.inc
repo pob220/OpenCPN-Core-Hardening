@@ -363,7 +363,7 @@ int QueueRawTileHelpers(const long* lat, const long* lon, int count, bool depth)
 
 bool DeferSegmentSafetyTileRequest(const SegmentSafetyRouteMaskRequest& request) {
   if (request.safety_margin_nm > 1.0) return false;
-  if (!s_tile_helpers_enabled) return false;
+  if (!s_tile_helpers_enabled || s_tile_helpers.disabled) return false;
   // Bulk raw preparation already supplies a bounded lookahead. Live mask
   // delivery must inspect only its own nine source tiles: repeatedly probing
   // the whole pending queue makes catalogue/cache checks dominate the GUI
@@ -376,6 +376,9 @@ bool DeferSegmentSafetyTileRequest(const SegmentSafetyRouteMaskRequest& request)
       HelperTileKey key{r.lat_tile + dy,
           ocpn::chart_safety::CanonicalLongitudeIndex(r.lon_tile + dx, 3600)};
       if (key.first < -1800 || key.first >= 1800 || s_tile_helpers.unsupported.count(key)) continue;
+      // In-flight work has no result to look up yet. Do not repeat provider
+      // and catalogue probes on every GUI poll while the helper computes it.
+      if (TileHelperPending(key.first, key.second)) continue;
       if (!TileHelperCostAllows(key.first, key.second, require_depth)) continue;
       CachedPointSafetyGridTile existing;
       const auto cache_key = SegmentSafetyGridTileKeyForIndices(key.first, key.second);
