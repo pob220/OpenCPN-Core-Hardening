@@ -66,10 +66,10 @@ python3 - "$work_dir/geometry-fixtures.xml" <<'PYTEST'
 import sys
 import xml.etree.ElementTree as ET
 root = ET.parse(sys.argv[1]).getroot()
-assert len(list(root.iter('testcase'))) == 17
+assert len(list(root.iter('testcase'))) == 18
 assert not list(root.iter('failure')) and not list(root.iter('error'))
 assert not list(root.iter('skipped'))
-print('Complete geometry oracle suite passed: 17 tests; 70000 comparisons.')
+print('Complete geometry oracle suite passed: 18 tests; 70000 geometry comparisons plus bounded-cache checks.')
 PYTEST
 
 (cd "$bundle_dir" && sha256sum --check SHA256SUMS)
@@ -247,9 +247,9 @@ import xml.etree.ElementTree as ET
 root = Path(sys.argv[1])
 prefix = root / 'usr/local'
 records = root / 'config/plugins/install_data'
-assert (records / 'xweatherrouting.version').read_text().strip() == '1.36.3'
+assert (records / 'xweatherrouting.version').read_text().strip() == '1.41.0'
 metadata = ET.parse(records / 'imports/xweatherrouting.xml').getroot()
-assert metadata.findtext('version').strip() == '1.36.3'
+assert metadata.findtext('version').strip() == '1.41.0'
 installed = prefix / 'lib/opencpn/libxweather_routing_pi.so'
 with tarfile.open(sys.argv[2]) as archive:
     libraries = [m for m in archive.getmembers()
@@ -330,7 +330,7 @@ searches = [line.split('PluginLoader: loading plugins from ', 1)[1].strip()
             for line in log.splitlines() if 'PluginLoader: loading plugins from ' in line]
 assert searches and all(path == str(plugin_dir) for path in searches), searches
 assert f'Loading PlugIn: {plugin_dir}/libxweather_routing_pi.so' in log
-assert 'WR_BUILD version=1.36.3 api=1.21' in log
+assert 'WR_BUILD version=1.41.0 api=1.21' in log
 data_paths = [line for line in log.splitlines() if 'Using plugin data path:' in line]
 assert data_paths and all('/.local/' not in line for line in data_paths), data_paths
 print('Imported xWeatherRouting loaded after restart; ordinary plugin paths excluded.')

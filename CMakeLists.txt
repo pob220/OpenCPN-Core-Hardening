@@ -2054,6 +2054,11 @@ if (NOT APPLE)
   endif ()
   if (LINUX)
     install(TARGETS ${PACKAGE_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT QT_ANDROID)
+      install(PROGRAMS tools/opencpn-open-water-verifier
+                       tools/opencpn-chart-tile-worker
+              DESTINATION ${CMAKE_INSTALL_BINDIR})
+    endif()
   endif ()
 
   install(

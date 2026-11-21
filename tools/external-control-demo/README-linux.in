@@ -3,33 +3,48 @@
 This isolated developer package demonstrates the authenticated OpenCPN
 `/api/v2` external-control architecture with xGRIB, chart-aware
 xWeatherRouting, the modified o-charts semantic provider, the upgraded
-Climatology 2.0.1 with dataset 2026.2, Polar, Celestial Navigation 2.9.12 and the
+Climatology 2.0.3 with dataset 2026.2, Polar, Celestial Navigation 2.9.12 and the
 human-readable Scheduler. It targets `@EXPECTED_UNAME@` systems running
 the `@PLATFORM@` build environment; native packages should not be treated as
 portable across incompatible distributions.
 
-This 14 November refresh includes xWeatherRouting 1.36.3, xGRIB 0.4.4 and
+This 21 November refresh includes xWeatherRouting 1.41.0, xGRIB 0.4.5 and
 Generator 0.4.0. The core carries the bounded GSHHS corrections from
 [OpenCPN PR 5535](https://github.com/OpenCPN/OpenCPN/pull/5535): crossing
 answers are independent of endpoint order, and disjoint collinear segments
 are no longer reported as intersections. The existing absolute tolerances
 are retained; further tolerance changes remain separate work.
 
-xWeatherRouting 1.36.3 adds automatic adaptive routing settings. For supported
-engines it chooses time steps and heading separation from the passage, boat
-performance, coastline geometry and available weather/current data. Search work
-also takes account of route difficulty and memory headroom, within user limits.
-Engine-local adjustments remain active. New passages default to Automatic;
-existing saved passages keep their prior behavior until enabled. Switching
-Automatic off restores the exact saved manual settings. Managed controls stay
-disabled through mouse events and tab changes. Boat and safety limits remain
-under user control. The 1.36.2 weather-provider cache/backoff fixes are included.
+xWeatherRouting 1.41.0 includes opt-in additional calculation helpers in
+Settings → Computation, off on a fresh installation and remembered thereafter.
+Parallel routing methods retain their separate saved setting. The core supports
+verified global open-water starting layers, bounded isolated detailed-tile
+helpers and reuse of chart-safe data, with authoritative final validation.
+Helpers require Python 3 and Xvfb; unavailable helpers use the ordinary chart
+path. Import your own compatible verified starting layer; this clean bundle
+does not include personal chart caches or chart data.
+
+The core fixes persistent certificate round trips: integral JSON numbers are
+converted explicitly, invalid/stale proofs are rejected, and derived format-4
+certificates bind to the chart catalogue. Older certificates rebuild on demand;
+raw semantic tile dependencies and global-layer validation remain enforced.
+CM93 loading uses temporary append cursors while preserving natural object
+order. Controlled local chart-loading replay improved from 287 to 119 seconds
+with byte-identical safety tiles. This is a component measurement, not a general
+whole-passage speed claim. No routing engine or safety rule was changed by
+these two core fixes.
+
+Automatic adaptive numerical settings and exact saved manual values remain
+available. Wind, waves, boat performance and chart/depth requirements continue
+to determine which routes can be accepted.
 
 xWeatherRouting identifies coincident consecutive waypoints before creating
 or computing legs, naming the points and leg number. Nearby distinct points
 and legitimate return passages remain accepted. Its independent shoreline
-provider and chart/depth checks are retained. xGRIB includes its 0.4.4 early
+provider and chart/depth checks are retained. xGRIB 0.4.5 displays externally generated forecasts and retains early
 Copernicus NWS time-range validation and the preview environmental adapter.
+Climatology 2.0.3 includes corrected, indexed historical cyclone queries and
+immutable filtered indexes; routing warnings remain explicit about fallback use.
 
 The earlier Dateline correction is retained. CM93 coverage selection and
 safety-grid traversal stay local at ±180°. Its existing cache identity
@@ -48,7 +63,7 @@ The launcher retains the qualified whole-tile proof path. A tile is certified
 only with complete chart coverage and conservative area-depth evidence;
 isolated hazards and missing evidence retain detailed checks. Coastal endpoint
 access remains bounded, with full clearance offshore. The performance guides
-record historical core evidence; this refresh makes no new provider-speed claim. Exact revisions
+record historical core evidence; the chart-loading replay above is separate from bundle-wide performance qualification. Exact revisions
 are in `COMPONENTS.md`.
 
 Celestial Navigation 2.9.12 includes corrected CSV index-error units and the
@@ -72,7 +87,7 @@ sudo apt-get update
 sudo apt-get install curl file iproute2 libaec0 libblosc1 libeccodes0 \
   libgdk-pixbuf2.0-bin libhdf5-103-1 libhdf5-hl-100 libnetcdf19 \
   libproj25 libqhull-r8.0 librsvg2-common libsz2 libzip4 python3-tk \
-  python3-venv
+  python3-venv xvfb
 ```
 
 The demo installer itself uses no `sudo`; these are normal host runtime
