@@ -1532,7 +1532,7 @@ const double kSegmentSafetyGridTileDegrees = 0.05;
 const double kSegmentSafetyGridResolutionDegrees = 0.00125;
 const int kSegmentSafetyCoarseRouteMaskFactor = 4;
 const int kSegmentSafetyRegionCoarseCells = 5;  // 1 degree per side.
-const int kSegmentSafetyPersistentCacheVersion = 3;
+const int kSegmentSafetyPersistentCacheVersion = 4;
 const int kSegmentSafetyPersistentBaseTileVersion = 4;
 const int kSegmentSafetyRouteMaskAlgorithmVersion = 5;
 const size_t kMaxSegmentSafetyGridTiles = 4096;
@@ -1834,19 +1834,27 @@ std::string SegmentSafetyRouteMaskKey(long lat_tile, long lon_tile,
   return std::string(buf);
 }
 
-std::string SegmentSafetyCoarseRouteMaskKey(long lat_cell, long lon_cell,
-                                            double safety_margin_nm,
-                                            bool check_depth,
-                                            double minimum_depth_m) {
+std::string SegmentSafetyCoarseRouteMaskKeyForGroup(
+    int group_index, long lat_cell, long lon_cell, double safety_margin_nm,
+    bool check_depth, double minimum_depth_m) {
   long margin_mm = lround(wxMax(0.0, safety_margin_nm) * 1000.0);
   long depth_cm = check_depth ? lround(wxMax(0.0, minimum_depth_m) * 100.0) : 0;
   char buf[160];
   snprintf(buf, sizeof(buf), "%d:%ld:%ld:cr%.8f:f%d:m%ld:d%d:%ld",
-           SegmentSafetyCurrentGroupIndex(), lat_cell, lon_cell,
+           group_index, lat_cell, lon_cell,
            kSegmentSafetyGridTileDegrees * kSegmentSafetyCoarseRouteMaskFactor,
            kSegmentSafetyCoarseRouteMaskFactor, margin_mm, check_depth ? 1 : 0,
            depth_cm);
   return std::string(buf);
+}
+
+std::string SegmentSafetyCoarseRouteMaskKey(long lat_cell, long lon_cell,
+                                           double safety_margin_nm,
+                                           bool check_depth,
+                                           double minimum_depth_m) {
+  return SegmentSafetyCoarseRouteMaskKeyForGroup(
+      SegmentSafetyCurrentGroupIndex(), lat_cell, lon_cell, safety_margin_nm,
+      check_depth, minimum_depth_m);
 }
 
 struct CachedSegmentSafetyResult {
@@ -2799,6 +2807,75 @@ std::string SegmentSafetyPersistentProofKey(long lat_cell, long lon_cell,
       .ToStdString();
 }
 
+// wxJSON's AsDouble reads the double union member; it does not convert an
+// integer. The writer emits integral doubles as integers, so conversion is
+// required even for files produced by this host (e.g. -13.0 becomes -13).
+bool SegmentSafetyReadFiniteNumber(const wxJSONValue& value, double* result) {
+  if (!result) return false;
+  if (value.IsDouble()) {
+    *result = value.AsDouble();
+#if defined(wxJSON_64BIT_INT)
+  } else if (value.IsInt64()) {
+    *result = static_cast<double>(value.AsInt64());
+  } else if (value.IsUInt64()) {
+    *result = static_cast<double>(value.AsUInt64());
+#else
+  } else if (value.IsLong()) {
+    *result = static_cast<double>(value.AsLong());
+  } else if (value.IsULong()) {
+    *result = static_cast<double>(value.AsULong());
+#endif
+  } else {
+    return false;
+  }
+  return std::isfinite(*result);
+}
+
+bool SegmentSafetyReadCertificateNumber(const wxJSONValue& entry,
+                                       const char* name, double fallback,
+                                       double* result) {
+  if (entry.HasMember(name))
+    return SegmentSafetyReadFiniteNumber(entry.Get(name, wxJSONValue()), result);
+  *result = fallback;
+  return std::isfinite(fallback);
+}
+
+bool SegmentSafetyValidCertificate(
+    const CachedSegmentSafetyCoarseRouteMaskCell& cell) {
+  const double degrees = kSegmentSafetyGridTileDegrees *
+                         kSegmentSafetyCoarseRouteMaskFactor;
+  const double bucket_limit = static_cast<double>(LONG_MAX) / 2.0;
+  return cell.group_index >= 0 && cell.lat_cell >= -90.0 / degrees &&
+         cell.lat_cell < 90.0 / degrees &&
+         cell.lon_cell >= -180.0 / degrees &&
+         cell.lon_cell < 180.0 / degrees &&
+         std::isfinite(cell.degrees) &&
+         std::abs(cell.degrees - degrees) <= 1e-12 &&
+         std::isfinite(cell.min_lat) && std::isfinite(cell.min_lon) &&
+         std::abs(cell.min_lat - cell.lat_cell * degrees) <= 1e-9 &&
+         std::abs(cell.min_lon - cell.lon_cell * degrees) <= 1e-9 &&
+         std::isfinite(cell.safety_margin_nm) && cell.safety_margin_nm >= 0 &&
+         cell.safety_margin_nm * 1000.0 <= bucket_limit &&
+         std::isfinite(cell.minimum_depth_m) && cell.minimum_depth_m >= 0 &&
+         cell.minimum_depth_m * 100.0 <= bucket_limit &&
+         (cell.source == PI_SEGMENT_SAFETY_SOURCE_CM93 ||
+          cell.source == PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART ||
+          (cell.source == PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR &&
+           cell.persistent_cache_allowed));
+}
+
+// Caller holds the existing cache mutex. A certificate must describe exactly
+// the region and policy encoded by its key; stale/corrupt data is not a proof.
+bool SegmentSafetyCertificateKeyMatches(
+    const wxString& key, const CachedSegmentSafetyCoarseRouteMaskCell& cell) {
+  return !s_segment_safety_chart_identity.empty() &&
+         key == s_segment_safety_chart_identity + ":" +
+                    wxString::FromUTF8(SegmentSafetyCoarseRouteMaskKeyForGroup(
+                        cell.group_index, cell.lat_cell, cell.lon_cell,
+                        cell.safety_margin_nm, cell.check_depth,
+                        cell.minimum_depth_m).c_str());
+}
+
 bool SegmentSafetyPersistentCacheLoadLocked(const wxString& path) {
   if (s_segment_safety_persistent_cache_loaded) return true;
   s_segment_safety_persistent_cache_loaded = true;
@@ -2830,6 +2907,8 @@ bool SegmentSafetyPersistentCacheLoadLocked(const wxString& path) {
   wxJSONValue root;
   int errors = reader.Parse(input, &root);
   if (errors || !root.IsObject() ||
+      !root.Get("format_version", 0).IsInt() ||
+      !root.Get("route_mask_algorithm_version", 0).IsInt() ||
       root.Get("format_version", 0).AsInt() !=
           kSegmentSafetyPersistentCacheVersion ||
       root.Get("route_mask_algorithm_version", 0).AsInt() !=
@@ -2843,11 +2922,29 @@ bool SegmentSafetyPersistentCacheLoadLocked(const wxString& path) {
     return false;
   }
 
+  // Derived certificates do not carry per-tile dependencies. Bind the file
+  // to the same catalogue generation which invalidates these proofs in RAM.
+  if (s_segment_safety_chart_catalog_identity.empty() ||
+      !root.Get("chart_catalog_identity", "").IsString() ||
+      root.Get("chart_catalog_identity", "").AsString() !=
+          s_segment_safety_chart_catalog_identity) {
+    ++s_segment_safety_persistent_stale_ignored;
+    wxLogMessage("WR_CERT_SAFE_CACHE load enabled=1 entries_loaded=0 "
+                 "cache_file_path=\"%s\" reason=catalogue_changed_or_unbound", path);
+    return false;
+  }
+
   wxJSONValue entries = root["entries"];
   for (int i = 0; i < entries.Size(); ++i) {
     wxJSONValue entry = entries[i];
-    if (!entry.IsObject() || !entry.HasMember("key") ||
-        !entry.Get("certified_safe", false).AsBool()) {
+    if (!entry.IsObject() || !entry.Get("key", "").IsString() ||
+        !entry.Get("certified_safe", false).IsBool() ||
+        !entry.Get("certified_safe", false).AsBool() ||
+        !entry.Get("group_index", 0).IsInt() ||
+        !entry.Get("lat_cell", wxJSONValue()).IsInt() ||
+        !entry.Get("lon_cell", wxJSONValue()).IsInt() ||
+        !entry.Get("check_depth", false).IsBool() ||
+        !entry.Get("source", (int)PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART).IsInt()) {
       ++s_segment_safety_persistent_entries_ignored;
       continue;
     }
@@ -2855,37 +2952,50 @@ bool SegmentSafetyPersistentCacheLoadLocked(const wxString& path) {
     cell.group_index = entry.Get("group_index", 0).AsInt();
     cell.lat_cell = entry.Get("lat_cell", 0).AsInt();
     cell.lon_cell = entry.Get("lon_cell", 0).AsInt();
-    cell.degrees = entry.Get("coarse_degrees", cell.degrees).AsDouble();
-    cell.min_lat =
-        entry.Get("min_lat", cell.lat_cell * cell.degrees).AsDouble();
-    cell.min_lon =
-        entry.Get("min_lon", cell.lon_cell * cell.degrees).AsDouble();
     cell.check_depth = entry.Get("check_depth", false).AsBool();
-    cell.minimum_depth_m = entry.Get("minimum_depth_m", 0.0).AsDouble();
-    cell.safety_margin_nm = entry.Get("safety_margin_nm", 0.0).AsDouble();
+    cell.source = static_cast<PlugInSegmentSafetySource>(entry.Get(
+        "source", (int)PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART).AsInt());
+    const auto permission = entry.Get("persistent_cache_allowed",
+        cell.source != PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR);
+    const auto key = entry.Get("key", "").AsString();
+    double resolution = kSegmentSafetyGridResolutionDegrees;
+    if (!permission.IsBool() ||
+        !SegmentSafetyReadCertificateNumber(entry, "coarse_degrees", cell.degrees,
+                                             &cell.degrees) ||
+        !SegmentSafetyReadCertificateNumber(entry, "min_lat",
+            cell.lat_cell * cell.degrees, &cell.min_lat) ||
+        !SegmentSafetyReadCertificateNumber(entry, "min_lon",
+            cell.lon_cell * cell.degrees, &cell.min_lon) ||
+        !SegmentSafetyReadCertificateNumber(entry, "minimum_depth_m", 0,
+                                             &cell.minimum_depth_m) ||
+        !SegmentSafetyReadCertificateNumber(entry, "safety_margin_nm", 0,
+                                             &cell.safety_margin_nm) ||
+        !SegmentSafetyReadCertificateNumber(entry, "grid_resolution_degrees",
+            kSegmentSafetyGridResolutionDegrees, &resolution) ||
+        std::abs(resolution - kSegmentSafetyGridResolutionDegrees) > 1e-12 ||
+        (entry.HasMember("coarse_factor") &&
+         (!entry.Get("coarse_factor", 0).IsInt() ||
+          entry.Get("coarse_factor", 0).AsInt() !=
+              kSegmentSafetyCoarseRouteMaskFactor))) {
+      ++s_segment_safety_persistent_entries_ignored;
+      continue;
+    }
+    cell.persistent_cache_allowed = permission.AsBool();
+    if (!SegmentSafetyValidCertificate(cell) ||
+        !SegmentSafetyCertificateKeyMatches(key, cell)) {
+      ++s_segment_safety_persistent_entries_ignored;
+      continue;
+    }
+    // Discard serialization rounding; coordinates are defined by the key.
+    cell.degrees = kSegmentSafetyGridTileDegrees * kSegmentSafetyCoarseRouteMaskFactor;
+    cell.min_lat = cell.lat_cell * cell.degrees;
+    cell.min_lon = cell.lon_cell * cell.degrees;
     cell.state = SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE;
     cell.block_summary_flags = SEGMENT_SAFETY_ROUTE_CLEAR;
     cell.fine_tiles_checked = kSegmentSafetyCoarseRouteMaskFactor *
                               kSegmentSafetyCoarseRouteMaskFactor;
     cell.fine_tiles_clear = cell.fine_tiles_checked;
     cell.fine_tiles_mixed = 0;
-    cell.source = (PlugInSegmentSafetySource)entry
-                      .Get("source", (int)PI_SEGMENT_SAFETY_SOURCE_VECTOR_CHART)
-                      .AsInt();
-    cell.persistent_cache_allowed =
-        entry.Get("persistent_cache_allowed",
-                  cell.source != PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR)
-            .AsBool();
-    if (cell.source == PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR &&
-        !cell.persistent_cache_allowed) {
-      ++s_segment_safety_persistent_entries_ignored;
-      continue;
-    }
-    wxString key = entry.Get("key", "").AsString();
-    if (key.IsEmpty()) {
-      ++s_segment_safety_persistent_entries_ignored;
-      continue;
-    }
     s_segment_safety_persistent_certified_safe_cache[key.ToStdString()] = cell;
     while (s_segment_safety_persistent_certified_safe_cache.size() >
            kMaxSegmentSafetyPersistentCertifiedCells)
@@ -3132,8 +3242,7 @@ void SegmentSafetyPersistentCacheEnsureLoaded() {
   SegmentSafetyPersistentBaseTileCacheLoadLocked(base_path);
 }
 
-bool SegmentSafetyPersistentCertifiedCacheSave() {
-  wxString path = SegmentSafetyPersistentCachePath();
+bool SegmentSafetyPersistentCertifiedCacheSaveTo(const wxString& path) {
   wxMutexLocker lock(s_segment_safety_cache_mutex);
   if (!s_segment_safety_persistent_cache_enabled) {
     wxLogMessage("WR_CERT_SAFE_CACHE save enabled=0 cache_file_path=\"%s\"",
@@ -3142,22 +3251,32 @@ bool SegmentSafetyPersistentCertifiedCacheSave() {
   }
   if (!s_segment_safety_persistent_cache_dirty) return true;
 
+  if (s_segment_safety_chart_identity.empty() ||
+      s_segment_safety_chart_catalog_identity.empty()) {
+    wxLogMessage("WR_CERT_SAFE_CACHE save enabled=1 reason=unknown_chart_context");
+    return false;
+  }
+
   wxJSONValue root;
   root["format_version"] = kSegmentSafetyPersistentCacheVersion;
+  root["chart_catalog_identity"] = s_segment_safety_chart_catalog_identity;
   root["route_mask_algorithm_version"] =
       kSegmentSafetyRouteMaskAlgorithmVersion;
   root["updated_utc"] = wxDateTime::UNow().ToUTC().FormatISOCombined('T');
-  wxJSONValue entries;
+  wxJSONValue entries(wxJSONTYPE_ARRAY);
   long saved = 0;
+  long invalid = 0;
   for (std::map<std::string,
                 CachedSegmentSafetyCoarseRouteMaskCell>::const_iterator it =
            s_segment_safety_persistent_certified_safe_cache.begin();
        it != s_segment_safety_persistent_certified_safe_cache.end(); ++it) {
     const CachedSegmentSafetyCoarseRouteMaskCell& cell = it->second;
     if (cell.state != SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE ||
-        (cell.source == PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR &&
-         !cell.persistent_cache_allowed))
+        !SegmentSafetyValidCertificate(cell) ||
+        !SegmentSafetyCertificateKeyMatches(wxString::FromUTF8(it->first.c_str()), cell)) {
+      ++invalid;
       continue;
+    }
     wxJSONValue entry;
     entry["key"] = wxString::FromUTF8(it->first.c_str());
     entry["certified_safe"] = true;
@@ -3210,11 +3329,15 @@ bool SegmentSafetyPersistentCertifiedCacheSave() {
   s_segment_safety_persistent_entries_saved = saved;
   s_segment_safety_persistent_cache_dirty = false;
   wxLogMessage(
-      "WR_CERT_SAFE_CACHE save enabled=1 entries_saved=%ld "
+      "WR_CERT_SAFE_CACHE save enabled=1 entries_saved=%ld invalid_entries_ignored=%ld "
       "cache_file_path=\"%s\" "
       "cache_file_size=%llu",
-      saved, path, (unsigned long long)wxFileName(path).GetSize().GetValue());
+      saved, invalid, path, (unsigned long long)wxFileName(path).GetSize().GetValue());
   return true;
+}
+
+bool SegmentSafetyPersistentCertifiedCacheSave() {
+  return SegmentSafetyPersistentCertifiedCacheSaveTo(SegmentSafetyPersistentCachePath());
 }
 
 bool SegmentSafetyPersistentBaseTileCacheSave() {
@@ -3380,6 +3503,8 @@ bool SegmentSafetyPersistentLookupCertifiedSafe(
 void SegmentSafetyPersistentStoreCertifiedSafe(
     const CachedSegmentSafetyCoarseRouteMaskCell& cell) {
   if (!s_segment_safety_persistent_cache_enabled ||
+      !SegmentSafetyValidCertificate(cell) ||
+      cell.group_index != SegmentSafetyCurrentGroupIndex() ||
       cell.state != SEGMENT_SAFETY_COARSE_CERTIFIED_SAFE ||
       (cell.source == PI_SEGMENT_SAFETY_SOURCE_PLUGIN_VECTOR &&
        !cell.persistent_cache_allowed))
