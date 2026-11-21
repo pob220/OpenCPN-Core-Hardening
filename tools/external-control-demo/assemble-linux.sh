@@ -134,7 +134,7 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 | OpenCPN hardened core binary and API | $core_revision (external-control code based on release tag external-control-demo-20260821) |
 | Demo assembly and qualification tooling | $assembly_revision |
 | xGRIB 0.4.5.0 provider build | 5653f9ab1f5bd76fca1058d47171a5132a6741f1 (display externally generated forecasts, retaining NWS time validation, gust-capable Routing and preview environmental provider; generator 0.4.0 at 4208c87dbf223bedb78064043313c5fc09c629f1) |
-| xWeatherRouting 1.41.0 chart-aware provider | fe03b7303dcfa5178382bb6e2fcd97b8818995b0 (opt-in bounded calculation helpers, concurrent shoreline/weather reuse, global starting-layer support, live chart progress, diagnostics and detailed final validation; retains automatic/manual settings and chart/depth checks) |
+| xWeatherRouting 1.41.0 chart-aware provider | ee919d46d14e873c1615ef08cf1fc80bc7ea945f (opt-in bounded calculation helpers, concurrent shoreline/weather reuse, global starting-layer support, complete concurrent-result publication, live chart progress, diagnostics and detailed final validation; retains automatic/manual settings and chart/depth checks) |
 | o-charts chart-safety provider | b369c4cae0e84ea43847f64a26cb107ae1ffebe5 (modified plug-in over the official 2.2.1 licensed helper/runtime package) |
 | Upgraded Climatology plug-in and dataset 2026.2 | 9752389a18c996395de958c27608e260cd9d58bb |
 | Polar plug-in | 1.2.38.0 official OpenCPN package, SHA-256 $(sha256sum "$polar_archive" | cut -d ' ' -f 1) |
