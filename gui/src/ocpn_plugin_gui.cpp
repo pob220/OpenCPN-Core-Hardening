@@ -6019,7 +6019,8 @@ double OpenWaterDepthLowerBound(const std::vector<Cm93SafetyTileRule>& rules) {
 }
 
 SegmentSafetyOpenWaterRegion BuildSegmentSafetyOpenWaterRegion(
-    long lat_tile, long lon_tile, int tile_count) {
+    long lat_tile, long lon_tile, int tile_count, bool* prepared_cm93 = nullptr) {
+  if (prepared_cm93) *prepared_cm93 = false;
   Cm93SafetyQueryScope cm93_query_scope;
   const double degrees = tile_count * kSegmentSafetyGridTileDegrees;
   const double south = lat_tile * kSegmentSafetyGridTileDegrees;
@@ -6081,6 +6082,7 @@ SegmentSafetyOpenWaterRegion BuildSegmentSafetyOpenWaterRegion(
         viewport_box.GetMaxLon() < box.max_lon)
       return {};
     composite->PrepareSafetyTile(vp);
+    if (prepared_cm93) *prepared_cm93 = true;
     geometry = composite->GetUniformSafetyChartForBox(
         box.min_lat, box.max_lat, box.min_lon, box.max_lon);
     source = PI_SEGMENT_SAFETY_SOURCE_CM93;
@@ -6238,23 +6240,145 @@ bool ReadVerifiedOpenWaterRegions(const wxString& path,
   return true;
 }
 
+namespace {
+
+// The prototype remembers attempts that reached CM93 geometry preparation
+// but could not prove a region. A hit still requires the ordinary fine checks.
+struct DetailedRegions {
+  wxString chart_identity;
+  wxString catalogue;
+  int group{};
+  std::set<OpenWaterRegionKey> keys;
+  bool dirty{};
+  size_t hits{};
+  size_t builds{};
+  long build_ms{};
+};
+
+// Access is confined to the main thread, as are chart preparation and saves.
+DetailedRegions s_detailed_regions;
+
+bool DetailedRegionReuseEnabled() {
+  wxString setting;
+  return wxGetEnv("OCPN_CHART_SAFETY_REUSE_DETAILED_REGIONS", &setting) &&
+         setting == "1";
+}
+
+wxString OpenWaterDetailedRegionsPath() {
+  return wxFileName(SegmentSafetyPersistentCachePath()).GetPathWithSep() +
+         "chart_open_water_detailed.json";
+}
+
+bool ReadDetailedRegionKeys(const wxString& path, const wxString& identity,
+                            const wxString& catalogue,
+                            std::set<OpenWaterRegionKey>* keys) {
+  OpenWaterRegions regions;
+  if (!ReadVerifiedOpenWaterRegions(path, identity, catalogue, &regions) ||
+      regions.size() > kMaximumOnDemandOpenWaterRegions)
+    return false;
+  std::set<OpenWaterRegionKey> parsed;
+  for (const auto& [key, proof] : regions) {
+    if (proof.source != PI_SEGMENT_SAFETY_SOURCE_NONE) return false;
+    parsed.insert(key);
+  }
+  keys->swap(parsed);
+  return true;
+}
+
+bool WriteDetailedRegionKeys(const wxString& path, const wxString& identity,
+                             const wxString& catalogue,
+                             const std::set<OpenWaterRegionKey>& keys) {
+  wxJSONValue rows(wxJSONTYPE_ARRAY);
+  for (const auto& key : keys) {
+    wxJSONValue row(wxJSONTYPE_ARRAY);
+    row.Append(std::get<1>(key));
+    row.Append(static_cast<int>(std::get<2>(key)));
+    row.Append(static_cast<int>(std::get<3>(key)));
+    row.Append(static_cast<int>(PI_SEGMENT_SAFETY_SOURCE_NONE));
+    row.Append(0);
+    rows.Append(row);
+  }
+  wxJSONValue document;
+  document["version"] = kOpenWaterLayerVersion;
+  document["chart_identity"] = identity;
+  document["catalogue_identity"] = catalogue;
+  document["regions"] = rows;
+  wxTempFileOutputStream out(path);
+  if (!out.IsOk()) return false;
+  wxJSONWriter writer(wxJSONWRITER_NONE);
+  writer.Write(document, out);
+  return out.IsOk() && out.Commit();
+}
+
+}  // namespace
+
+bool SaveOpenWaterDetailedRegions() {
+  if (!wxThread::IsMain()) return true;
+  auto& detailed = s_detailed_regions;
+  if (detailed.catalogue.empty()) return true;
+  wxLogMessage(
+      "WR_OPEN_WATER_DETAILED_CACHE hits=%zu cm93_attempts=%zu "
+      "cm93_attempt_ms=%ld entries=%zu",
+      detailed.hits, detailed.builds, detailed.build_ms, detailed.keys.size());
+  if (!detailed.dirty) return true;
+  wxStopWatch timer;
+  if (SegmentSafetyChartIdentity() != detailed.chart_identity ||
+      OpenWaterLayerCatalogueIdentity() != detailed.catalogue)
+    return true;
+  if (!WriteDetailedRegionKeys(OpenWaterDetailedRegionsPath(),
+                              detailed.chart_identity, detailed.catalogue,
+                              detailed.keys))
+    return false;
+  detailed.dirty = false;
+  wxLogMessage("WR_OPEN_WATER_DETAILED_CACHE saved=%zu elapsed_ms=%ld",
+               detailed.keys.size(), timer.Time());
+  return true;
+}
+
+bool ClearOpenWaterDetailedRegions() {
+  if (!wxThread::IsMain()) return true;
+  s_detailed_regions.keys.clear();
+  s_detailed_regions.dirty = false;
+  const auto path = OpenWaterDetailedRegionsPath();
+  return !wxFileExists(path) || wxRemoveFile(path);
+}
+
 void LoadInstalledSegmentSafetyOpenWaterLayer(const wxString& identity) {
-  if (identity.empty() || SegmentSafetyOpenWaterMode() == OpenWaterGeometryMode::Off)
+  s_detailed_regions = {};
+  if (identity.empty() ||
+      SegmentSafetyOpenWaterMode() == OpenWaterGeometryMode::Off)
     return;
   const wxString path = InstalledOpenWaterLayerPath();
-  if (!wxFileExists(path)) return;
+  const bool has_layer = wxFileExists(path);
+  const bool reuse_detailed = DetailedRegionReuseEnabled();
+  if (!has_layer && !reuse_detailed) return;
+  wxStopWatch timer;
+  const auto catalogue = OpenWaterLayerCatalogueIdentity();
+  if (reuse_detailed && !catalogue.empty()) {
+    auto& detailed = s_detailed_regions;
+    detailed.chart_identity = identity;
+    detailed.catalogue = catalogue;
+    detailed.group = SegmentSafetyCurrentGroupIndex();
+    const auto detailed_path = OpenWaterDetailedRegionsPath();
+    if (wxFileExists(detailed_path)) {
+      const bool loaded = ReadDetailedRegionKeys(
+          detailed_path, identity, catalogue, &detailed.keys);
+      wxLogMessage(
+          "WR_OPEN_WATER_DETAILED_CACHE load=%d entries=%zu elapsed_ms=%ld",
+          loaded ? 1 : 0, detailed.keys.size(), timer.Time());
+    }
+  }
+  if (!has_layer) return;
   OpenWaterRegions verified;
-  if (!ReadVerifiedOpenWaterRegions(path, identity,
-                                  OpenWaterLayerCatalogueIdentity(),
-                                  &verified)) {
-    wxLogMessage("WR_OPEN_WATER_LAYER load=ignored reason=invalid_or_chart_changed");
+  if (!ReadVerifiedOpenWaterRegions(path, identity, catalogue, &verified)) {
+    wxLogMessage(
+        "WR_OPEN_WATER_LAYER load=ignored reason=invalid_or_chart_changed");
     return;
   }
   const int total = static_cast<int>(verified.size());
   const int proven = static_cast<int>(std::count_if(
-      verified.begin(), verified.end(), [](const auto& entry) {
-        return entry.second.source != PI_SEGMENT_SAFETY_SOURCE_NONE;
-      }));
+      verified.begin(), verified.end(),
+      [](const auto& entry) { return entry.second.source != PI_SEGMENT_SAFETY_SOURCE_NONE; }));
   {
     wxMutexLocker lock(s_segment_safety_cache_mutex);
     s_segment_safety_open_water_regions.swap(verified);
@@ -6368,14 +6492,16 @@ bool VerifyOpenWaterLayerInHelper(
 #endif
 
 bool PrepareSegmentSafetyOpenWaterRegion(long lat_tile, long lon_tile,
-                                           double margin, bool check_depth,
-                                           double depth) {
-  if (!wxThread::IsMain() || !OpenWaterOptionsSupported(margin, check_depth, depth))
+                                         double margin, bool check_depth,
+                                         double depth) {
+  if (!wxThread::IsMain() ||
+      !OpenWaterOptionsSupported(margin, check_depth, depth))
     return false;
   const auto mode = SegmentSafetyOpenWaterMode();
   if (mode == OpenWaterGeometryMode::Off) return false;
   for (int size : {kOpenWaterRegionTiles, kOpenWaterSubregionTiles}) {
     const auto key = SegmentSafetyOpenWaterKey(size, lat_tile, lon_tile);
+    auto& detailed = s_detailed_regions;
     {
       wxMutexLocker lock(s_segment_safety_cache_mutex);
       const auto it = s_segment_safety_open_water_regions.find(key);
@@ -6389,9 +6515,28 @@ bool PrepareSegmentSafetyOpenWaterRegion(long lat_tile, long lon_tile,
           s_segment_safety_installed_open_water_regions +
               kMaximumOnDemandOpenWaterRegions)
         continue;
+      if (detailed.keys.count(key)) {
+        // Admit the remembered failure when its region is first requested,
+        // so a warm restart does not move the normal on-demand region limit.
+        s_segment_safety_open_water_regions.emplace(
+            key, SegmentSafetyOpenWaterRegion{});
+        ++detailed.hits;
+        continue;
+      }
     }
+    wxStopWatch timer;
+    bool prepared_cm93 = false;
     const auto proof = BuildSegmentSafetyOpenWaterRegion(
-        std::get<2>(key), std::get<3>(key), size);
+        std::get<2>(key), std::get<3>(key), size, &prepared_cm93);
+    if (prepared_cm93 && !detailed.catalogue.empty() &&
+        detailed.group == std::get<0>(key)) {
+      ++detailed.builds;
+      detailed.build_ms += timer.Time();
+      if (proof.source == PI_SEGMENT_SAFETY_SOURCE_NONE &&
+          detailed.keys.size() < kMaximumOnDemandOpenWaterRegions &&
+          detailed.keys.insert(key).second)
+        detailed.dirty = true;
+    }
     {
       wxMutexLocker lock(s_segment_safety_cache_mutex);
       s_segment_safety_open_water_regions.emplace(key, proof);
@@ -11423,13 +11568,14 @@ int PlugIn_GetSegmentSafetyPersistentCacheEnabled() {
 }
 
 bool PlugIn_SaveSegmentSafetyPersistentCache() {
-  return SegmentSafetyPersistentCacheSave();
+  const bool chart_cache_ok = SegmentSafetyPersistentCacheSave();
+  return SaveOpenWaterDetailedRegions() && chart_cache_ok;
 }
 
 bool PlugIn_ClearSegmentSafetyPersistentCache() {
   wxString path = SegmentSafetyPersistentCachePath();
   wxString base_path = SegmentSafetyPersistentBaseTileCachePath();
-  bool removed = true;
+  bool removed = ClearOpenWaterDetailedRegions();
   {
     wxMutexLocker lock(s_segment_safety_cache_mutex);
     s_segment_safety_persistent_certified_safe_cache.clear();
@@ -11451,7 +11597,7 @@ bool PlugIn_ClearSegmentSafetyPersistentCache() {
     s_segment_safety_persistent_base_tiles_ignored = 0;
     s_segment_safety_persistent_tiles_since_checkpoint = 0;
   }
-  if (wxFileExists(path)) removed = wxRemoveFile(path);
+  if (wxFileExists(path)) removed = wxRemoveFile(path) && removed;
   if (wxFileExists(base_path)) removed = wxRemoveFile(base_path) && removed;
   wxLogMessage(
       "WR_CERT_SAFE_CACHE clear success=%d cache_file_path=\"%s\" "
