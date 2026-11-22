@@ -134,8 +134,8 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 | OpenCPN hardened core binary and API | $core_revision (external-control code based on release tag external-control-demo-20260821) |
 | Demo assembly and qualification tooling | $assembly_revision |
 | xGRIB 0.4.5.0 provider build | 5653f9ab1f5bd76fca1058d47171a5132a6741f1 (display externally generated forecasts, retaining NWS time validation, gust-capable Routing and preview environmental provider; generator 0.4.0 at 4208c87dbf223bedb78064043313c5fc09c629f1) |
-| xWeatherRouting 1.41.1 chart-aware provider | 9092fbb96d613c8f1e55032ddb116aeb4346a4a8 (opt-in bounded calculation helpers, concurrent shoreline/weather reuse, global starting-layer support, complete concurrent-result publication, live chart progress, diagnostics and detailed final validation; retains automatic/manual settings and chart/depth checks) |
-| o-charts chart-safety provider | b369c4cae0e84ea43847f64a26cb107ae1ffebe5 (modified plug-in over the official 2.2.1 licensed helper/runtime package) |
+| xWeatherRouting 1.42.0 chart-aware provider | 6c9f963cb6b4503d157195088eaf304a3246514a (Rick's merged production master; adapter query-copy optimization, all-mode endpoint preflight and updated help; retains opt-in helpers, concurrent shoreline/weather reuse, starting layers and detailed final validation) |
+| o-charts chart-safety provider | a7dd93fc268c011334b693967abb7399447bbba2 (modified plug-in over the official 2.2.5 licensed helper/runtime package) |
 | Upgraded Climatology plug-in and dataset 2026.2 | 9752389a18c996395de958c27608e260cd9d58bb |
 | Polar plug-in | 1.2.38.0 official OpenCPN package, SHA-256 $(sha256sum "$polar_archive" | cut -d ' ' -f 1) |
 | Upgraded Celestial Navigation plug-in | 2.9.12.0 at cdb7ed4e46a1cb9373c30eb449011e0bac19eae8 (2.9.12 release plus retained Debian future-UTC and source-relative lunar-fixture fixes) |
@@ -185,7 +185,7 @@ on an entry in the public OpenCPN Master catalogue.
 | WMM | Bundled magnetic variation | Available, disabled |
 | xGRIB | Typed environmental-data provider and GRIB display | Enabled |
 | xWeatherRouting | Typed chart/weather route-planning provider | Enabled |
-| o-charts 2.2.1 chart-safety preview | Licensed vector charts and batched semantic safety provider | Enabled; requires the developer's own licensed charts |
+| o-charts 2.2.5 chart-safety preview | Licensed vector charts and batched semantic safety provider | Enabled; requires the developer's own licensed charts |
 | Climatology 2.0.3 / dataset 2026.2 | Updated offline climate statistics | Enabled |
 | Polar 1.2.38 | Polar inspection and editing companion | Enabled |
 | Celestial Navigation 2.9.12.0 | Offline almanac, sight planning, fixes, lunar tools and eclipse planning | Enabled |

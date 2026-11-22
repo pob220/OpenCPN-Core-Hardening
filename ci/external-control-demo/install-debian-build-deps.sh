@@ -34,6 +34,7 @@ apt-get install -y --no-install-recommends \
   libltdl-dev \
   liblz4-dev \
   liblzma-dev \
+  locales \
   lsb-release \
   libpango1.0-dev \
   libshp-dev \
@@ -59,5 +60,8 @@ apt-get install -y --no-install-recommends \
   zlib1g-dev \
   xauth \
   xvfb
+
+localedef -i en_US -f UTF-8 en_US.UTF-8
+localedef -i sv_SE -f UTF-8 sv_SE.UTF-8
 
 rm -rf /var/lib/apt/lists/*

@@ -38,6 +38,16 @@ python3 "$source_dir/test/gshhs_intersection_regression.py" \
 
 test_binary="$build_dir/test/tests"
 test -x "$test_binary"
+for timezone in UTC Europe/London; do
+  TZ="$timezone" dbus-run-session "$test_binary" \
+    --gtest_filter='DateTimeFormatTest.*' \
+    --gtest_output="xml:$test_dir/datetime-${timezone//\//-}.xml" \
+    2>&1 | tee "$log_dir/datetime-${timezone//\//-}.log"
+  grep -F 'DateTimeFormatTest.LocalTimezoneEST' \
+    "$log_dir/datetime-${timezone//\//-}.log" >/dev/null
+  grep -F 'DateTimeFormatTest.LondonSeasonalAndDstBoundaryDisplays' \
+    "$log_dir/datetime-${timezone//\//-}.log" >/dev/null
+done
 dbus-run-session "$test_binary" \
   --gtest_output="xml:$test_dir/external-control.xml" \
   --gtest_filter='ExternalApiTest.*:InProcessPlanningJobServiceTest.*:BoundedApplicationEventStreamTest.*:ChartSafetyDepth.*:ChartSafetyService.*:ChartSafetyLongitude.*:PlatformPaths.*:PluginApi.*' \

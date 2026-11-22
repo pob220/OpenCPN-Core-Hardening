@@ -17,6 +17,10 @@ runtime_lib_dir="$work_dir/runtime-libs"
 rm -rf "$work_dir"
 mkdir -p "$build_dir" "$(dirname "$output_archive")"
 
+cmake -S "$source_dir/libs/s52plib/tests" -B "$work_dir/symbol-tests"
+cmake --build "$work_dir/symbol-tests" --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
+ctest --test-dir "$work_dir/symbol-tests" --output-on-failure
+
 # Configure the actual plug-in tree directly.  The template's top-level
 # `tarball` target reconfigures this same directory and is not idempotent with
 # all CMake versions; the official package supplies the licensed helper and
