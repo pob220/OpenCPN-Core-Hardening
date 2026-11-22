@@ -29,10 +29,11 @@ installed and active for the loaded charts. It shows geographic bounds,
 verified regions and regions using detailed checks. Newly imported layers
 preserve their name and release version when supplied.
 
-The preview launcher enables reuse of failed CM93 open-water proof attempts
-across restarts for the same chart catalogue and source files. A cache hit
-still requires detailed chart checks. This reduces repeated proof work in the
-saved Atlantic replay. Full-passage timing remains under evaluation. Use
+With persistent chart caching on, the preview launcher enables reuse of failed
+CM93 open-water proof attempts across restarts for the same chart catalogue
+and source files. A cache hit still requires detailed chart checks. This
+reduces repeated proof work in the saved Atlantic replay. Full-passage timing
+remains under evaluation. Use
 `OCPN_CHART_SAFETY_REUSE_DETAILED_REGIONS=0` to compare with reuse disabled.
 
 The core fixes persistent certificate round trips: integral JSON numbers are
