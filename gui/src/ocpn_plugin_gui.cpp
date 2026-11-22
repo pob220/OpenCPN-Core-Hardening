@@ -9673,6 +9673,19 @@ bool PlugIn_ImportSegmentSafetyOpenWaterLayer(
   document["version"] = kOpenWaterLayerVersion;
   document["chart_identity"] = chart_identity;
   document["catalogue_identity"] = catalogue;
+  const auto metadata = [&](const char* key, const wxString& fallback) {
+    const auto value = input.Get(key, wxJSONValue());
+    wxString text = value.IsString() ? value.AsString() : fallback;
+    text.Replace("\r", " ");
+    text.Replace("\n", " ");
+    text.Replace("\t", " ");
+    text.Trim().Trim(false);
+    return (text.empty() ? fallback : text).Left(120);
+  };
+  document["name"] = metadata("name",
+                              wxFileName(wxString::FromUTF8(path_utf8)).GetName());
+  const auto release = metadata("release", "");
+  if (!release.empty()) document["release"] = release;
   document["regions"] = rows;
   wxTempFileOutputStream out(InstalledOpenWaterLayerPath());
   if (!out.IsOk()) return report(_("Cannot save the verified starting layer."));
@@ -9690,6 +9703,14 @@ bool PlugIn_ImportSegmentSafetyOpenWaterLayer(
   return report(wxString::Format(_("Verified %d open-water regions. %d regions "
                                     "will use detailed checks."),
                                  proven, total - proven), true);
+}
+
+bool PlugIn_IsSegmentSafetyOpenWaterLayerActive() {
+  if (!wxThread::IsMain() || SegmentSafetyOpenWaterMode() != OpenWaterGeometryMode::Use)
+    return false;
+  SegmentSafetyRefreshPersistentChartIdentity();
+  wxMutexLocker lock(s_segment_safety_cache_mutex);
+  return s_segment_safety_installed_open_water_regions > 0;
 }
 
 bool PlugIn_RemoveSegmentSafetyOpenWaterLayer() {

@@ -3771,6 +3771,8 @@ extern "C" DECL_EXP bool PlugIn_ImportSegmentSafetyOpenWaterLayer(
     const char *path_utf8, PlugInOpenWaterLayerProgressFn progress,
     void *context, char *message_utf8, int message_size);
 extern "C" DECL_EXP bool PlugIn_RemoveSegmentSafetyOpenWaterLayer();
+/** Whether an installed starting layer is usable with the active charts. */
+extern "C" DECL_EXP bool PlugIn_IsSegmentSafetyOpenWaterLayerActive();
 
 /**
  * Builds an immutable, best-available-chart hazard snapshot for an area.
