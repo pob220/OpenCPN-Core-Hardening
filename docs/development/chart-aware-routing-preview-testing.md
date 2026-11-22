@@ -4,6 +4,58 @@ This package is an isolated developer preview, not a navigation release. Its
 purpose is to exercise the complete chart-aware weather-routing path without
 modifying a normal OpenCPN installation or profile.
 
+## Current refresh — 22 November 2026, xWeatherRouting 1.42.0
+
+The current package combines the chart-aware preview host with xWeatherRouting
+1.42.0 from Rick's merged production master and the o-charts 2.2.5 provider,
+including its matching official licensed helper/runtime. xGRIB 0.4.5 and
+Generator 0.4.0, Climatology 2.0.3 / dataset 2026.2, Polar 1.2.38 and Celestial
+Navigation 2.9.12 remain the current qualified companion versions. Exact
+commits are recorded in `COMPONENTS.md`; the dated sections below describe
+earlier snapshots, not the current package inventory.
+
+The host lets a plugin submit candidate route segments with clearance and
+depth requirements. It selects chart coverage, extracts land, drying-area,
+hazard and depth evidence, and returns accepted, rejected, pending or
+unavailable results. Routing workers use immutable derived tiles; chart object
+access stays on its owning GUI thread. Missing coverage or unknown depth
+cannot establish safety. Final route validation remains authoritative.
+
+In **Routings → Chart Awareness Settings**, review the chart provider, minimum
+depth, cache controls and starting-layer status. An optional compatible global
+open-water starting layer is verified against the installed charts; it does
+not replace detailed checks where proof is missing. Newly queried eligible
+data still enters the persistent cache when enabled. Certificate round-trip
+fixes reject stale chart identities, and detailed CM93 regions can reuse
+unsuccessful open-water proof attempts while retaining detailed checking.
+Bring your own starting layer and charts; personal caches are not bundled.
+
+In **Settings → Computation**, additional calculation helpers are off on first
+run and remembered thereafter. Parallel routing methods have a separate saved
+setting. Desktop Linux detailed-chart helpers need Python 3 and Xvfb; requests
+they cannot prepare use the ordinary chart path. Record both settings and
+cold/warm cache state for any timing comparison. Existing routing engines and
+safety requirements are unchanged by the 1.42.0 query-copy optimization.
+
+Endpoint preflight now precedes every routing mode, including Auto and All.
+With land detection enabled, confirmed land stops before search with the
+endpoint name, coordinates and source. Water within the shore margin offers
+Continue/Cancel and retains existing bounded coastal access. Exercise both
+cases, a normal offshore control, and unavailable chart evidence. Do not treat
+a margin warning as permission to accept an actual land/depth violation.
+
+The core also retains dateline, conservative chart geometry, GSHHS and cache
+fixes and corrects modern-wxWidgets daylight-saving-time display. Both Debian
+architectures run fresh model/native chart fixtures, timezone regressions,
+plugin tests and isolated installation/import/restart/API checks. No personal
+licensed-chart coverage is implied by the clean CI installation.
+
+This is the qualified external-control preview host with its existing optional
+chart interface. It is separate from the modular HostApi123 proposal in
+[PR 5475](https://github.com/OpenCPN/OpenCPN/pull/5475). xWeatherRouting retains
+its API 1.21 loading floor and works with weather/GSHHG on stock OpenCPN;
+chart-backed requirements need a supporting host and provider.
+
 ## Included path
 
 - the hardened OpenCPN core chart-safety API;
