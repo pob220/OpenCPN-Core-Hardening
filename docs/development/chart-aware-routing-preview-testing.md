@@ -4,15 +4,24 @@ This package is an isolated developer preview, not a navigation release. Its
 purpose is to exercise the complete chart-aware weather-routing path without
 modifying a normal OpenCPN installation or profile.
 
-## Current refresh — 22 November 2026, xWeatherRouting 1.42.0
+## Current refresh — 23 November 2026, xWeatherRouting 1.44.0
 
 The current package combines the chart-aware preview host with xWeatherRouting
-1.42.0 from Rick's merged production master and the o-charts 2.2.5 provider,
-including its matching official licensed helper/runtime. xGRIB 0.4.5 and
+1.44.0 from Rick's production release candidate (PR 739) and the o-charts 2.2.5 provider,
+including its matching official licensed helper/runtime. xGRIB 0.4.6 and
 Generator 0.4.0, Climatology 2.0.3 / dataset 2026.2, Polar 1.2.38 and Celestial
 Navigation 2.9.12 remain the current qualified companion versions. Exact
 commits are recorded in `COMPONENTS.md`; the dated sections below describe
 earlier snapshots, not the current package inventory.
+
+Meridian can be selected on its own or enabled separately in Auto and All,
+after Atlas. It starts unticked. Test it with the same GRIB, polar, departure,
+currents and safety settings as the other methods; All continues until all
+selected methods finish. Geographic guidance orders possible coastal detours,
+but the sailing legs still require weather integration and final validation.
+xGRIB 0.4.6 reads native CCSDS GRIB2 (template 42), including the problematic
+ECMWF forecast, without repacking. The preview environmental provider used by
+the SDK/MCP integration is retained.
 
 The host lets a plugin submit candidate route segments with clearance and
 depth requirements. It selects chart coverage, extracts land, drying-area,

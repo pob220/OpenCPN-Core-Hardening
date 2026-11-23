@@ -1,16 +1,17 @@
-# xGRIB 0.4.5 developer-bundle integration
+# xGRIB 0.4.6 developer-bundle integration
 
-The bundle pins preview xGRIB `5653f9ab1f5bd76fca1058d47171a5132a6741f1` (version 0.4.5), based on
-ordinary xGRIB `a5606cea2be2dd595c925ea4a3dc52a32a22a639`. Generator 0.4.0 remains pinned at
-`4208c87dbf223bedb78064043313c5fc09c629f1`.
+The bundle pins preview xGRIB `48343c97016e752a38925af95e8aea3c72583366` (version 0.4.6), based on
+the fully qualified production release `c5a05468cd55061a50009f7a8ddf7657082a020b`.
+Generator 0.4.0 remains pinned at `4208c87dbf223bedb78064043313c5fc09c629f1`.
 
-The only adapter changes are the existing optional environmental-data provider,
-ported from the previously qualified 0.4.0 preview. It retains external
-acquisition, cancellation and provenance for the preview API, Python SDK and
-MCP tools. The ordinary working xGRIB installation is unchanged.
+The environmental provider, file-digest implementation and their tests match
+the previously qualified 0.4.5 preview `5653f9ab1f5bd76fca1058d47171a5132a6741f1`
+byte for byte. Registration/acquisition/cancellation/provenance and the API 1.21
+loading floor are retained. The normal GUI works on a stock host without the
+optional preview API.
 
-This refresh retains gust-capable Routing forecasts and the 0.4.5 early
-Copernicus NWS time-range validation. Both architectures must pass the complete
-plugin tests, clean bundle installation, provider registration and API smoke
-checks. Hosted GFS fallback still requires service 0.2.2 and its five-field
-weather cache. No service deployment is part of this refresh.
+The production base adds native CCSDS-compressed GRIB2 decoding (template 42)
+and retains external-forecast display, gusts and NWS time-range validation.
+Both bundle architectures must pass the full plugin tests, clean installation,
+provider registration and API/MCP smoke checks. Hosted GFS fallback retains its
+service 0.2.2/five-field-cache prerequisite; no service deployment is included.

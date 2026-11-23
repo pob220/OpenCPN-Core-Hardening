@@ -8,7 +8,7 @@ human-readable Scheduler. It targets `@EXPECTED_UNAME@` systems running
 the `@PLATFORM@` build environment; native packages should not be treated as
 portable across incompatible distributions.
 
-This 22 November refresh includes xWeatherRouting 1.42.0, xGRIB 0.4.5 and
+This 23 November refresh includes xWeatherRouting 1.44.0, xGRIB 0.4.6 and
 Generator 0.4.0, and updates the modified o-charts provider and its official
 licensed helper/runtime to 2.2.5. The core fixes double daylight-saving-time
 adjustment on modern wxWidgets and carries the bounded GSHHS corrections from
@@ -17,7 +17,17 @@ answers are independent of endpoint order, and disjoint collinear segments
 are no longer reported as intersections. The existing absolute tolerances
 are retained; further tolerance changes remain separate work.
 
-xWeatherRouting 1.42.0 includes opt-in additional calculation helpers in
+Meridian is a new independent routing method with a full-circle heading fan,
+coastal step refinement and geographic detour guidance. Select Meridian alone,
+or tick it separately in Auto/All; it runs after Atlas and starts unticked.
+The Donegal fix guides medium coastal passages to their actual destination.
+The established search implementations and saved engine selections are retained.
+All methods apply the full requested shoreline buffer while keeping bounded
+water-endpoint access. Live diagnostics distinguish a completed method from
+other methods still running in All. These are bounded searches: no feasible
+route or fastest-passage guarantee is implied by a failed or completed attempt.
+
+xWeatherRouting 1.44.0 includes opt-in additional calculation helpers in
 Settings → Computation, off on a fresh installation and remembered thereafter.
 Parallel routing methods retain their separate saved setting. The core supports
 verified global open-water starting layers, bounded isolated detailed-tile
@@ -26,7 +36,7 @@ Helpers require Python 3 and Xvfb; unavailable helpers use the ordinary chart
 path. Import your own compatible verified starting layer; this clean bundle
 does not include personal chart caches or chart data.
 
-The 1.42.0 adapters avoid copying unused boat-polar tables for each weather or
+The retained 1.42.0 adapter optimisation avoids copying unused boat-polar tables for each weather or
 land query; boat-performance calculations retain the full polar data. This
 reduces allocation overhead without changing the search engines or safety
 rules. Endpoint preflight now runs before every routing mode, including Auto
@@ -65,7 +75,9 @@ to determine which routes can be accepted.
 xWeatherRouting identifies coincident consecutive waypoints before creating
 or computing legs, naming the points and leg number. Nearby distinct points
 and legitimate return passages remain accepted. Its independent shoreline
-provider and chart/depth checks are retained. xGRIB 0.4.5 displays externally generated forecasts and retains early
+provider and chart/depth checks are retained. xGRIB 0.4.6 natively decodes CCSDS-compressed GRIB2 forecasts (template 42),
+including the ECMWF files that previously needed repacking. It displays
+externally generated forecasts and retains early
 Copernicus NWS time-range validation and the preview environmental adapter.
 Climatology 2.0.3 includes corrected, indexed historical cyclone queries and
 immutable filtered indexes; routing warnings remain explicit about fallback use.

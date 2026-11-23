@@ -161,7 +161,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/xgrib_pi.git inputs/xgrib_pi
-          git -C inputs/xgrib_pi checkout 5653f9ab1f5bd76fca1058d47171a5132a6741f1
+          git -C inputs/xgrib_pi checkout 48343c97016e752a38925af95e8aea3c72583366
           git -C inputs/xgrib_pi submodule update --init --recursive
           test "$(git -C inputs/xgrib_pi/generator rev-parse HEAD)" = \
             4208c87dbf223bedb78064043313c5fc09c629f1
@@ -182,7 +182,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/rgleason/weather_routing_pi.git inputs/xweather_routing_pi
-          git -C inputs/xweather_routing_pi checkout 6c9f963cb6b4503d157195088eaf304a3246514a
+          git -C inputs/xweather_routing_pi checkout 961c03dcdd84b158da6d14c3bbeaabf4dd5065c4
           git -C inputs/xweather_routing_pi submodule update --init --recursive
           inputs/xweather_routing_pi/ci/build-linux-catalogue.sh \
             inputs/xweather_routing_pi inputs/xweather-build
@@ -254,7 +254,7 @@ jobs:
           core_installer=$(find inputs/core/package -maxdepth 1 -type f -name '*.sh' -print -quit)
           test -n "$core_installer"
           core_revision=$(cat inputs/core/source-commit.txt)
-          EXTERNAL_CONTROL_DEMO_DATE=2026-11-22.3 \
+          EXTERNAL_CONTROL_DEMO_DATE=2026-11-23 \
             EXTERNAL_CONTROL_CORE_REVISION="$core_revision" \
             tools/external-control-demo/assemble-linux.sh \
               "$core_installer" \
@@ -284,7 +284,7 @@ jobs:
           set -euo pipefail
           [[ "$EXPECTED_CANDIDATE_SOURCE" =~ ^[0-9a-f]{40}$ ]]
           cd candidate
-          archive=OpenCPN-External-Control-Demo-2026-11-22.3-debian12-x86_64.tar.gz
+          archive=OpenCPN-External-Control-Demo-2026-11-23-debian12-x86_64.tar.gz
           sha256sum --check "$archive.sha256"
           tar -xzf "$archive"
           grep -F "$EXPECTED_CANDIDATE_SOURCE" "${archive%.tar.gz}/COMPONENTS.md"
@@ -294,7 +294,7 @@ jobs:
         run: |
           qualification_log=candidate/qualification.log
           if ! tools/external-control-demo/qualify-linux-bundle.sh \
-              candidate/OpenCPN-External-Control-Demo-2026-11-22.3-debian12-x86_64 \
+              candidate/OpenCPN-External-Control-Demo-2026-11-23-debian12-x86_64 \
               'Advanced Micro Devices X86-64' >"$qualification_log" 2>&1; then
             cat "$qualification_log"
             exit 1
@@ -306,8 +306,8 @@ jobs:
         with:
           name: opencpn-external-control-demo-debian12-x86_64
           path: |
-            candidate/OpenCPN-External-Control-Demo-2026-11-22.3-debian12-x86_64.tar.gz
-            candidate/OpenCPN-External-Control-Demo-2026-11-22.3-debian12-x86_64.tar.gz.sha256
+            candidate/OpenCPN-External-Control-Demo-2026-11-23-debian12-x86_64.tar.gz
+            candidate/OpenCPN-External-Control-Demo-2026-11-23-debian12-x86_64.tar.gz.sha256
             candidate/qualification.log
           if-no-files-found: warn
           retention-days: 14
@@ -380,7 +380,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/xgrib_pi.git inputs/xgrib_pi
-          git -C inputs/xgrib_pi checkout 5653f9ab1f5bd76fca1058d47171a5132a6741f1
+          git -C inputs/xgrib_pi checkout 48343c97016e752a38925af95e8aea3c72583366
           git -C inputs/xgrib_pi submodule update --init --recursive
           test "$(git -C inputs/xgrib_pi/generator rev-parse HEAD)" = \
             4208c87dbf223bedb78064043313c5fc09c629f1
@@ -401,7 +401,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/rgleason/weather_routing_pi.git inputs/xweather_routing_pi
-          git -C inputs/xweather_routing_pi checkout 6c9f963cb6b4503d157195088eaf304a3246514a
+          git -C inputs/xweather_routing_pi checkout 961c03dcdd84b158da6d14c3bbeaabf4dd5065c4
           git -C inputs/xweather_routing_pi submodule update --init --recursive
           inputs/xweather_routing_pi/ci/build-linux-catalogue.sh \
             inputs/xweather_routing_pi inputs/xweather-build
@@ -474,7 +474,7 @@ jobs:
           core_installer=$(find inputs/core/package -maxdepth 1 -type f -name '*.sh' -print -quit)
           test -n "$core_installer"
           core_revision=$(cat inputs/core/source-commit.txt)
-          EXTERNAL_CONTROL_DEMO_DATE=2026-11-22.3 \
+          EXTERNAL_CONTROL_DEMO_DATE=2026-11-23 \
             EXTERNAL_CONTROL_CORE_REVISION="$core_revision" \
             tools/external-control-demo/assemble-linux.sh \
               "$core_installer" \
@@ -504,7 +504,7 @@ jobs:
           set -euo pipefail
           [[ "$EXPECTED_CANDIDATE_SOURCE" =~ ^[0-9a-f]{40}$ ]]
           cd candidate
-          archive=OpenCPN-External-Control-Demo-2026-11-22.3-debian12-arm64.tar.gz
+          archive=OpenCPN-External-Control-Demo-2026-11-23-debian12-arm64.tar.gz
           sha256sum --check "$archive.sha256"
           tar -xzf "$archive"
           grep -F "$EXPECTED_CANDIDATE_SOURCE" "${archive%.tar.gz}/COMPONENTS.md"
@@ -514,7 +514,7 @@ jobs:
         run: |
           qualification_log=candidate/qualification.log
           if ! tools/external-control-demo/qualify-linux-bundle.sh \
-              candidate/OpenCPN-External-Control-Demo-2026-11-22.3-debian12-arm64 \
+              candidate/OpenCPN-External-Control-Demo-2026-11-23-debian12-arm64 \
               AArch64 >"$qualification_log" 2>&1; then
             cat "$qualification_log"
             exit 1
@@ -526,8 +526,8 @@ jobs:
         with:
           name: opencpn-external-control-demo-debian12-arm64
           path: |
-            candidate/OpenCPN-External-Control-Demo-2026-11-22.3-debian12-arm64.tar.gz
-            candidate/OpenCPN-External-Control-Demo-2026-11-22.3-debian12-arm64.tar.gz.sha256
+            candidate/OpenCPN-External-Control-Demo-2026-11-23-debian12-arm64.tar.gz
+            candidate/OpenCPN-External-Control-Demo-2026-11-23-debian12-arm64.tar.gz.sha256
             candidate/qualification.log
           if-no-files-found: warn
           retention-days: 14
