@@ -22,6 +22,11 @@ Full GSHHG. The plug-in supplies Crude, Low and Intermediate for offline
 installation. Cumulative Map and Cumulative - Calms use the legacy isochrone
 calculation and show a warning when this changes the selected routing method.
 
+Route diagnostics report the requested UTC time and, when the reader supplies
+it, the end of the usable wind forecast. The xGRIB 0.4.6 preview build provides
+that end time for missing wind responses. On a long passage, Climatology can
+supply wind after the forecast ends when fallback is enabled.
+
 Meridian is a new independent routing method with a full-circle heading fan,
 coastal step refinement and geographic detour guidance. Select Meridian alone,
 or tick it separately in Auto/All; it runs after Atlas and starts unticked.

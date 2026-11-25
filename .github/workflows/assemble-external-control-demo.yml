@@ -127,7 +127,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/xgrib_pi.git inputs/xgrib_pi
-          git -C inputs/xgrib_pi checkout d539649dd416875aae36a8da555a883e43990972
+          git -C inputs/xgrib_pi checkout e9e392b4724101fb8358420977211fbdb4219a8c
           git -C inputs/xgrib_pi submodule update --init --recursive
           test "$(git -C inputs/xgrib_pi/generator rev-parse HEAD)" = \
             4208c87dbf223bedb78064043313c5fc09c629f1
@@ -146,7 +146,7 @@ jobs:
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/weather_routing_pi.git inputs/xweather_routing_pi
-          git -C inputs/xweather_routing_pi checkout 2d21ad752d9fcf70365b61c85f500e3bc5d7c27f
+          git -C inputs/xweather_routing_pi checkout 576702cc213ad2c66f0fa8016e4275b8a0016e3f
           git -C inputs/xweather_routing_pi submodule update --init --recursive
           inputs/xweather_routing_pi/ci/build-linux-catalogue.sh \
             inputs/xweather_routing_pi inputs/xweather-build

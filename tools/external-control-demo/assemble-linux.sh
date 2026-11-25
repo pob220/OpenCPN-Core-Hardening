@@ -133,8 +133,8 @@ cat > "$bundle_dir/COMPONENTS.md" <<EOF
 |---|---|
 | OpenCPN hardened core binary and API | $core_revision (external-control code based on release tag external-control-demo-20260821) |
 | Demo assembly and qualification tooling | $assembly_revision |
-| xGRIB 0.4.6.0 provider build | d539649dd416875aae36a8da555a883e43990972 (native CCSDS GRIB2 template-42 decoding, NWS time validation, gust-capable Routing and the retained preview environmental provider; generator 0.4.0 at 4208c87dbf223bedb78064043313c5fc09c629f1) |
-| xWeatherRouting 1.44.3 chart-aware provider | 2d21ad752d9fcf70365b61c85f500e3bc5d7c27f (production 1.44.2 base with first-time shoreline-download fix; opt-in Meridian with corrected coastal guidance, full shoreline-buffer checks, live diagnostics and all-mode endpoint preflight; retains opt-in helpers, concurrent shoreline/weather reuse, starting layers and detailed final validation) |
+| xGRIB 0.4.6.0 provider build | e9e392b4724101fb8358420977211fbdb4219a8c (forecast-end metadata, native CCSDS GRIB2 template-42 decoding, NWS time validation, gust-capable Routing and the retained preview environmental provider; generator 0.4.0 at 4208c87dbf223bedb78064043313c5fc09c629f1) |
+| xWeatherRouting 1.44.3 chart-aware provider | 576702cc213ad2c66f0fa8016e4275b8a0016e3f (production 1.44.2 base with first-time shoreline-download fix and forecast expiry diagnostics; opt-in Meridian with corrected coastal guidance, full shoreline-buffer checks, live diagnostics and all-mode endpoint preflight; retains opt-in helpers, concurrent shoreline/weather reuse, starting layers and detailed final validation) |
 | o-charts chart-safety provider | a7dd93fc268c011334b693967abb7399447bbba2 (modified plug-in over the official 2.2.5 licensed helper/runtime package) |
 | Upgraded Climatology plug-in and dataset 2026.2 | 9752389a18c996395de958c27608e260cd9d58bb |
 | Polar plug-in | 1.2.38.0 official OpenCPN package, SHA-256 $(sha256sum "$polar_archive" | cut -d ' ' -f 1) |

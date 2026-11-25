@@ -19,6 +19,11 @@ download in a fresh profile. The bundled Crude, Low and Intermediate datasets
 can be installed offline. Cumulative climatology modes use the legacy isochrone
 calculation and show a warning when that switches the selected routing method.
 
+Route diagnostics report the requested UTC time and, when the reader supplies
+it, the end of the usable wind forecast. The xGRIB 0.4.6 preview build provides
+that end time for missing wind responses. On a long passage, Climatology can
+supply wind after the forecast ends when fallback is enabled.
+
 Meridian can be selected on its own or enabled separately in Auto and All,
 after Atlas. It starts unticked. Test it with the same GRIB, polar, departure,
 currents and safety settings as the other methods; All continues until all
