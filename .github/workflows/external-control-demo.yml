@@ -11,6 +11,19 @@ on:
       - 'manual/**'
   workflow_dispatch:
     inputs:
+      platform:
+        description: Bundle platform to build
+        type: choice
+        default: all
+        options:
+          - all
+          - debian12-arm64
+          - debian12-x86_64
+          - debian13-x86_64
+      reuse_arm64_companions:
+        description: Reuse the verified 23 November ARM64 companion packages
+        type: boolean
+        default: false
       core_run_id:
         description: Optional workflow run with a successful ARM64 core job and its artifact
         required: false
@@ -35,7 +48,10 @@ on:
 jobs:
   debian12-arm64:
     name: Debian 12 ARM64 core
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.core_run_id == '' }}
+    if: >-
+      ${{ github.event_name != 'workflow_dispatch' ||
+          ((inputs.platform == 'all' || inputs.platform == 'debian12-arm64') &&
+           inputs.core_run_id == '') }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     container:
@@ -67,7 +83,10 @@ jobs:
 
   debian12-x86_64:
     name: Debian 12 x86_64 core
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.x86_core_run_id == '' }}
+    if: >-
+      ${{ github.event_name != 'workflow_dispatch' ||
+          ((inputs.platform == 'all' || inputs.platform == 'debian12-x86_64') &&
+           inputs.x86_core_run_id == '') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     container:
@@ -99,7 +118,10 @@ jobs:
 
   debian13-x86_64:
     name: Debian 13 x86_64 core
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.trixie_core_run_id == '' }}
+    if: >-
+      ${{ github.event_name != 'workflow_dispatch' ||
+          ((inputs.platform == 'all' || inputs.platform == 'debian13-x86_64') &&
+           inputs.trixie_core_run_id == '') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     container:
@@ -134,6 +156,8 @@ jobs:
     needs: debian12-x86_64
     if: >-
       ${{ always() &&
+          (github.event_name != 'workflow_dispatch' ||
+           inputs.platform == 'all' || inputs.platform == 'debian12-x86_64') &&
           (needs.debian12-x86_64.result == 'success' ||
            (github.event_name == 'workflow_dispatch' && inputs.x86_core_run_id != '')) }}
     uses: ./.github/workflows/assemble-external-control-demo.yml
@@ -155,6 +179,8 @@ jobs:
     needs: debian12-arm64
     if: >-
       ${{ always() &&
+          (github.event_name != 'workflow_dispatch' ||
+           inputs.platform == 'all' || inputs.platform == 'debian12-arm64') &&
           (needs.debian12-arm64.result == 'success' ||
            (github.event_name == 'workflow_dispatch' && inputs.core_run_id != '')) }}
     uses: ./.github/workflows/assemble-external-control-demo.yml
@@ -165,7 +191,8 @@ jobs:
       runner: ubuntu-24.04-arm
       expected_uname: aarch64
       expected_machine: AArch64
-      parallel_jobs: '2'
+      parallel_jobs: '3'
+      reuse_arm64_companions: ${{ inputs.reuse_arm64_companions }}
       release_date: '2026-11-25'
       core_run_id: ${{ inputs.core_run_id || format('{0}', github.run_id) }}
       candidate_run_id: ${{ inputs.candidate_run_id }}
@@ -176,6 +203,8 @@ jobs:
     needs: debian13-x86_64
     if: >-
       ${{ always() &&
+          (github.event_name != 'workflow_dispatch' ||
+           inputs.platform == 'all' || inputs.platform == 'debian13-x86_64') &&
           (needs.debian13-x86_64.result == 'success' ||
            (github.event_name == 'workflow_dispatch' && inputs.trixie_core_run_id != '')) }}
     uses: ./.github/workflows/assemble-external-control-demo.yml

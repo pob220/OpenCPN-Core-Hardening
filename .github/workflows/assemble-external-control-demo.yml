@@ -31,6 +31,9 @@ on:
       core_run_id:
         type: string
         required: true
+      reuse_arm64_companions:
+        type: boolean
+        default: false
       candidate_run_id:
         type: string
       candidate_source:
@@ -84,10 +87,9 @@ jobs:
           grep -Eq 'libpixbufloader[-_]svg\.so' \
             /usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/gdk-pixbuf-2.0/2.10.0/loaders.cache
           build_venv="$RUNNER_TEMP/preview-build-venv"
-          python3 -m venv --system-site-packages "$build_venv"
-          "$build_venv/bin/python" -m pip install --ignore-installed \
-            'packaging==25.0' 'setuptools==80.9.0' 'wheel==0.45.1'
-          printf '%s\n' "$build_venv/bin" >> "$GITHUB_PATH"
+          python3 -m venv "$build_venv"
+          "$build_venv/bin/python" -m pip install \
+            'build==1.2.2.post1' 'packaging==25.0' 'setuptools==80.9.0' 'wheel==0.45.1'
       - uses: actions/download-artifact@v4
         if: ${{ inputs.candidate_run_id == '' }}
         with:
@@ -96,8 +98,29 @@ jobs:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ inputs.core_run_id }}
+      - name: Reuse verified ARM64 companion archives
+        if: ${{ inputs.candidate_run_id == '' && inputs.reuse_arm64_companions }}
+        run: |
+          test "$DEMO_PLATFORM" = debian12-arm64
+          base=OpenCPN-External-Control-Demo-2026-11-23-debian12-arm64
+          mkdir -p inputs/plugins inputs/previous
+          curl --fail --location \
+            "https://github.com/pob220/OpenCPN-Core-Hardening/releases/download/chart-aware-routing-preview-20260831/$base.tar.gz" \
+            --output "inputs/previous/$base.tar.gz"
+          printf '%s  %s\n' 9290d379339b9270e8ae743f6d41eb48ba805ed81f98b3ad8639302fb6aa6dce \
+            "inputs/previous/$base.tar.gz" | sha256sum --check
+          tar -xzf "inputs/previous/$base.tar.gz" -C inputs/previous
+          previous="inputs/previous/$base"
+          (cd "$previous" && sha256sum --check SHA256SUMS)
+          grep -F a7dd93fc268c011334b693967abb7399447bbba2 "$previous/COMPONENTS.md"
+          grep -F 9752389a18c996395de958c27608e260cd9d58bb "$previous/COMPONENTS.md"
+          grep -F cdb7ed4e46a1cb9373c30eb449011e0bac19eae8 "$previous/COMPONENTS.md"
+          cp "$previous/assets/o-charts-chart-safety-preview-$DEMO_PLATFORM.tar.gz" inputs/plugins/ocharts-preview.tar.gz
+          for name in climatology polar celestial-navigation; do
+            cp "$previous/assets/$name-external-control-demo-$DEMO_PLATFORM.tar.gz" "inputs/plugins/$name.tar.gz"
+          done
       - name: Fetch exact qualified plug-in and o-charts runtime packages
-        if: ${{ inputs.candidate_run_id == '' }}
+        if: ${{ inputs.candidate_run_id == '' && !inputs.reuse_arm64_companions }}
         run: |
           mkdir -p inputs/plugins
           case "$DEMO_PLATFORM" in
@@ -158,7 +181,7 @@ jobs:
           test -n "$xweather_archive"
           cp "$xweather_archive" inputs/plugins/xweather.tar.gz
       - name: Build exact o-charts chart-safety provider
-        if: ${{ inputs.candidate_run_id == '' }}
+        if: ${{ inputs.candidate_run_id == '' && !inputs.reuse_arm64_companions }}
         run: |
           git clone --filter=blob:none --recurse-submodules \
             https://github.com/pob220/o-charts_pi.git inputs/o-charts_pi
@@ -170,7 +193,7 @@ jobs:
             inputs/plugins/ocharts-preview.tar.gz \
             "$EXPECTED_ELF_MACHINE"
       - name: Build and test exact upgraded Climatology source
-        if: ${{ inputs.candidate_run_id == '' }}
+        if: ${{ inputs.candidate_run_id == '' && !inputs.reuse_arm64_companions }}
         run: |
           git clone --filter=blob:none https://github.com/pob220/climatology_pi.git inputs/climatology_pi
           git -C inputs/climatology_pi checkout 9752389a18c996395de958c27608e260cd9d58bb
@@ -180,7 +203,7 @@ jobs:
             inputs/plugins/climatology.tar.gz \
             "$EXPECTED_ELF_MACHINE"
       - name: Build and test exact upgraded Celestial Navigation source
-        if: ${{ inputs.candidate_run_id == '' }}
+        if: ${{ inputs.candidate_run_id == '' && !inputs.reuse_arm64_companions }}
         env:
           GIT_LFS_SKIP_SMUDGE: '1'
         run: |
@@ -213,6 +236,7 @@ jobs:
           core_installer=$(find inputs/core/package -maxdepth 1 -type f -name '*.sh' -print -quit)
           test -n "$core_installer"
           core_revision=$(cat inputs/core/source-commit.txt)
+          PATH="$RUNNER_TEMP/preview-build-venv/bin:$PATH" \
           EXTERNAL_CONTROL_CORE_REVISION="$core_revision" \
             tools/external-control-demo/assemble-linux.sh \
               "$core_installer" \
@@ -269,3 +293,11 @@ jobs:
             candidate/qualification.log
           if-no-files-found: warn
           retention-days: 14
+      - name: Retain built plugin archives if assembly needs recovery
+        if: ${{ failure() && inputs.candidate_run_id == '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-control-demo-components-${{ inputs.platform }}
+          path: inputs/plugins/*.tar.gz
+          if-no-files-found: ignore
+          retention-days: 3
