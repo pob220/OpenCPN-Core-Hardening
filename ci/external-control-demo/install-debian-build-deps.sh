@@ -3,6 +3,10 @@ set -eu
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
+set --
+if apt-cache show libunarr-dev >/dev/null 2>&1; then
+  set -- libunarr-dev
+fi
 apt-get install -y --no-install-recommends \
   autoconf \
   autoconf-archive \
@@ -43,7 +47,6 @@ apt-get install -y --no-install-recommends \
   libtinyxml-dev \
   libtool \
   libudev-dev \
-  libunarr-dev \
   libusb-1.0-0-dev \
   libwxgtk3.2-dev \
   libwxgtk-webview3.2-dev \
@@ -59,7 +62,7 @@ apt-get install -y --no-install-recommends \
   uuid-dev \
   zlib1g-dev \
   xauth \
-  xvfb
+  xvfb "$@"
 
 localedef -i en_US -f UTF-8 en_US.UTF-8
 localedef -i sv_SE -f UTF-8 sv_SE.UTF-8

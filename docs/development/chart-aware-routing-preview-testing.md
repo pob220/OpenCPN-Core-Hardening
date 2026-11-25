@@ -4,15 +4,20 @@ This package is an isolated developer preview, not a navigation release. Its
 purpose is to exercise the complete chart-aware weather-routing path without
 modifying a normal OpenCPN installation or profile.
 
-## Current refresh — 23 November 2026, xWeatherRouting 1.44.0
+## Current refresh — 25 November 2026, xWeatherRouting 1.44.3
 
 The current package combines the chart-aware preview host with xWeatherRouting
-1.44.0 from Rick's production release candidate (PR 739) and the o-charts 2.2.5 provider,
+1.44.3 and the o-charts 2.2.5 provider,
 including its matching official licensed helper/runtime. xGRIB 0.4.6 and
 Generator 0.4.0, Climatology 2.0.3 / dataset 2026.2, Polar 1.2.38 and Celestial
 Navigation 2.9.12 remain the current qualified companion versions. Exact
 commits are recorded in `COMPONENTS.md`; the dated sections below describe
 earlier snapshots, not the current package inventory.
+
+The 1.44.3 update fixes installing High or Full GSHHG as the first shoreline
+download in a fresh profile. The bundled Crude, Low and Intermediate datasets
+can be installed offline. Cumulative climatology modes use the legacy isochrone
+calculation and show a warning when that switches the selected routing method.
 
 Meridian can be selected on its own or enabled separately in Auto and All,
 after Atlas. It starts unticked. Test it with the same GRIB, polar, departure,
@@ -130,8 +135,7 @@ boat/polar identity and GRIB coverage. Redact local paths where necessary.
 Never publish API tokens, o-charts credentials, entitlement files, licensed
 chart data or derived semantic-cache files.
 
-The complete bundle is currently qualified only on Debian 12 x86_64 and
-ARM64. Individual xWeatherRouting builds on other platforms do not constitute
+The complete bundle targets Debian 12 x86_64, Debian 12 ARM64 and Debian 13 x86_64. Individual xWeatherRouting builds on other platforms do not constitute
 qualification of the hardened core plus o-charts integration on those
 platforms.
 

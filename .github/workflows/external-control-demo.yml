@@ -19,8 +19,12 @@ on:
         description: Optional workflow run with a successful x86_64 core job and its artifact
         required: false
         type: string
+      trixie_core_run_id:
+        description: Optional workflow run with a successful Debian 13 x86_64 core artifact
+        required: false
+        type: string
       candidate_run_id:
-        description: Optional existing candidate run to requalify without rebuilding plugins (also supply both core run IDs)
+        description: Optional existing candidate run to requalify without rebuilding plugins (also supply matching core run IDs)
         required: false
         type: string
       candidate_source:
@@ -93,17 +97,17 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  assemble-debian12-x86_64:
-    name: Assemble and qualify Debian 12 x86_64 bundle
-    needs: debian12-x86_64
-    if: >-
-      ${{ always() &&
-          (needs.debian12-x86_64.result == 'success' ||
-           (github.event_name == 'workflow_dispatch' && inputs.x86_core_run_id != '')) }}
+  debian13-x86_64:
+    name: Debian 13 x86_64 core
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.trixie_core_run_id == '' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     container:
-      image: debian:bookworm
+      image: debian:trixie
+    env:
+      OCPN_TARGET: trixie
+      EXPECTED_ELF_MACHINE: Advanced Micro Devices X86-64
+      CMAKE_BUILD_PARALLEL_LEVEL: 3
     steps:
       - name: Bootstrap checkout requirements
         run: |
@@ -112,205 +116,39 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: false
-      - name: Trust the container checkout
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Install qualification requirements
-        run: |
-          ci/external-control-demo/install-debian-build-deps.sh
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            curl iproute2 jq libaec0 libblosc-dev libblosc1 libeccodes-dev \
-            libeccodes0 libhdf5-103-1 \
-            libgdk-pixbuf2.0-bin libgtest-dev libhdf5-hl-100 libnetcdf19 \
-            libnetcdf-dev libproj-dev libproj25 libqhull-dev libqhull-r8.0 \
-            libsodium-dev librsvg2-common libsz2 libzip-dev libzip4 \
-            libzstd-dev python3-build python3-pip python3-setuptools \
-            python3-tk python3-venv util-linux xauth
-          pixbuf_query=/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders
-          test -x "$pixbuf_query"
-          "$pixbuf_query" --update-cache
-          grep -q 'libpixbufloader-svg.so' \
-            /usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/gdk-pixbuf-2.0/2.10.0/loaders.cache
-          python3 -m pip install --break-system-packages \
-            'packaging==25.0' 'setuptools==80.9.0' 'wheel==0.45.1'
-      - uses: actions/download-artifact@v4
-        if: ${{ inputs.candidate_run_id == '' }}
-        with:
-          name: opencpn-external-control-core-debian12-x86_64
-          path: inputs/core
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          run-id: ${{ inputs.x86_core_run_id || github.run_id }}
-      - name: Fetch exact qualified plug-in and o-charts runtime packages
-        if: ${{ inputs.candidate_run_id == '' }}
-        run: |
-          mkdir -p inputs/plugins
-          curl --fail --location \
-            'https://dl.cloudsmith.io/public/opencpn/polar-prod/raw/names/polar_pi-1.2.38.0-debian-x86_64-12-bookworm-tarball/versions/v1.2.38.0/polar_pi-1.2.38.0-debian-x86_64-12-bookworm.tar.gz' \
-            --output inputs/plugins/polar.tar.gz
-          curl --fail --location \
-            'https://dl.cloudsmith.io/public/opencpn/o-charts-prod/raw/names/o-charts-v2.2.5-debian-x86_64-12-tarball/versions/v2.2.5/o-charts-v2.2.5_debian-x86_64-12-x86_64.tar.gz' \
-            --output inputs/plugins/ocharts-official.tar.gz
-          echo '6130386533e5661cc6f940a30ab0633af5c30ec5efac2697d72e08634cbb08fc  inputs/plugins/polar.tar.gz' | sha256sum --check
-          echo '79ee6bdc7eb4eba93d5201725f7a9d1d3137220a9f0c9f1177819844df648d58  inputs/plugins/ocharts-official.tar.gz' | sha256sum --check
-      - name: Build and test exact fixed xGRIB source
-        if: ${{ inputs.candidate_run_id == '' }}
-        env:
-          CMAKE_BUILD_PARALLEL_LEVEL: '3'
-          OCPN_TARGET: bookworm
-        run: |
-          git clone --filter=blob:none --recurse-submodules \
-            https://github.com/pob220/xgrib_pi.git inputs/xgrib_pi
-          git -C inputs/xgrib_pi checkout d539649dd416875aae36a8da555a883e43990972
-          git -C inputs/xgrib_pi submodule update --init --recursive
-          test "$(git -C inputs/xgrib_pi/generator rev-parse HEAD)" = \
-            4208c87dbf223bedb78064043313c5fc09c629f1
-          inputs/xgrib_pi/ci/build-linux-catalogue.sh \
-            inputs/xgrib_pi inputs/xgrib-build inputs/xgrib-stage \
-            inputs/xgrib-build/artifacts/bookworm
-          xgrib_archive=$(find inputs/xgrib-build/artifacts/bookworm/package \
-            -maxdepth 1 -type f -name '*.tar.gz' -print -quit)
-          test -n "$xgrib_archive"
-          cp "$xgrib_archive" inputs/plugins/xgrib.tar.gz
-      - name: Build and test exact chart-aware xWeatherRouting source
-        if: ${{ inputs.candidate_run_id == '' }}
-        env:
-          CMAKE_BUILD_PARALLEL_LEVEL: '3'
-          CIRCLE_PROJECT_REPONAME: xweather_routing_pi
-          WEATHER_ROUTING_CI_XWEATHER: 'true'
-          OCPN_TARGET: bookworm
-        run: |
-          git clone --filter=blob:none --recurse-submodules \
-            https://github.com/rgleason/weather_routing_pi.git inputs/xweather_routing_pi
-          git -C inputs/xweather_routing_pi checkout 961c03dcdd84b158da6d14c3bbeaabf4dd5065c4
-          git -C inputs/xweather_routing_pi submodule update --init --recursive
-          inputs/xweather_routing_pi/ci/build-linux-catalogue.sh \
-            inputs/xweather_routing_pi inputs/xweather-build
-          xweather_archive=$(find inputs/xweather-build/artifacts/bookworm/package \
-            -maxdepth 1 -type f -name '*.tar.gz' -print -quit)
-          test -n "$xweather_archive"
-          cp "$xweather_archive" inputs/plugins/xweather.tar.gz
-      - name: Build exact o-charts chart-safety provider
-        if: ${{ inputs.candidate_run_id == '' }}
-        env:
-          CMAKE_BUILD_PARALLEL_LEVEL: '3'
-          OCPN_TARGET: bookworm
-        run: |
-          git clone --filter=blob:none --recurse-submodules \
-            https://github.com/pob220/o-charts_pi.git inputs/o-charts_pi
-          git -C inputs/o-charts_pi checkout a7dd93fc268c011334b693967abb7399447bbba2
-          git -C inputs/o-charts_pi submodule update --init --recursive
-          ci/external-control-demo/package-ocharts-source-preview-linux.sh \
-            inputs/o-charts_pi inputs/ocharts-build \
-            inputs/plugins/ocharts-official.tar.gz \
-            inputs/plugins/ocharts-preview.tar.gz \
-            'Advanced Micro Devices X86-64'
-      - name: Build and test exact upgraded Climatology source
-        if: ${{ inputs.candidate_run_id == '' }}
-        env:
-          CMAKE_BUILD_PARALLEL_LEVEL: '3'
-          OCPN_TARGET: bookworm
-        run: |
-          git clone --filter=blob:none https://github.com/pob220/climatology_pi.git inputs/climatology_pi
-          git -C inputs/climatology_pi checkout 9752389a18c996395de958c27608e260cd9d58bb
-          ci/external-control-demo/package-climatology-linux.sh \
-            inputs/climatology_pi \
-            inputs/climatology-build \
-            inputs/plugins/climatology.tar.gz \
-            'Advanced Micro Devices X86-64'
-      - name: Build and test exact upgraded Celestial Navigation source
-        if: ${{ inputs.candidate_run_id == '' }}
-        env:
-          CMAKE_BUILD_PARALLEL_LEVEL: '3'
-          GIT_LFS_SKIP_SMUDGE: '1'
-          OCPN_TARGET: bookworm
-        run: |
-          git clone --filter=blob:none --recurse-submodules \
-            https://github.com/pob220/celestial_navigation_pi.git \
-            inputs/celestial_navigation_pi
-          git -C inputs/celestial_navigation_pi checkout --detach cdb7ed4e46a1cb9373c30eb449011e0bac19eae8
-          test "$(git -C inputs/celestial_navigation_pi rev-parse HEAD)" = \
-            cdb7ed4e46a1cb9373c30eb449011e0bac19eae8
-          git -C inputs/celestial_navigation_pi submodule update --init --recursive
-          curl --fail --location \
-            https://github.com/pob220/celestial_navigation_pi/releases/download/eclipse-data-2026.1/de440s.bsp \
-            --output inputs/celestial_navigation_pi/eclipse/data/de440s.bsp
-          echo 'c1c7feeab882263fc493a9d5a5b2ddd71b54826cdf65d8d17a76126b260a49f2  inputs/celestial_navigation_pi/eclipse/data/de440s.bsp' \
-            | sha256sum --check
-          test "$(stat -c %s inputs/celestial_navigation_pi/eclipse/data/de440s.bsp)" = 32726016
-          ci/external-control-demo/package-celestial-linux.sh \
-            inputs/celestial_navigation_pi \
-            inputs/celestial-build \
-            inputs/plugins/celestial-navigation.tar.gz \
-            'Advanced Micro Devices X86-64'
-      - name: Check out exact Scheduler source
-        if: ${{ inputs.candidate_run_id == '' }}
-        run: |
-          git clone https://github.com/pob220/opencpn-scheduler.git inputs/opencpn-scheduler
-          git -C inputs/opencpn-scheduler checkout 539e1e80a00aa2ca0df0853fc9ebd0f4c8bffa9e
-      - name: Assemble isolated bundle
-        if: ${{ inputs.candidate_run_id == '' }}
-        run: |
-          core_installer=$(find inputs/core/package -maxdepth 1 -type f -name '*.sh' -print -quit)
-          test -n "$core_installer"
-          core_revision=$(cat inputs/core/source-commit.txt)
-          EXTERNAL_CONTROL_DEMO_DATE=2026-11-23 \
-            EXTERNAL_CONTROL_CORE_REVISION="$core_revision" \
-            tools/external-control-demo/assemble-linux.sh \
-              "$core_installer" \
-              inputs/plugins/xgrib.tar.gz \
-              inputs/plugins/xweather.tar.gz \
-              inputs/plugins/ocharts-preview.tar.gz \
-              inputs/plugins/climatology.tar.gz \
-              inputs/plugins/polar.tar.gz \
-              inputs/plugins/celestial-navigation.tar.gz \
-              inputs/opencpn-scheduler \
-              candidate debian12-x86_64 x86_64
-      - name: Download existing candidate for qualification
-        if: ${{ inputs.candidate_run_id != '' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: opencpn-external-control-demo-debian12-x86_64
-          path: candidate
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          run-id: ${{ inputs.candidate_run_id }}
-      - name: Verify and extract the exact existing candidate
-        if: ${{ inputs.candidate_run_id != '' }}
-        env:
-          EXPECTED_CANDIDATE_SOURCE: ${{ inputs.candidate_source }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$EXPECTED_CANDIDATE_SOURCE" =~ ^[0-9a-f]{40}$ ]]
-          cd candidate
-          archive=OpenCPN-External-Control-Demo-2026-11-23-debian12-x86_64.tar.gz
-          sha256sum --check "$archive.sha256"
-          tar -xzf "$archive"
-          grep -F "$EXPECTED_CANDIDATE_SOURCE" "${archive%.tar.gz}/COMPONENTS.md"
-      - name: Clean-install and API/MCP smoke qualification
-        env:
-          RUN_GUI_SMOKE: '1'
-        run: |
-          qualification_log=candidate/qualification.log
-          if ! tools/external-control-demo/qualify-linux-bundle.sh \
-              candidate/OpenCPN-External-Control-Demo-2026-11-23-debian12-x86_64 \
-              'Advanced Micro Devices X86-64' >"$qualification_log" 2>&1; then
-            cat "$qualification_log"
-            exit 1
-          fi
-          cat "$qualification_log"
-      - name: Publish qualified candidate
+      - name: Install Debian build dependencies
+        run: ci/external-control-demo/install-debian-build-deps.sh
+      - name: Build, test, package and audit
+        run: ci/external-control-demo/build-linux.sh "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/build-trixie"
+      - name: Publish retained evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: opencpn-external-control-demo-debian12-x86_64
-          path: |
-            candidate/OpenCPN-External-Control-Demo-2026-11-23-debian12-x86_64.tar.gz
-            candidate/OpenCPN-External-Control-Demo-2026-11-23-debian12-x86_64.tar.gz.sha256
-            candidate/qualification.log
-          if-no-files-found: warn
+          name: opencpn-external-control-core-debian13-x86_64
+          path: build-trixie/artifacts/trixie
+          if-no-files-found: error
           retention-days: 14
+
+  assemble-debian12-x86_64:
+    name: Assemble and qualify Debian 12 x86_64 bundle
+    needs: debian12-x86_64
+    if: >-
+      ${{ always() &&
+          (needs.debian12-x86_64.result == 'success' ||
+           (github.event_name == 'workflow_dispatch' && inputs.x86_core_run_id != '')) }}
+    uses: ./.github/workflows/assemble-external-control-demo.yml
+    with:
+      platform: debian12-x86_64
+      target: bookworm
+      image: debian:bookworm
+      runner: ubuntu-24.04
+      expected_uname: x86_64
+      expected_machine: Advanced Micro Devices X86-64
+      parallel_jobs: '3'
+      release_date: '2026-11-25'
+      core_run_id: ${{ inputs.x86_core_run_id || format('{0}', github.run_id) }}
+      candidate_run_id: ${{ inputs.candidate_run_id }}
+      candidate_source: ${{ inputs.candidate_source }}
 
   assemble-debian12-arm64:
     name: Assemble and qualify Debian 12 ARM64 bundle
@@ -319,215 +157,37 @@ jobs:
       ${{ always() &&
           (needs.debian12-arm64.result == 'success' ||
            (github.event_name == 'workflow_dispatch' && inputs.core_run_id != '')) }}
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 120
-    container:
+    uses: ./.github/workflows/assemble-external-control-demo.yml
+    with:
+      platform: debian12-arm64
+      target: bookworm-arm64
       image: arm64v8/debian:bookworm
-    steps:
-      - name: Bootstrap checkout requirements
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends ca-certificates git
-      - uses: actions/checkout@v4
-        with:
-          submodules: false
-      - name: Trust the container checkout
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Install qualification requirements
-        run: |
-          ci/external-control-demo/install-debian-build-deps.sh
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            curl iproute2 jq libaec0 libblosc-dev libblosc1 libeccodes-dev \
-            libeccodes0 libhdf5-103-1 \
-            libgdk-pixbuf2.0-bin libgtest-dev libhdf5-hl-100 libnetcdf19 \
-            libnetcdf-dev libproj-dev libproj25 libqhull-dev libqhull-r8.0 \
-            libsodium-dev librsvg2-common libsz2 libzip-dev libzip4 \
-            libzstd-dev python3-build python3-pip python3-setuptools \
-            python3-tk python3-venv util-linux xauth
-          pixbuf_query=/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders
-          test -x "$pixbuf_query"
-          "$pixbuf_query" --update-cache
-          grep -q 'libpixbufloader-svg.so' \
-            /usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/gdk-pixbuf-2.0/2.10.0/loaders.cache
-          python3 -m pip install --break-system-packages \
-            'packaging==25.0' 'setuptools==80.9.0' 'wheel==0.45.1'
-      - uses: actions/download-artifact@v4
-        if: ${{ inputs.candidate_run_id == '' }}
-        with:
-          name: opencpn-external-control-core-debian12-arm64
-          path: inputs/core
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          run-id: ${{ inputs.core_run_id || github.run_id }}
-      - name: Fetch exact qualified plug-in and o-charts runtime packages
-        if: ${{ inputs.candidate_run_id == '' }}
-        run: |
-          mkdir -p inputs/plugins
-          curl --fail --location \
-            'https://dl.cloudsmith.io/public/opencpn/polar-prod/raw/names/polar_pi-1.2.38.0-debian-arm64-12-bookworm-arm64-tarball/versions/v1.2.38.0/polar_pi-1.2.38.0-debian-arm64-12-bookworm-arm64.tar.gz' \
-            --output inputs/plugins/polar.tar.gz
-          curl --fail --location \
-            'https://dl.cloudsmith.io/public/opencpn/o-charts-prod/raw/names/o-charts-v2.2.5-debian-arm64-A64-12-tarball/versions/v2.2.5/o-charts-v2.2.5_debian-arm64-12-arm64.tar.gz' \
-            --output inputs/plugins/ocharts-official.tar.gz
-          echo '85e000060e7f10df4a01424257e685ac6a8b8bd1cd145030a1a4c8bdb50ce470  inputs/plugins/polar.tar.gz' | sha256sum --check
-          echo '6c434126237c8d26e6c5e98ddd7c46074069e5034953d07f35d8b02f786320fa  inputs/plugins/ocharts-official.tar.gz' | sha256sum --check
-      - name: Build and test exact fixed xGRIB source
-        if: ${{ inputs.candidate_run_id == '' }}
-        env:
-          CMAKE_BUILD_PARALLEL_LEVEL: '2'
-          OCPN_TARGET: bookworm-arm64
-        run: |
-          git clone --filter=blob:none --recurse-submodules \
-            https://github.com/pob220/xgrib_pi.git inputs/xgrib_pi
-          git -C inputs/xgrib_pi checkout d539649dd416875aae36a8da555a883e43990972
-          git -C inputs/xgrib_pi submodule update --init --recursive
-          test "$(git -C inputs/xgrib_pi/generator rev-parse HEAD)" = \
-            4208c87dbf223bedb78064043313c5fc09c629f1
-          inputs/xgrib_pi/ci/build-linux-catalogue.sh \
-            inputs/xgrib_pi inputs/xgrib-build inputs/xgrib-stage \
-            inputs/xgrib-build/artifacts/bookworm-arm64
-          xgrib_archive=$(find inputs/xgrib-build/artifacts/bookworm-arm64/package \
-            -maxdepth 1 -type f -name '*.tar.gz' -print -quit)
-          test -n "$xgrib_archive"
-          cp "$xgrib_archive" inputs/plugins/xgrib.tar.gz
-      - name: Build and test exact chart-aware xWeatherRouting source
-        if: ${{ inputs.candidate_run_id == '' }}
-        env:
-          CMAKE_BUILD_PARALLEL_LEVEL: '2'
-          CIRCLE_PROJECT_REPONAME: xweather_routing_pi
-          WEATHER_ROUTING_CI_XWEATHER: 'true'
-          OCPN_TARGET: bookworm-arm64
-        run: |
-          git clone --filter=blob:none --recurse-submodules \
-            https://github.com/rgleason/weather_routing_pi.git inputs/xweather_routing_pi
-          git -C inputs/xweather_routing_pi checkout 961c03dcdd84b158da6d14c3bbeaabf4dd5065c4
-          git -C inputs/xweather_routing_pi submodule update --init --recursive
-          inputs/xweather_routing_pi/ci/build-linux-catalogue.sh \
-            inputs/xweather_routing_pi inputs/xweather-build
-          xweather_archive=$(find inputs/xweather-build/artifacts/bookworm-arm64/package \
-            -maxdepth 1 -type f -name '*.tar.gz' -print -quit)
-          test -n "$xweather_archive"
-          cp "$xweather_archive" inputs/plugins/xweather.tar.gz
-      - name: Build exact o-charts chart-safety provider
-        if: ${{ inputs.candidate_run_id == '' }}
-        env:
-          CMAKE_BUILD_PARALLEL_LEVEL: '2'
-          OCPN_TARGET: bookworm-arm64
-        run: |
-          git clone --filter=blob:none --recurse-submodules \
-            https://github.com/pob220/o-charts_pi.git inputs/o-charts_pi
-          git -C inputs/o-charts_pi checkout a7dd93fc268c011334b693967abb7399447bbba2
-          git -C inputs/o-charts_pi submodule update --init --recursive
-          ci/external-control-demo/package-ocharts-source-preview-linux.sh \
-            inputs/o-charts_pi inputs/ocharts-build \
-            inputs/plugins/ocharts-official.tar.gz \
-            inputs/plugins/ocharts-preview.tar.gz AArch64
-      - name: Build and test exact upgraded Climatology source
-        if: ${{ inputs.candidate_run_id == '' }}
-        env:
-          CMAKE_BUILD_PARALLEL_LEVEL: '2'
-          OCPN_TARGET: bookworm-arm64
-        run: |
-          git clone --filter=blob:none https://github.com/pob220/climatology_pi.git inputs/climatology_pi
-          git -C inputs/climatology_pi checkout 9752389a18c996395de958c27608e260cd9d58bb
-          ci/external-control-demo/package-climatology-linux.sh \
-            inputs/climatology_pi \
-            inputs/climatology-build \
-            inputs/plugins/climatology.tar.gz \
-            AArch64
-      - name: Build and test exact upgraded Celestial Navigation source
-        if: ${{ inputs.candidate_run_id == '' }}
-        env:
-          CMAKE_BUILD_PARALLEL_LEVEL: '2'
-          GIT_LFS_SKIP_SMUDGE: '1'
-          OCPN_TARGET: bookworm-arm64
-        run: |
-          git clone --filter=blob:none --recurse-submodules \
-            https://github.com/pob220/celestial_navigation_pi.git \
-            inputs/celestial_navigation_pi
-          git -C inputs/celestial_navigation_pi checkout --detach cdb7ed4e46a1cb9373c30eb449011e0bac19eae8
-          test "$(git -C inputs/celestial_navigation_pi rev-parse HEAD)" = \
-            cdb7ed4e46a1cb9373c30eb449011e0bac19eae8
-          git -C inputs/celestial_navigation_pi submodule update --init --recursive
-          # The lunar-distance tests require DE440, but the full optional
-          # eclipse data pack is deliberately not fetched or distributed.
-          curl --fail --location \
-            https://github.com/pob220/celestial_navigation_pi/releases/download/eclipse-data-2026.1/de440s.bsp \
-            --output inputs/celestial_navigation_pi/eclipse/data/de440s.bsp
-          echo 'c1c7feeab882263fc493a9d5a5b2ddd71b54826cdf65d8d17a76126b260a49f2  inputs/celestial_navigation_pi/eclipse/data/de440s.bsp' \
-            | sha256sum --check
-          test "$(stat -c %s inputs/celestial_navigation_pi/eclipse/data/de440s.bsp)" = 32726016
-          ci/external-control-demo/package-celestial-linux.sh \
-            inputs/celestial_navigation_pi \
-            inputs/celestial-build \
-            inputs/plugins/celestial-navigation.tar.gz \
-            AArch64
-      - name: Check out exact Scheduler source
-        if: ${{ inputs.candidate_run_id == '' }}
-        run: |
-          git clone https://github.com/pob220/opencpn-scheduler.git inputs/opencpn-scheduler
-          git -C inputs/opencpn-scheduler checkout 539e1e80a00aa2ca0df0853fc9ebd0f4c8bffa9e
-      - name: Assemble isolated bundle
-        if: ${{ inputs.candidate_run_id == '' }}
-        run: |
-          core_installer=$(find inputs/core/package -maxdepth 1 -type f -name '*.sh' -print -quit)
-          test -n "$core_installer"
-          core_revision=$(cat inputs/core/source-commit.txt)
-          EXTERNAL_CONTROL_DEMO_DATE=2026-11-23 \
-            EXTERNAL_CONTROL_CORE_REVISION="$core_revision" \
-            tools/external-control-demo/assemble-linux.sh \
-              "$core_installer" \
-              inputs/plugins/xgrib.tar.gz \
-              inputs/plugins/xweather.tar.gz \
-              inputs/plugins/ocharts-preview.tar.gz \
-              inputs/plugins/climatology.tar.gz \
-              inputs/plugins/polar.tar.gz \
-              inputs/plugins/celestial-navigation.tar.gz \
-              inputs/opencpn-scheduler \
-              candidate debian12-arm64 aarch64
-      - name: Download existing candidate for qualification
-        if: ${{ inputs.candidate_run_id != '' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: opencpn-external-control-demo-debian12-arm64
-          path: candidate
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          run-id: ${{ inputs.candidate_run_id }}
-      - name: Verify and extract the exact existing candidate
-        if: ${{ inputs.candidate_run_id != '' }}
-        env:
-          EXPECTED_CANDIDATE_SOURCE: ${{ inputs.candidate_source }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$EXPECTED_CANDIDATE_SOURCE" =~ ^[0-9a-f]{40}$ ]]
-          cd candidate
-          archive=OpenCPN-External-Control-Demo-2026-11-23-debian12-arm64.tar.gz
-          sha256sum --check "$archive.sha256"
-          tar -xzf "$archive"
-          grep -F "$EXPECTED_CANDIDATE_SOURCE" "${archive%.tar.gz}/COMPONENTS.md"
-      - name: Clean-install and API smoke qualification
-        env:
-          RUN_GUI_SMOKE: '1'
-        run: |
-          qualification_log=candidate/qualification.log
-          if ! tools/external-control-demo/qualify-linux-bundle.sh \
-              candidate/OpenCPN-External-Control-Demo-2026-11-23-debian12-arm64 \
-              AArch64 >"$qualification_log" 2>&1; then
-            cat "$qualification_log"
-            exit 1
-          fi
-          cat "$qualification_log"
-      - name: Publish qualified candidate
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: opencpn-external-control-demo-debian12-arm64
-          path: |
-            candidate/OpenCPN-External-Control-Demo-2026-11-23-debian12-arm64.tar.gz
-            candidate/OpenCPN-External-Control-Demo-2026-11-23-debian12-arm64.tar.gz.sha256
-            candidate/qualification.log
-          if-no-files-found: warn
-          retention-days: 14
+      runner: ubuntu-24.04-arm
+      expected_uname: aarch64
+      expected_machine: AArch64
+      parallel_jobs: '2'
+      release_date: '2026-11-25'
+      core_run_id: ${{ inputs.core_run_id || format('{0}', github.run_id) }}
+      candidate_run_id: ${{ inputs.candidate_run_id }}
+      candidate_source: ${{ inputs.candidate_source }}
+
+  assemble-debian13-x86_64:
+    name: Assemble and qualify Debian 13 x86_64 bundle
+    needs: debian13-x86_64
+    if: >-
+      ${{ always() &&
+          (needs.debian13-x86_64.result == 'success' ||
+           (github.event_name == 'workflow_dispatch' && inputs.trixie_core_run_id != '')) }}
+    uses: ./.github/workflows/assemble-external-control-demo.yml
+    with:
+      platform: debian13-x86_64
+      target: trixie
+      image: debian:trixie
+      runner: ubuntu-24.04
+      expected_uname: x86_64
+      expected_machine: Advanced Micro Devices X86-64
+      parallel_jobs: '3'
+      release_date: '2026-11-25'
+      core_run_id: ${{ inputs.trixie_core_run_id || format('{0}', github.run_id) }}
+      candidate_run_id: ${{ inputs.candidate_run_id }}
+      candidate_source: ${{ inputs.candidate_source }}

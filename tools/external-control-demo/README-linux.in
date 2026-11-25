@@ -8,7 +8,7 @@ human-readable Scheduler. It targets `@EXPECTED_UNAME@` systems running
 the `@PLATFORM@` build environment; native packages should not be treated as
 portable across incompatible distributions.
 
-This 23 November refresh includes xWeatherRouting 1.44.0, xGRIB 0.4.6 and
+This 25 November refresh includes xWeatherRouting 1.44.3, xGRIB 0.4.6 and
 Generator 0.4.0, and updates the modified o-charts provider and its official
 licensed helper/runtime to 2.2.5. The core fixes double daylight-saving-time
 adjustment on modern wxWidgets and carries the bounded GSHHS corrections from
@@ -16,6 +16,11 @@ adjustment on modern wxWidgets and carries the bounded GSHHS corrections from
 answers are independent of endpoint order, and disjoint collinear segments
 are no longer reported as intersections. The existing absolute tolerances
 are retained; further tolerance changes remain separate work.
+
+The shoreline installer creates its data directory before downloading High or
+Full GSHHG. The plug-in supplies Crude, Low and Intermediate for offline
+installation. Cumulative Map and Cumulative - Calms use the legacy isochrone
+calculation and show a warning when this changes the selected routing method.
 
 Meridian is a new independent routing method with a full-circle heading fan,
 coastal step refinement and geographic detour guidance. Select Meridian alone,
@@ -27,7 +32,7 @@ water-endpoint access. Live diagnostics distinguish a completed method from
 other methods still running in All. These are bounded searches: no feasible
 route or fastest-passage guarantee is implied by a failed or completed attempt.
 
-xWeatherRouting 1.44.0 includes opt-in additional calculation helpers in
+xWeatherRouting includes opt-in additional calculation helpers in
 Settings → Computation, off on a fresh installation and remembered thereafter.
 Parallel routing methods retain their separate saved setting. The core supports
 verified global open-water starting layers, bounded isolated detailed-tile
@@ -122,11 +127,21 @@ Install the target-distribution runtime prerequisites first. For Debian 12:
 sudo apt-get update
 sudo apt-get install curl file iproute2 libaec0 libblosc1 libeccodes0 \
   libgdk-pixbuf2.0-bin libhdf5-103-1 libhdf5-hl-100 libnetcdf19 \
-  libproj25 libqhull-r8.0 librsvg2-common libsz2 libzip4 python3-tk \
-  python3-venv xvfb
+  libportaudio2 libproj25 libqhull-r8.0 librsvg2-common libsodium23 libsz2 \
+  libunarr1 libwxgtk-webview3.2-1 libzip4 python3-tk python3-venv xvfb
 ```
 
-The demo installer itself uses no `sudo`; these are normal host runtime
+For Debian 13 x86_64:
+
+```sh
+sudo apt-get update
+sudo apt-get install curl file iproute2 libaec0 libblosc1 libeccodes0 \
+  libgdk-pixbuf2.0-bin libhdf5-310 libhdf5-hl-310 libnetcdf22 \
+  libportaudio2 libproj25 libqhull-r8.0 librsvg2-common libsodium23 libsz2 \
+  libwxgtk-webview3.2-1 libzip5 python3-tk python3-venv xvfb
+```
+
+The demo installer runs as your normal user. These are normal host runtime
 packages used by OpenCPN and the bundled environmental-data helper.
 
 Install into a new directory:
@@ -150,7 +165,7 @@ avoid two GRIB displays competing.
 The exact list is in `docs/PLUGIN-INVENTORY.md` after installation.
 
 To update a plugin, use **Options → Plugins → Import plugin…** with a tarball
-for **Debian 12** and this bundle's CPU architecture. When running in a
+matching this bundle's Debian version and CPU architecture. When running in a
 container, match the container's Debian version. Launch through the supplied
 launcher: imports replace the copy in this writable preview installation and
 their installation records stay in its private profile. Restart OpenCPN after
