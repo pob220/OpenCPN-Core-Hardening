@@ -81,7 +81,7 @@ jobs:
           pixbuf_query=/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders
           test -x "$pixbuf_query"
           "$pixbuf_query" --update-cache
-          grep -q 'libpixbufloader-svg.so' \
+          grep -Eq 'libpixbufloader[-_]svg\.so' \
             /usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/gdk-pixbuf-2.0/2.10.0/loaders.cache
           python3 -m pip install --break-system-packages \
             'packaging==25.0' 'setuptools==80.9.0' 'wheel==0.45.1'

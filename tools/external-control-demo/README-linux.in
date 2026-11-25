@@ -130,20 +130,24 @@ Install the target-distribution runtime prerequisites first. For Debian 12:
 
 ```sh
 sudo apt-get update
-sudo apt-get install curl file iproute2 libaec0 libblosc1 libeccodes0 \
-  libgdk-pixbuf2.0-bin libhdf5-103-1 libhdf5-hl-100 libnetcdf19 \
-  libportaudio2 libproj25 libqhull-r8.0 librsvg2-common libsodium23 libsz2 \
-  libunarr1 libwxgtk-webview3.2-1 libzip4 python3-tk python3-venv xvfb
+sudo apt-get install curl file iproute2 libaec0 libarchive13 libblosc1 \
+  libeccodes0 libgdk-pixbuf2.0-bin libglew2.2 libglu1-mesa libhdf5-103-1 \
+  libhdf5-hl-100 libnetcdf19 libportaudio2 libproj25 libqhull-r8.0 \
+  librsvg2-common libshp4 libsodium23 libsz2 libtinyxml2.6.2v5 libunarr1 \
+  libusb-1.0-0 libwxgtk-gl3.2-1 libwxgtk-webview3.2-1 libzip4 \
+  python3-tk python3-venv xauth xvfb
 ```
 
 For Debian 13 x86_64:
 
 ```sh
 sudo apt-get update
-sudo apt-get install curl file iproute2 libaec0 libblosc1 libeccodes0 \
-  libgdk-pixbuf2.0-bin libhdf5-310 libhdf5-hl-310 libnetcdf22 \
-  libportaudio2 libproj25 libqhull-r8.0 librsvg2-common libsodium23 libsz2 \
-  libwxgtk-webview3.2-1 libzip5 python3-tk python3-venv xvfb
+sudo apt-get install curl file iproute2 libaec0 libarchive13t64 libblosc1 \
+  libeccodes0 libgdk-pixbuf2.0-bin libglew2.2 libglu1-mesa libhdf5-310 \
+  libhdf5-hl-310 libnetcdf22 libportaudio2 libproj25 libqhull-r8.0 \
+  librsvg2-common libshp4 libsodium23 libsz2 libtinyxml2.6.2v5 libusb-1.0-0 \
+  libwxgtk-gl3.2-1t64 libwxgtk-webview3.2-1t64 libzip5 \
+  python3-tk python3-venv xauth xvfb
 ```
 
 The demo installer runs as your normal user. These are normal host runtime
