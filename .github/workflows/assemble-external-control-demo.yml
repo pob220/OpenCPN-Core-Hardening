@@ -83,8 +83,11 @@ jobs:
           "$pixbuf_query" --update-cache
           grep -Eq 'libpixbufloader[-_]svg\.so' \
             /usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/gdk-pixbuf-2.0/2.10.0/loaders.cache
-          python3 -m pip install --break-system-packages \
+          build_venv="$RUNNER_TEMP/preview-build-venv"
+          python3 -m venv --system-site-packages "$build_venv"
+          "$build_venv/bin/python" -m pip install --ignore-installed \
             'packaging==25.0' 'setuptools==80.9.0' 'wheel==0.45.1'
+          printf '%s\n' "$build_venv/bin" >> "$GITHUB_PATH"
       - uses: actions/download-artifact@v4
         if: ${{ inputs.candidate_run_id == '' }}
         with:
