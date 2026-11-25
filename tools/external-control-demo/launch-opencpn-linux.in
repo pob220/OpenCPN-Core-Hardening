@@ -35,7 +35,7 @@ export LD_LIBRARY_PATH="$demo_prefix/lib/opencpn${LD_LIBRARY_PATH:+:$LD_LIBRARY_
 unset WR_HEADLESS_SCENARIO WR_HEADLESS_OUTPUT
 opengl_args=()
 if [[ ${OCPN_EXTERNAL_CONTROL_DEMO_QUALIFICATION:-0} == 1 ]]; then
-  export WR_HEADLESS_ROUTE_TEST=open_only
+  export WR_HEADLESS_ROUTE_TEST=open-only
   opengl_args=(--no_opengl)
 else
   unset WR_HEADLESS_ROUTE_TEST
